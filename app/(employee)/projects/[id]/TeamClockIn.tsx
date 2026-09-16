@@ -47,10 +47,10 @@ function ClockOutSheet({
       onClick={onClose}
     >
       <div
-        className="absolute bottom-0 left-0 right-0 md:static md:w-full md:max-w-lg bg-surface rounded-t-[20px] md:rounded-[20px]"
+        className="absolute bottom-0 left-0 right-0 md:static md:w-full md:max-w-lg bg-surface rounded-t-[20px] md:rounded-[20px] flex flex-col max-h-[85vh]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="p-5">
+        <div className="p-5 overflow-y-auto flex-1">
           <div className="w-10 h-1 bg-tertiary rounded-full mx-auto mb-4 md:hidden" />
           <h3 className="text-base font-semibold text-primary mb-1">{member.full_name}</h3>
           {member.entry && (
@@ -101,7 +101,7 @@ function ClockOutSheet({
           {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
         </div>
 
-        <div className="px-5" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
+        <div className="px-5 pt-3 shrink-0" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
           <button
             onClick={handleClockOut}
             disabled={saving}
@@ -151,10 +151,10 @@ function ClockInSheet({
       onClick={onClose}
     >
       <div
-        className="absolute bottom-0 left-0 right-0 md:static md:w-full md:max-w-lg bg-surface rounded-t-[20px] md:rounded-[20px]"
+        className="absolute bottom-0 left-0 right-0 md:static md:w-full md:max-w-lg bg-surface rounded-t-[20px] md:rounded-[20px] flex flex-col max-h-[85vh]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="p-5">
+        <div className="p-5 overflow-y-auto flex-1">
           <div className="w-10 h-1 bg-tertiary rounded-full mx-auto mb-4 md:hidden" />
           <h3 className="text-base font-semibold text-primary mb-1">{member.full_name}</h3>
           <p className="text-xs text-secondary mb-4">
@@ -177,7 +177,7 @@ function ClockInSheet({
           {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
         </div>
 
-        <div className="px-5" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
+        <div className="px-5 pt-3 shrink-0" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
           <button
             onClick={handleClockIn}
             disabled={saving}
