@@ -594,7 +594,7 @@ export default function EmployeesPage() {
                           }}
                           className={`flex-shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
                             form.permissions?.supervisor && form.permissions?.checkin_team
-                              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700'
+                              ? 'bg-amber/10 text-amber border-amber/30'
                               : 'text-[var(--color-brand)] border-[var(--color-brand)] hover:bg-[var(--color-brand)]/10'
                           }`}
                         >
