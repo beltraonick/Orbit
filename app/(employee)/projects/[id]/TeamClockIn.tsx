@@ -124,7 +124,7 @@ function ClockInSheet({
   member: TeamMember
   onClose: () => void
   onDone: () => void
-  projectId: string
+  projectId?: string
 }) {
   const { t } = useTranslation()
   const [notes, setNotes] = useState('')
@@ -191,7 +191,7 @@ function ClockInSheet({
   )
 }
 
-export function TeamClockIn({ projectId }: { projectId: string }) {
+export function TeamClockIn({ projectId }: { projectId?: string }) {
   const { t } = useTranslation()
   const [team, setTeam] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
