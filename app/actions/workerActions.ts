@@ -96,7 +96,7 @@ export async function updateWorker(
 // ─── Supervisor: clock team member in/out ─────────────────────────────────────
 
 export async function supervisorClockIn(data: {
-  projectId: string
+  projectId?: string     // omit for a general (not project-scoped) clock-in
   profileId?: string    // if clocking in a profile-employee
   workerId?: string     // if clocking in a no-account worker
   notes?: string
@@ -122,20 +122,22 @@ export async function supervisorClockIn(data: {
 
   if (!data.profileId && !data.workerId) return { error: 'Must provide profileId or workerId' }
 
-  // Check nobody is already clocked in for this person on this project
+  // Check nobody is already clocked in for this person anywhere in the
+  // company — one person can't be on the clock for two projects (or two
+  // general shifts) at once.
   const existing = data.profileId
     ? await supabase
         .from('time_entries')
         .select('id')
         .eq('employee_id', data.profileId)
-        .eq('project_id', data.projectId)
+        .eq('company_id', user.company_id)
         .is('clock_out', null)
         .maybeSingle()
     : await supabase
         .from('time_entries')
         .select('id')
         .eq('worker_id', data.workerId!)
-        .eq('project_id', data.projectId)
+        .eq('company_id', user.company_id)
         .is('clock_out', null)
         .maybeSingle()
 
@@ -145,7 +147,7 @@ export async function supervisorClockIn(data: {
     .from('time_entries')
     .insert({
       company_id: user.company_id,
-      project_id: data.projectId,
+      project_id: data.projectId ?? null,
       employee_id: data.profileId ?? null,
       worker_id: data.workerId ?? null,
       clock_in: new Date().toISOString(),
@@ -200,7 +202,7 @@ export async function supervisorClockOut(data: {
   return { ok: true }
 }
 
-export async function getProjectTeamStatus(projectId: string) {
+export async function getProjectTeamStatus(projectId?: string) {
   const user = getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
 
@@ -220,30 +222,60 @@ export async function getProjectTeamStatus(projectId: string) {
 
   if (!isSupervisor && !canCheckinTeam) return { error: 'Not authorized' }
 
-  // Profile members
-  const { data: members } = await supabase
-    .from('project_members')
-    .select('profile:profile_id(id, full_name, daily_rate, hourly_rate)')
-    .eq('project_id', projectId)
+  // With no projectId, this is the general company-wide "Team Clock" (the
+  // /team/checkin hub) — every active employee and worker in the company,
+  // not scoped to one job site.
+  let members: { profile: Record<string, unknown> }[] = []
+  let workerMembers: { worker: Record<string, unknown> }[] = []
 
-  // Worker members
-  const { data: workerMembers } = await supabase
-    .from('worker_projects')
-    .select('worker:worker_id(id, full_name, daily_rate)')
-    .eq('project_id', projectId)
-    .eq('company_id', user.company_id)
+  if (projectId) {
+    const [membersRes, workerMembersRes] = await Promise.all([
+      supabase
+        .from('project_members')
+        .select('profile:profile_id(id, full_name, daily_rate, hourly_rate)')
+        .eq('project_id', projectId),
+      supabase
+        .from('worker_projects')
+        .select('worker:worker_id(id, full_name, daily_rate)')
+        .eq('project_id', projectId)
+        .eq('company_id', user.company_id),
+    ])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    members = (membersRes.data ?? []) as any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    workerMembers = (workerMembersRes.data ?? []) as any
+  } else {
+    const [profilesRes, workersRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('id, full_name, daily_rate, hourly_rate')
+        .eq('company_id', user.company_id)
+        .eq('role', 'employee')
+        .eq('status', 'active'),
+      supabase
+        .from('workers')
+        .select('id, full_name, daily_rate')
+        .eq('company_id', user.company_id)
+        .eq('status', 'active'),
+    ])
+    members = (profilesRes.data ?? []).map(p => ({ profile: p }))
+    workerMembers = (workersRes.data ?? []).map(w => ({ worker: w }))
+  }
 
-  // Active (open) entries for this project today
+  // Active (open) entries — for one project's team, or company-wide when
+  // no project was given.
   const todayStart = new Date()
   todayStart.setHours(0, 0, 0, 0)
 
-  const { data: openEntries } = await supabase
+  let openEntriesQuery = supabase
     .from('time_entries')
     .select('id, employee_id, worker_id, clock_in, notes')
-    .eq('project_id', projectId)
     .eq('company_id', user.company_id)
     .is('clock_out', null)
     .gte('clock_in', todayStart.toISOString())
+  if (projectId) openEntriesQuery = openEntriesQuery.eq('project_id', projectId)
+
+  const { data: openEntries } = await openEntriesQuery
 
   type ProfileMember = { id: string; full_name: string; daily_rate: number | null; hourly_rate: number }
   type WorkerMember  = { id: string; full_name: string; daily_rate: number }
