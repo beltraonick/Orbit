@@ -464,7 +464,7 @@ ${perPerson}
           >
             {t(`admin.payroll.tab_${tabKey}`)}
             {tabKey === 'overtime' && overtimeRows.length > 0 && (
-              <span className="ml-1.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs px-1.5 py-0.5 rounded-full">
+              <span className="ml-1.5 bg-amber/10 text-amber text-xs px-1.5 py-0.5 rounded-full">
                 {overtimeRows.length}
               </span>
             )}
@@ -527,8 +527,8 @@ ${perPerson}
                   <td className="px-3 py-2 text-center">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                       row.fullDay
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                        ? 'bg-green/10 text-green'
+                        : 'bg-amber/10 text-amber'
                     }`}>
                       {row.fullDay ? 'Yes' : 'No'}
                     </span>
@@ -585,7 +585,7 @@ ${perPerson}
                   <td className="px-3 py-2.5 text-right text-secondary tabular-nums">{s.fullDays}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {s.partialDays > 0 ? (
-                      <span className="text-amber-600 dark:text-amber-400 font-medium">{s.partialDays}</span>
+                      <span className="text-amber font-medium">{s.partialDays}</span>
                     ) : (
                       <span className="text-tertiary">0</span>
                     )}
@@ -657,7 +657,7 @@ ${perPerson}
                     <td className="px-3 py-2 text-right text-secondary tabular-nums">
                       {fmt$(row.dailyRate / STANDARD_DAY_HOURS)}
                     </td>
-                    <td className="px-3 py-2 text-right font-medium text-amber-600 dark:text-amber-400 tabular-nums">
+                    <td className="px-3 py-2 text-right font-medium text-amber tabular-nums">
                       {row.overtimeHours.toFixed(1)}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-primary tabular-nums">

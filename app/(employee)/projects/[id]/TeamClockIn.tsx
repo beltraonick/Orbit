@@ -76,7 +76,7 @@ function ClockOutSheet({
                 onClick={() => setIsFullDay(false)}
                 className={`flex-1 py-2.5 rounded-button text-sm font-medium border transition-colors ${
                   !isFullDay
-                    ? 'bg-amber-500 text-white border-amber-500'
+                    ? 'bg-amber text-white border-amber'
                     : 'bg-surface border-[var(--border)] text-secondary'
                 }`}
               >
@@ -181,7 +181,7 @@ function ClockInSheet({
           <button
             onClick={handleClockIn}
             disabled={saving}
-            className="w-full py-3 bg-green-600 text-white rounded-button font-semibold text-sm disabled:opacity-50"
+            className="w-full py-3 bg-green text-white rounded-button font-semibold text-sm disabled:opacity-50"
           >
             {saving ? t('common.saving') : t('supervisor.clockIn.clockIn')}
           </button>
@@ -262,7 +262,7 @@ export function TeamClockIn({ projectId }: { projectId: string }) {
                 <button
                   key={member.id}
                   onClick={() => openSheet(member)}
-                  className="flex items-center justify-between w-full bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-[14px] px-4 py-3 text-left"
+                  className="flex items-center justify-between w-full bg-green/10 border border-green/20 rounded-[14px] px-4 py-3 text-left"
                 >
                   <div>
                     <p className="text-sm font-medium text-primary">{member.full_name}</p>
@@ -271,7 +271,7 @@ export function TeamClockIn({ projectId }: { projectId: string }) {
                       {member.entry!.notes ? ` · ${member.entry!.notes}` : ''}
                     </p>
                   </div>
-                  <span className="text-xs font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/40 px-2.5 py-1 rounded-full">
+                  <span className="text-xs font-medium text-green bg-green/15 px-2.5 py-1 rounded-full">
                     {t('supervisor.clockIn.tapToClockOut')}
                   </span>
                 </button>
