@@ -404,7 +404,7 @@ ${perPerson}
               onClick={() => setPreset(opt.value as typeof preset)}
               className={`px-3 py-2 text-sm transition-colors ${
                 preset === opt.value
-                  ? 'bg-[var(--color-brand)] text-white'
+                  ? 'bg-brand text-white'
                   : 'text-secondary hover:text-primary bg-surface'
               }`}
             >
@@ -458,7 +458,7 @@ ${perPerson}
             onClick={() => setTab(tabKey)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === tabKey
-                ? 'border-[var(--color-brand)] text-primary'
+                ? 'border-brand text-primary'
                 : 'border-transparent text-secondary hover:text-primary'
             }`}
           >

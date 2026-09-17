@@ -66,7 +66,7 @@ function ClockOutSheet({
                 onClick={() => setIsFullDay(true)}
                 className={`flex-1 py-2.5 rounded-button text-sm font-medium border transition-colors ${
                   isFullDay
-                    ? 'bg-[var(--color-brand)] text-white border-[var(--color-brand)]'
+                    ? 'bg-brand text-white border-brand'
                     : 'bg-surface border-[var(--border)] text-secondary'
                 }`}
               >
@@ -94,7 +94,7 @@ function ClockOutSheet({
               onChange={e => setNotes(e.target.value)}
               rows={2}
               placeholder={t('supervisor.clockIn.notesPlaceholder')}
-              className="w-full bg-surface-elevated border border-[var(--border)] rounded-button px-3 py-2.5 text-sm text-primary placeholder:text-tertiary resize-none focus:outline-none focus:border-[var(--color-brand)]"
+              className="w-full bg-surface-elevated border border-[var(--border)] rounded-button px-3 py-2.5 text-sm text-primary placeholder:text-tertiary resize-none focus:outline-none focus:border-brand"
             />
           </div>
 
@@ -170,7 +170,7 @@ function ClockInSheet({
               onChange={e => setNotes(e.target.value)}
               rows={2}
               placeholder={t('supervisor.clockIn.notesPlaceholder')}
-              className="w-full bg-surface-elevated border border-[var(--border)] rounded-button px-3 py-2.5 text-sm text-primary placeholder:text-tertiary resize-none focus:outline-none focus:border-[var(--color-brand)]"
+              className="w-full bg-surface-elevated border border-[var(--border)] rounded-button px-3 py-2.5 text-sm text-primary placeholder:text-tertiary resize-none focus:outline-none focus:border-brand"
             />
           </div>
 
@@ -298,7 +298,7 @@ export function TeamClockIn({ projectId }: { projectId: string }) {
                       ${member.daily_rate.toFixed(2)}{t('supervisor.clockIn.perDay')}
                     </p>
                   </div>
-                  <span className="text-xs font-medium text-[var(--color-brand)] border border-[var(--color-brand)] px-2.5 py-1 rounded-full">
+                  <span className="text-xs font-medium text-brand border border-brand px-2.5 py-1 rounded-full">
                     {t('supervisor.clockIn.tapToClockIn')}
                   </span>
                 </button>

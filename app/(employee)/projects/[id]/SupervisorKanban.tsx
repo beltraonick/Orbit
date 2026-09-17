@@ -605,7 +605,7 @@ export function SupervisorKanban({
           onClick={() => setActiveTab('kanban')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'kanban'
-              ? 'border-[var(--color-brand)] text-primary'
+              ? 'border-brand text-primary'
               : 'border-transparent text-secondary hover:text-primary'
           }`}
         >
@@ -615,7 +615,7 @@ export function SupervisorKanban({
           onClick={() => setActiveTab('team')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'team'
-              ? 'border-[var(--color-brand)] text-primary'
+              ? 'border-brand text-primary'
               : 'border-transparent text-secondary hover:text-primary'
           }`}
         >
