@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePermissions } from '@/lib/permissions-context'
-import { hasAnyPermission } from '@/lib/permissions'
+import { hasPermission } from '@/lib/permissions'
 
 export function EmployeeNav() {
   const pathname = usePathname()

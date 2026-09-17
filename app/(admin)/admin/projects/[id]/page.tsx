@@ -772,7 +772,9 @@ export default function ProjectDetailPage() {
                         {/* Marker badge */}
                         {plan.markers.length > 0 && (
                           <span className="absolute top-2 right-2 bg-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                            {t('admin.projectDetail.pinCount', { n: plan.markers.length, plural: plan.markers.length !== 1 ? 's' : '' })}
+                            {t('admin.projectDetail.pinCount')
+                              .replace('{n}', String(plan.markers.length))
+                              .replace('{plural}', plan.markers.length !== 1 ? 's' : '')}
                           </span>
                         )}
                       </div>
