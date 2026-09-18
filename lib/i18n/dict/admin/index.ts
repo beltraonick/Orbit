@@ -11,6 +11,11 @@ import { photos } from './photos'
 import { reports } from './reports'
 import { settings } from './settings'
 import { aiChat } from './aiChat'
+import { expenses } from './expenses'
+import { mileage } from './mileage'
+import { vehicles } from './vehicles'
+import { receipts } from './receipts'
+import { approvals } from './approvals'
 
 export const admin = {
   en: {
@@ -27,6 +32,11 @@ export const admin = {
     reports: reports.en,
     settings: settings.en,
     aiChat: aiChat.en,
+    expenses: expenses.en,
+    mileage: mileage.en,
+    vehicles: vehicles.en,
+    receipts: receipts.en,
+    approvals: approvals.en,
   },
   pt: {
     dashboard: dashboard.pt,
@@ -42,6 +52,11 @@ export const admin = {
     reports: reports.pt,
     settings: settings.pt,
     aiChat: aiChat.pt,
+    expenses: expenses.pt,
+    mileage: mileage.pt,
+    vehicles: vehicles.pt,
+    receipts: receipts.pt,
+    approvals: approvals.pt,
   },
   es: {
     dashboard: dashboard.es,
@@ -57,5 +72,10 @@ export const admin = {
     reports: reports.es,
     settings: settings.es,
     aiChat: aiChat.es,
+    expenses: expenses.es,
+    mileage: mileage.es,
+    vehicles: vehicles.es,
+    receipts: receipts.es,
+    approvals: approvals.es,
   },
 }

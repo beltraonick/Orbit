@@ -21,6 +21,7 @@
     "react-email": "^6.6.5",
     "resend": "^6.16.0",
     "stripe": "^22.3.2",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {

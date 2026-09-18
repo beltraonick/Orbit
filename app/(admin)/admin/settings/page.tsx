@@ -372,6 +372,12 @@ export default function SettingsPage() {
   const [companySaving, setCompanySaving] = useState(false)
   const [companySaved, setCompanySaved] = useState(false)
 
+  // Mileage rate state
+  const [mileageRate, setMileageRate] = useState('')
+  const [mileageRateLoading, setMileageRateLoading] = useState(true)
+  const [mileageRateSaving, setMileageRateSaving] = useState(false)
+  const [mileageRateSaved, setMileageRateSaved] = useState(false)
+
   useEffect(() => {
     getCompanyInviteCode().then(res => {
       setInviteCode(res.code ?? null)
@@ -415,7 +421,43 @@ export default function SettingsPage() {
         }
         setCompanyLoading(false)
       })
+    supabase
+      .from('company_document_settings')
+      .select('mileage_rate_per_mile')
+      .eq('company_id', companyId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.mileage_rate_per_mile != null) setMileageRate(String(data.mileage_rate_per_mile))
+        else setMileageRate('0.6700')
+        setMileageRateLoading(false)
+      })
   }, [companyId])
+
+  async function handleSaveMileageRate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!companyId) return
+    setMileageRateSaving(true)
+    const supabase = createClient()
+    const rate = parseFloat(mileageRate) || 0.67
+    const { data: existing } = await supabase
+      .from('company_document_settings')
+      .select('id')
+      .eq('company_id', companyId)
+      .maybeSingle()
+    if (existing) {
+      await supabase
+        .from('company_document_settings')
+        .update({ mileage_rate_per_mile: rate })
+        .eq('company_id', companyId)
+    } else {
+      await supabase
+        .from('company_document_settings')
+        .insert({ company_id: companyId, mileage_rate_per_mile: rate })
+    }
+    setMileageRateSaving(false)
+    setMileageRateSaved(true)
+    setTimeout(() => setMileageRateSaved(false), 2500)
+  }
 
   async function handleSaveCompany(e: React.FormEvent) {
     e.preventDefault()
@@ -659,6 +701,45 @@ export default function SettingsPage() {
       {/* QuickBooks Integration */}
       <Section title="Integrações">
         <QBOIntegrationSection />
+      </Section>
+
+      {/* Mileage Reimbursement Rate */}
+      <Section title="Mileage Reimbursement Rate">
+        <Card>
+          <form onSubmit={handleSaveMileageRate} className="space-y-4">
+            {mileageRateLoading ? (
+              <div className="h-11 bg-surface-elevated rounded-input animate-pulse" />
+            ) : (
+              <>
+                <p className="text-xs text-secondary">
+                  Rate per mile paid to employees for mileage reimbursement. IRS standard rate is $0.67/mi.
+                </p>
+                <Input
+                  label="Rate per mile (USD)"
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  value={mileageRate}
+                  onChange={e => setMileageRate(e.target.value)}
+                  placeholder="0.6700"
+                />
+              </>
+            )}
+            <div className="pt-1 flex items-center gap-3">
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={mileageRateSaving}
+                disabled={mileageRateLoading || mileageRateSaving}
+              >
+                {t('common.saveChanges')}
+              </Button>
+              {mileageRateSaved && (
+                <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
+              )}
+            </div>
+          </form>
+        </Card>
       </Section>
 
       {/* Company settings */}

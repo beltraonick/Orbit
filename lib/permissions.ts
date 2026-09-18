@@ -9,6 +9,9 @@ export interface EmployeePermissions {
   delete_team_photos?: boolean
   create_extras?: boolean
   close_payroll?: boolean
+  track_mileage?: boolean
+  manual_mileage?: boolean
+  upload_receipts?: boolean
 }
 
 export const PERMISSION_KEYS = [
@@ -17,6 +20,9 @@ export const PERMISSION_KEYS = [
   'delete_team_photos',
   'create_extras',
   'close_payroll',
+  'track_mileage',
+  'manual_mileage',
+  'upload_receipts',
 ] as const
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number]
