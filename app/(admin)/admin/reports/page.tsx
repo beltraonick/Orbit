@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
+import type { ExportData } from '@/lib/exports/exportPayrollXLSX'
 
 interface ReportRow {
   employee_id: string
@@ -530,8 +531,24 @@ export default function ReportsPage() {
   const PERIOD_OPTIONS = usePeriodOptions()
   const [period, setPeriod] = useState('month')
   const [tab, setTab] = useState<ReportTab>('payroll')
+  const [exportingXLSX, setExportingXLSX] = useState(false)
 
   function printPage() { window.print() }
+
+  async function handleExportXLSX() {
+    setExportingXLSX(true)
+    try {
+      const res = await fetch(`/api/reports/export?period=${period}`)
+      if (!res.ok) throw new Error('Failed to fetch export data')
+      const data: ExportData = await res.json()
+      const { exportPayrollXLSX } = await import('@/lib/exports/exportPayrollXLSX')
+      await exportPayrollXLSX(data)
+    } catch (err) {
+      console.error('XLSX export failed:', err)
+    } finally {
+      setExportingXLSX(false)
+    }
+  }
 
   const TABS: { key: ReportTab; label: string }[] = [
     { key: 'payroll', label: t('admin.reports.title') },
@@ -554,6 +571,21 @@ export default function ReportsPage() {
               onChange={e => setPeriod(e.target.value)}
             />
           </div>
+          <button
+            onClick={handleExportXLSX}
+            disabled={exportingXLSX}
+            className="px-3 py-2 rounded-button border border-[var(--border)] text-xs font-medium text-secondary hover:text-primary hover:bg-surface-elevated transition-colors disabled:opacity-50"
+          >
+            {exportingXLSX ? 'Exporting…' : 'Export XLSX'}
+          </button>
+          <a
+            href={`/admin/reports/payroll-receipt?period=${period}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-2 rounded-button border border-[var(--border)] text-xs font-medium text-secondary hover:text-primary hover:bg-surface-elevated transition-colors"
+          >
+            Payment Receipt (PDF)
+          </a>
           <a
             href="/admin/reports/task-report"
             className="px-3 py-2 rounded-button border border-[var(--border)] text-xs font-medium text-secondary hover:text-primary hover:bg-surface-elevated transition-colors"
