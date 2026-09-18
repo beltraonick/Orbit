@@ -93,7 +93,7 @@ export default function EmployeeMileagePage() {
 
   const [trips, setTrips] = useState<MileageTrip[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
+  const [_projects, setProjects] = useState<Project[]>([])
   const [rate, setRate] = useState(0.67)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
