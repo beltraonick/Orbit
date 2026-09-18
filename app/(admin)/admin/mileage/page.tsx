@@ -88,7 +88,7 @@ export default function MileagePage() {
   const load = useCallback(async () => {
     setLoading(true)
     const res = await getMileageTrips(filter === 'all' ? undefined : filter)
-    if (res.ok) setTrips((res.trips ?? []) as MileageTrip[])
+    if (res.ok) setTrips((res.trips ?? []) as unknown as MileageTrip[])
     setLoading(false)
   }, [filter])
 
@@ -280,7 +280,7 @@ export default function MileagePage() {
                           <div className="flex flex-col gap-1 w-48">
                             <Input
                               value={reviewNotes}
-                              onChange={v => setReviewNotes(v)}
+                              onChange={e => setReviewNotes(e.target.value)}
                               placeholder={m('notesPlaceholder')}
                             />
                             <div className="flex gap-1">
@@ -312,31 +312,31 @@ export default function MileagePage() {
               label={m('tripDate')}
               type="date"
               value={form.trip_date}
-              onChange={v => setForm(f => ({ ...f, trip_date: v }))}
+              onChange={e => setForm(f => ({ ...f, trip_date: e.target.value }))}
             />
             <Input
               label={m('origin')}
               value={form.origin}
-              onChange={v => setForm(f => ({ ...f, origin: v }))}
+              onChange={e => setForm(f => ({ ...f, origin: e.target.value }))}
               placeholder={m('originPlaceholder')}
             />
             <Input
               label={m('destination')}
               value={form.destination}
-              onChange={v => setForm(f => ({ ...f, destination: v }))}
+              onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
               placeholder={m('destinationPlaceholder')}
             />
             <Input
               label={m('purpose')}
               value={form.purpose}
-              onChange={v => setForm(f => ({ ...f, purpose: v }))}
+              onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))}
               placeholder={m('purposePlaceholder')}
             />
             <Input
               label={m('distance')}
               type="number"
               value={form.distance_miles}
-              onChange={v => setForm(f => ({ ...f, distance_miles: v }))}
+              onChange={e => setForm(f => ({ ...f, distance_miles: e.target.value }))}
               placeholder="0.0"
             />
             {form.distance_miles && parseFloat(form.distance_miles) > 0 && (

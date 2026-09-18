@@ -57,7 +57,7 @@ export async function getExpenses(filter?: 'all' | 'pending' | 'approved' | 'rej
 
   // Employees can only see their own expenses
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canUpload = hasPermission(profile.permissions as EmployeePermissions | null, 'upload_receipts')
     if (!canUpload) return { error: 'Not authorized' }
@@ -93,11 +93,11 @@ export async function createExpense(data: {
 
   let profile_id: string
   if (user.role === 'admin') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     profile_id = profile.id
   } else {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canUpload = hasPermission(profile.permissions as EmployeePermissions | null, 'upload_receipts')
     if (!canUpload) return { error: 'Not authorized' }
@@ -142,7 +142,7 @@ export async function submitExpense(expenseId: string) {
 
   // Employees can only submit their own
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canUpload = hasPermission(profile.permissions as EmployeePermissions | null, 'upload_receipts')
     if (!canUpload) return { error: 'Not authorized' }
@@ -162,7 +162,7 @@ export async function approveExpense(expenseId: string, notes?: string) {
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
 
   const supabase = createClient()
-  const profile = await getCallerProfile(supabase, user.email, user.company_id)
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
   if (!profile) return { error: 'Profile not found' }
 
   const { error } = await supabase
@@ -187,7 +187,7 @@ export async function rejectExpense(expenseId: string, notes?: string) {
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
 
   const supabase = createClient()
-  const profile = await getCallerProfile(supabase, user.email, user.company_id)
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
   if (!profile) return { error: 'Profile not found' }
 
   const { error } = await supabase
@@ -212,7 +212,7 @@ export async function flagExpenseForReview(expenseId: string, notes?: string) {
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
 
   const supabase = createClient()
-  const profile = await getCallerProfile(supabase, user.email, user.company_id)
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
   if (!profile) return { error: 'Profile not found' }
 
   const { error } = await supabase
@@ -265,7 +265,7 @@ export async function updateExpense(
     .in('approval_status', ['draft', 'needs_review'])
 
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canUpload = hasPermission(profile.permissions as EmployeePermissions | null, 'upload_receipts')
     if (!canUpload) return { error: 'Not authorized' }
@@ -293,7 +293,7 @@ export async function deleteExpense(expenseId: string) {
     .eq('approval_status', 'draft')
 
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     query = query.eq('submitted_by_profile_id', profile.id)
   }

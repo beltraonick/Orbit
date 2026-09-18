@@ -82,7 +82,7 @@ export default function ExpensesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const res = await getExpenses(filter === 'all' ? undefined : filter)
-    if (res.ok) setExpenses((res.expenses ?? []) as Expense[])
+    if (res.ok) setExpenses((res.expenses ?? []) as unknown as Expense[])
     setLoading(false)
   }, [filter])
 
@@ -270,7 +270,7 @@ export default function ExpensesPage() {
                           <div className="flex flex-col gap-1 w-48">
                             <Input
                               value={reviewNotes}
-                              onChange={v => setReviewNotes(v)}
+                              onChange={e => setReviewNotes(e.target.value)}
                               placeholder={e('notesPlaceholder')}
                             />
                             <div className="flex gap-1">
@@ -301,21 +301,21 @@ export default function ExpensesPage() {
             <Input
               label={e('description')}
               value={form.description}
-              onChange={v => setForm(f => ({ ...f, description: v }))}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               placeholder={e('descriptionPlaceholder')}
             />
             <Input
               label={e('amount')}
               type="number"
               value={form.amount}
-              onChange={v => setForm(f => ({ ...f, amount: v }))}
+              onChange={ev => setForm(f => ({ ...f, amount: ev.target.value }))}
               placeholder="0.00"
             />
             <Input
               label={e('date')}
               type="date"
               value={form.expense_date}
-              onChange={v => setForm(f => ({ ...f, expense_date: v }))}
+              onChange={ev => setForm(f => ({ ...f, expense_date: ev.target.value }))}
             />
 
             <div className="space-y-1">

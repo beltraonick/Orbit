@@ -64,7 +64,7 @@ export default function VehiclesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const res = await getVehicles()
-    if (res.ok) setVehicles((res.vehicles ?? []) as Vehicle[])
+    if (res.ok) setVehicles((res.vehicles ?? []) as unknown as Vehicle[])
     setLoading(false)
   }, [])
 
@@ -226,7 +226,7 @@ export default function VehiclesPage() {
             <Input
               label={v('vehicleName')}
               value={form.name}
-              onChange={val => setForm(f => ({ ...f, name: val }))}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder={v('vehicleNamePlaceholder')}
             />
 
@@ -249,20 +249,20 @@ export default function VehiclesPage() {
             <Input
               label={v('licensePlate')}
               value={form.license_plate}
-              onChange={val => setForm(f => ({ ...f, license_plate: val }))}
+              onChange={e => setForm(f => ({ ...f, license_plate: e.target.value }))}
               placeholder={v('licensePlatePlaceholder')}
             />
 
             <div className="grid grid-cols-3 gap-2">
-              <Input label={v('year')} type="number" value={form.year} onChange={val => setForm(f => ({ ...f, year: val }))} placeholder="2024" />
-              <Input label={v('make')} value={form.make} onChange={val => setForm(f => ({ ...f, make: val }))} placeholder="Ford" />
-              <Input label={v('model')} value={form.model} onChange={val => setForm(f => ({ ...f, model: val }))} placeholder="F-150" />
+              <Input label={v('year')} type="number" value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))} placeholder="2024" />
+              <Input label={v('make')} value={form.make} onChange={e => setForm(f => ({ ...f, make: e.target.value }))} placeholder="Ford" />
+              <Input label={v('model')} value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} placeholder="F-150" />
             </div>
 
             <Input
               label={v('color')}
               value={form.color}
-              onChange={val => setForm(f => ({ ...f, color: val }))}
+              onChange={e => setForm(f => ({ ...f, color: e.target.value }))}
               placeholder="White"
             />
 

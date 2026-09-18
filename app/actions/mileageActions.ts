@@ -90,7 +90,7 @@ export async function getMileageTrips(filter?: 'all' | 'pending' | 'approved') {
 
   // Employees see only their own trips
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canTrack = hasPermission(profile.permissions as EmployeePermissions | null, 'track_mileage')
     if (!canTrack) return { error: 'Not authorized' }
@@ -129,11 +129,11 @@ export async function createMileageTrip(data: {
 
   let profile_id: string
   if (user.role === 'admin') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     profile_id = profile.id
   } else {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canTrack = hasPermission(profile.permissions as EmployeePermissions | null, 'track_mileage')
     if (!canTrack) return { error: 'Not authorized' }
@@ -197,7 +197,7 @@ export async function submitMileageTrip(tripId: string) {
     .eq('approval_status', 'draft')
 
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canTrack = hasPermission(profile.permissions as EmployeePermissions | null, 'track_mileage')
     if (!canTrack) return { error: 'Not authorized' }
@@ -216,7 +216,7 @@ export async function approveMileageTrip(tripId: string, notes?: string) {
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
 
   const supabase = createClient()
-  const profile = await getCallerProfile(supabase, user.email, user.company_id)
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
   if (!profile) return { error: 'Profile not found' }
 
   const { error } = await supabase
@@ -241,7 +241,7 @@ export async function rejectMileageTrip(tripId: string, notes?: string) {
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
 
   const supabase = createClient()
-  const profile = await getCallerProfile(supabase, user.email, user.company_id)
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
   if (!profile) return { error: 'Profile not found' }
 
   const { error } = await supabase
@@ -305,7 +305,7 @@ export async function updateMileageTrip(
     .in('approval_status', ['draft', 'needs_review'])
 
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     const canTrack = hasPermission(profile.permissions as EmployeePermissions | null, 'track_mileage')
     if (!canTrack) return { error: 'Not authorized' }
@@ -333,7 +333,7 @@ export async function deleteMileageTrip(tripId: string) {
     .eq('approval_status', 'draft')
 
   if (user.role === 'employee') {
-    const profile = await getCallerProfile(supabase, user.email, user.company_id)
+    const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     query = query.eq('employee_profile_id', profile.id)
   }

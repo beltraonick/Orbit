@@ -71,7 +71,7 @@ export default function ApprovalsPage() {
       getMileageTrips('pending'),
     ])
 
-    const expItems: ExpenseItem[] = ((expRes.expenses ?? []) as Array<{
+    const expItems: ExpenseItem[] = ((expRes.expenses ?? []) as unknown as Array<{
       id: string; description: string; amount: number; expense_date: string;
       submitted_by: { full_name: string } | null; approval_status: string;
       receipt: unknown | null; reviewer_notes: string | null
@@ -87,7 +87,7 @@ export default function ApprovalsPage() {
       reviewer_notes: e.reviewer_notes,
     }))
 
-    const milItems: MileageItem[] = ((milRes.trips ?? []) as Array<{
+    const milItems: MileageItem[] = ((milRes.trips ?? []) as unknown as Array<{
       id: string; origin: string; destination: string; reimbursement_amount: number;
       distance_miles: number; trip_date: string; employee: { full_name: string } | null;
       approval_status: string; reviewer_notes: string | null
@@ -255,7 +255,7 @@ export default function ApprovalsPage() {
                     <div className="flex flex-col gap-1 w-48 mt-2">
                       <Input
                         value={reviewNotes}
-                        onChange={v => setReviewNotes(v)}
+                        onChange={e => setReviewNotes(e.target.value)}
                         placeholder={a('notesPlaceholder')}
                       />
                       <div className="flex gap-1">

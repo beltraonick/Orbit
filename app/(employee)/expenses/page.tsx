@@ -75,7 +75,7 @@ export default function EmployeeExpensesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const res = await getExpenses()
-    if (res.ok) setExpenses((res.expenses ?? []) as Expense[])
+    if (res.ok) setExpenses((res.expenses ?? []) as unknown as Expense[])
     setLoading(false)
   }, [])
 
@@ -237,9 +237,9 @@ export default function EmployeeExpensesPage() {
           <Card className="w-full max-w-md p-5 space-y-4">
             <h2 className="font-semibold text-lg">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
 
-            <Input label={e('description')} value={form.description} onChange={v => setForm(f => ({ ...f, description: v }))} placeholder={e('descriptionPlaceholder')} />
-            <Input label={e('amount')} type="number" value={form.amount} onChange={v => setForm(f => ({ ...f, amount: v }))} placeholder="0.00" />
-            <Input label={e('date')} type="date" value={form.expense_date} onChange={v => setForm(f => ({ ...f, expense_date: v }))} />
+            <Input label={e('description')} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={e('descriptionPlaceholder')} />
+            <Input label={e('amount')} type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+            <Input label={e('date')} type="date" value={form.expense_date} onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
 
             {categories.length > 0 && (
               <div className="space-y-1">

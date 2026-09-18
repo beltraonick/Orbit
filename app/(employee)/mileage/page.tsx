@@ -110,7 +110,7 @@ export default function EmployeeMileagePage() {
   const load = useCallback(async () => {
     setLoading(true)
     const res = await getMileageTrips()
-    if (res.ok) setTrips((res.trips ?? []) as MileageTrip[])
+    if (res.ok) setTrips((res.trips ?? []) as unknown as MileageTrip[])
     setLoading(false)
   }, [])
 
@@ -351,11 +351,11 @@ export default function EmployeeMileagePage() {
           <Card className="w-full max-w-md p-5 space-y-4">
             <h2 className="font-semibold text-lg">{editing ? m('editTrip') : m('addTripTitle')}</h2>
 
-            <Input label={m('tripDate')} type="date" value={form.trip_date} onChange={v => setForm(f => ({ ...f, trip_date: v }))} />
-            <Input label={m('origin')} value={form.origin} onChange={v => setForm(f => ({ ...f, origin: v }))} placeholder={m('originPlaceholder')} />
-            <Input label={m('destination')} value={form.destination} onChange={v => setForm(f => ({ ...f, destination: v }))} placeholder={m('destinationPlaceholder')} />
-            <Input label={m('purpose')} value={form.purpose} onChange={v => setForm(f => ({ ...f, purpose: v }))} placeholder={m('purposePlaceholder')} />
-            <Input label={m('distance')} type="number" value={form.distance_miles} onChange={v => setForm(f => ({ ...f, distance_miles: v }))} placeholder="0.0" />
+            <Input label={m('tripDate')} type="date" value={form.trip_date} onChange={e => setForm(f => ({ ...f, trip_date: e.target.value }))} />
+            <Input label={m('origin')} value={form.origin} onChange={e => setForm(f => ({ ...f, origin: e.target.value }))} placeholder={m('originPlaceholder')} />
+            <Input label={m('destination')} value={form.destination} onChange={e => setForm(f => ({ ...f, destination: e.target.value }))} placeholder={m('destinationPlaceholder')} />
+            <Input label={m('purpose')} value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} placeholder={m('purposePlaceholder')} />
+            <Input label={m('distance')} type="number" value={form.distance_miles} onChange={e => setForm(f => ({ ...f, distance_miles: e.target.value }))} placeholder="0.0" />
             {form.distance_miles && parseFloat(form.distance_miles) > 0 && (
               <p className="text-xs text-gray-400">Reimbursement: {fmt$(parseFloat(form.distance_miles) * rate)}</p>
             )}
