@@ -2,16 +2,15 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 
-// Receipt scanning via Anthropic Claude vision API.
+// Receipt scanning via Groq vision API (llama-4-scout).
 // Accepts a base64-encoded image or a publicly accessible URL.
 // Returns extracted fields: merchant, date, total, tax, category.
-// Gracefully degrades when ANTHROPIC_API_KEY is not set.
+// Gracefully degrades when GROQ_API_KEY is not set.
 
 export async function POST(req: Request) {
   const user = getCurrentUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
 
-  // Permission check: admin always allowed; employee needs upload_receipts
   if (user.role === 'employee') {
     const supabase = createClient()
     const { data: profile } = await supabase
@@ -25,22 +24,23 @@ export async function POST(req: Request) {
     if (!canUpload) return new Response('Forbidden', { status: 403 })
   }
 
-  // Graceful degradation when key is not configured
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     return Response.json(
-      { error: 'not_configured', message: 'Receipt AI scanning requires an ANTHROPIC_API_KEY. Contact your administrator.' },
+      { error: 'not_configured', message: 'Receipt AI scanning requires a GROQ_API_KEY. Contact your administrator.' },
       { status: 200 }
     )
   }
 
-  let imageData: { type: 'base64'; media_type: string; data: string } | { type: 'url'; url: string }
+  let imageUrl: string
+  let mediaType: string = 'image/jpeg'
 
   try {
     const body = await req.json()
     if (body.base64 && body.media_type) {
-      imageData = { type: 'base64', media_type: body.media_type, data: body.base64 }
+      imageUrl = `data:${body.media_type};base64,${body.base64}`
+      mediaType = body.media_type
     } else if (body.url) {
-      imageData = { type: 'url', url: body.url }
+      imageUrl = body.url
     } else {
       return new Response('Bad request: provide base64+media_type or url', { status: 400 })
     }
@@ -48,35 +48,27 @@ export async function POST(req: Request) {
     return new Response('Invalid JSON', { status: 400 })
   }
 
+  // Groq vision models only support JPEG and PNG
+  const supportedTypes = ['image/jpeg', 'image/png', 'image/jpg']
+  if (imageUrl.startsWith('data:') && !supportedTypes.includes(mediaType)) {
+    return Response.json({ error: 'unsupported_type', message: 'Only JPEG and PNG images are supported.' }, { status: 200 })
+  }
+
   try {
-    // Dynamic import keeps @anthropic-ai/sdk out of the client bundle
-    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const Groq = (await import('groq-sdk')).default
+    const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-    const imageContent =
-      imageData.type === 'base64'
-        ? {
-            type: 'image' as const,
-            source: {
-              type: 'base64' as const,
-              media_type: imageData.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-              data: imageData.data,
-            },
-          }
-        : {
-            type: 'image' as const,
-            source: { type: 'url' as const, url: imageData.url },
-          }
-
-    const response = await client.messages.create({
-      model: 'claude-opus-5',
+    const response = await client.chat.completions.create({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
       max_tokens: 512,
       messages: [
         {
           role: 'user',
           content: [
-            imageContent,
+            {
+              type: 'image_url',
+              image_url: { url: imageUrl },
+            },
             {
               type: 'text',
               text: `Extract the following fields from this receipt image and return ONLY a valid JSON object with no markdown or explanation:
@@ -94,9 +86,8 @@ If a field cannot be determined, use null. Amounts should be numbers (no currenc
       ],
     })
 
-    const text = response.content[0]?.type === 'text' ? response.content[0].text.trim() : ''
+    const text = response.choices[0]?.message?.content?.trim() ?? ''
 
-    // Extract JSON from response (handle any stray markdown)
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return Response.json({ error: 'parse_failed', raw: text }, { status: 200 })
 
