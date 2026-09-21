@@ -156,6 +156,7 @@ export async function createExpense(data: {
     .from('expenses')
     .insert({
       company_id: user.company_id,
+      submitted_by: profile_id,
       submitted_by_profile_id: profile_id,
       description: data.description.trim(),
       amount: data.amount,
