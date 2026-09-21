@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { OrbitAIHub } from '@/components/OrbitAIHub'
+import { QuickActionsWidget } from '@/components/admin/QuickActionsWidget'
 import { getCurrentUser } from '@/lib/auth/session'
 import { t } from '@/lib/i18n/translate'
 
@@ -22,52 +23,6 @@ function StatCard({ label, value, sub, color = 'default' }: {
   )
 }
 
-const QUICK_ACTIONS = [
-  {
-    href: '/admin/team-clock',
-    labelKey: 'common.nav.teamClock',
-    iconBg: 'bg-blue/10',
-    iconColor: 'text-blue',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
-        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/approvals',
-    labelKey: 'common.nav.approvals',
-    iconBg: 'bg-green/10',
-    iconColor: 'text-green',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
-        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/members',
-    labelKey: 'common.nav.members',
-    iconBg: 'bg-brand/10',
-    iconColor: 'text-brand',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
-        <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/change-orders',
-    labelKey: 'common.nav.changeOrders',
-    iconBg: 'bg-amber/10',
-    iconColor: 'text-amber',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
-        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm7 4a1 1 0 10-2 0v1H8a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V8z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-]
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -183,24 +138,8 @@ export default async function AdminDashboardPage() {
         <StatCard label={t(locale, 'admin.dashboard.totalEmployees')} value={stats?.totalEmployees ?? '—'} sub={stats ? t(locale, 'admin.dashboard.activeWorkers') : t(locale, 'admin.dashboard.connectSupabase')} />
       </div>
 
-      {/* Quick Actions */}
-      <div className="mb-6 md:mb-8">
-        <p className="text-xs font-medium text-secondary uppercase tracking-wide mb-3">{t(locale, 'admin.dashboard.quickActions')}</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {QUICK_ACTIONS.map(action => (
-            <a
-              key={action.href}
-              href={action.href}
-              className="flex flex-col items-center gap-3 p-4 rounded-card bg-surface border border-[var(--border)] hover:border-brand/30 hover:bg-surface-elevated transition-colors"
-            >
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${action.iconBg}`}>
-                <span className={action.iconColor}>{action.icon}</span>
-              </div>
-              <span className="text-sm font-medium text-primary text-center leading-tight">{t(locale, action.labelKey)}</span>
-            </a>
-          ))}
-        </div>
-      </div>
+      {/* Quick Actions — customizable client widget */}
+      <QuickActionsWidget />
 
       {/* Orbit AI Hub */}
       <OrbitAIHub />

@@ -199,12 +199,11 @@ function useNav() {
 }
 
 // Primary mobile tabs
-const PRIMARY_HREFS = ['/admin/dashboard', '/admin/payroll', '/admin/reports']
+const PRIMARY_HREFS = ['/admin/dashboard', '/admin/projects', '/admin/reports']
 
 // Sheet groups — all non-primary routes
 const OPERATIONS_HREFS = [
   '/admin/employees',
-  '/admin/projects',
   '/admin/tasks',
   '/admin/members',
   '/admin/team-clock',
@@ -213,6 +212,7 @@ const OPERATIONS_HREFS = [
   '/admin/change-orders',
 ]
 const FINANCIAL_HREFS = [
+  '/admin/payroll',
   '/admin/expenses',
   '/admin/receipts',
   '/admin/mileage',
