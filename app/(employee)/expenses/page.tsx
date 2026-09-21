@@ -235,7 +235,7 @@ export default function EmployeeExpensesPage() {
   const history = expenses.filter(e => ['approved', 'rejected'].includes(e.approval_status))
 
   return (
-    <div className="p-4 pt-20 pb-28 space-y-4">
+    <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold">{e('title')}</h1>
