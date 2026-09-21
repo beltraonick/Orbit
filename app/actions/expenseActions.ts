@@ -34,6 +34,54 @@ export async function getExpenseCategories() {
   return { ok: true, categories: data ?? [] }
 }
 
+// ─── Receipts ─────────────────────────────────────────────────────────────────
+
+// Persists the scanned receipt photo + AI-extracted fields as its own
+// record, so it survives after the expense is filed (previously the photo
+// was discarded right after the scan — only the text fields made it into
+// the expense form).
+export async function createReceipt(data: {
+  file_path: string
+  file_url: string
+  merchant_name?: string | null
+  transaction_date?: string | null
+  total_amount?: number | null
+  last_four_digits?: string | null
+  ai_confidence?: number | null
+}) {
+  const user = getCurrentUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const supabase = createClient()
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
+  if (!profile) return { error: 'Profile not found' }
+
+  if (user.role === 'employee') {
+    const canUpload = hasPermission(profile.permissions as EmployeePermissions | null, 'upload_receipts')
+    if (!canUpload) return { error: 'Not authorized' }
+  }
+
+  const { data: receipt, error } = await supabase
+    .from('receipts')
+    .insert({
+      company_id: user.company_id,
+      uploaded_by: profile.id,
+      file_path: data.file_path,
+      file_url: data.file_url,
+      merchant_name: data.merchant_name ?? null,
+      transaction_date: data.transaction_date ?? null,
+      total_amount: data.total_amount ?? null,
+      last_four_digits: data.last_four_digits ?? null,
+      ai_confidence: data.ai_confidence ?? null,
+      status: 'confirmed',
+    })
+    .select('id')
+    .maybeSingle()
+
+  if (error) return { error: error.message }
+  return { ok: true, id: receipt?.id }
+}
+
 // ─── Expenses ─────────────────────────────────────────────────────────────────
 
 export async function getExpenses(filter?: 'all' | 'pending' | 'approved' | 'rejected') {
@@ -49,7 +97,7 @@ export async function getExpenses(filter?: 'all' | 'pending' | 'approved' | 'rej
       category:category_id(id, name, color),
       project:project_id(id, name),
       submitted_by:submitted_by_profile_id(id, full_name),
-      receipt:receipt_id(id, file_url),
+      receipt:receipt_id(id, file_url, merchant_name, last_four_digits),
       reviewer_notes, created_at
     `)
     .eq('company_id', user.company_id)

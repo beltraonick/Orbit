@@ -330,6 +330,8 @@ function ExpensesReport({ period }: { period: string }) {
   const companyId = useCompanyId()
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [employeeFilter, setEmployeeFilter] = useState('')
+  const [searchText, setSearchText] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -354,12 +356,42 @@ function ExpensesReport({ period }: { period: string }) {
 
   useEffect(() => { load() }, [load])
 
-  const totalAmount = expenses.reduce((s, e) => s + (e.amount ?? 0), 0)
-  const approvedAmount = expenses.filter(e => e.approval_status === 'approved').reduce((s, e) => s + (e.amount ?? 0), 0)
-  const pendingCount = expenses.filter(e => ['submitted', 'needs_review', 'draft'].includes(e.approval_status)).length
+  const employeeNames = Array.from(
+    new Set(expenses.map(e => e.submitted_by?.full_name).filter((n): n is string => !!n))
+  ).sort()
+
+  const filtered = expenses.filter(e => {
+    if (employeeFilter && e.submitted_by?.full_name !== employeeFilter) return false
+    if (searchText && !e.description.toLowerCase().includes(searchText.toLowerCase())) return false
+    return true
+  })
+
+  const totalAmount = filtered.reduce((s, e) => s + (e.amount ?? 0), 0)
+  const approvedAmount = filtered.filter(e => e.approval_status === 'approved').reduce((s, e) => s + (e.amount ?? 0), 0)
+  const pendingCount = filtered.filter(e => ['submitted', 'needs_review', 'draft'].includes(e.approval_status)).length
 
   return (
     <>
+      {!loading && expenses.length > 0 && (
+        <div className="flex gap-2 flex-wrap mb-4">
+          <input
+            type="text"
+            value={searchText}
+            onChange={ev => setSearchText(ev.target.value)}
+            placeholder="Search by store / description…"
+            className="flex-1 min-w-[180px] h-10 rounded-input bg-surface-elevated border border-[var(--border)] px-3 text-sm text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+          />
+          <select
+            value={employeeFilter}
+            onChange={ev => setEmployeeFilter(ev.target.value)}
+            className="h-10 rounded-input bg-surface-elevated border border-[var(--border)] px-3 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+          >
+            <option value="">All employees</option>
+            {employeeNames.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+      )}
+
       {!loading && expenses.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
           <Card>
@@ -385,6 +417,8 @@ function ExpensesReport({ period }: { period: string }) {
           <p className="px-5 py-10 text-sm text-secondary text-center">{t('common.loading')}</p>
         ) : expenses.length === 0 ? (
           <p className="px-5 py-10 text-sm text-secondary text-center">No expenses for this period.</p>
+        ) : filtered.length === 0 ? (
+          <p className="px-5 py-10 text-sm text-secondary text-center">No expenses match this filter.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -399,7 +433,7 @@ function ExpensesReport({ period }: { period: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {expenses.map(e => (
+                {filtered.map(e => (
                   <tr key={e.id} className="hover:bg-surface-elevated/40 transition-colors">
                     <td className="px-5 py-3 font-medium text-primary whitespace-nowrap">
                       {(e.submitted_by as unknown as { full_name: string } | null)?.full_name ?? '—'}
@@ -429,6 +463,7 @@ function MileageReport({ period }: { period: string }) {
   const companyId = useCompanyId()
   const [trips, setTrips] = useState<MileageRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [employeeFilter, setEmployeeFilter] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -453,12 +488,31 @@ function MileageReport({ period }: { period: string }) {
 
   useEffect(() => { load() }, [load])
 
-  const totalMiles = trips.reduce((s, t) => s + (t.distance_miles ?? 0), 0)
-  const totalReimbursement = trips.reduce((s, t) => s + (t.reimbursement_amount ?? 0), 0)
-  const approvedReimbursement = trips.filter(t => t.approval_status === 'approved').reduce((s, t) => s + (t.reimbursement_amount ?? 0), 0)
+  const employeeNames = Array.from(
+    new Set(trips.map(t => t.employee?.full_name).filter((n): n is string => !!n))
+  ).sort()
+
+  const filtered = employeeFilter ? trips.filter(t => t.employee?.full_name === employeeFilter) : trips
+
+  const totalMiles = filtered.reduce((s, t) => s + (t.distance_miles ?? 0), 0)
+  const totalReimbursement = filtered.reduce((s, t) => s + (t.reimbursement_amount ?? 0), 0)
+  const approvedReimbursement = filtered.filter(t => t.approval_status === 'approved').reduce((s, t) => s + (t.reimbursement_amount ?? 0), 0)
 
   return (
     <>
+      {!loading && trips.length > 0 && (
+        <div className="flex gap-2 flex-wrap mb-4">
+          <select
+            value={employeeFilter}
+            onChange={ev => setEmployeeFilter(ev.target.value)}
+            className="h-10 rounded-input bg-surface-elevated border border-[var(--border)] px-3 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+          >
+            <option value="">All employees</option>
+            {employeeNames.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </div>
+      )}
+
       {!loading && trips.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
           <Card>
@@ -484,6 +538,8 @@ function MileageReport({ period }: { period: string }) {
           <p className="px-5 py-10 text-sm text-secondary text-center">{t('common.loading')}</p>
         ) : trips.length === 0 ? (
           <p className="px-5 py-10 text-sm text-secondary text-center">No mileage trips for this period.</p>
+        ) : filtered.length === 0 ? (
+          <p className="px-5 py-10 text-sm text-secondary text-center">No trips match this filter.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -498,7 +554,7 @@ function MileageReport({ period }: { period: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {trips.map(trip => (
+                {filtered.map(trip => (
                   <tr key={trip.id} className="hover:bg-surface-elevated/40 transition-colors">
                     <td className="px-5 py-3 font-medium text-primary whitespace-nowrap">
                       {(trip.employee as unknown as { full_name: string } | null)?.full_name ?? '—'}

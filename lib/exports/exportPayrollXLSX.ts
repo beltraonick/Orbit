@@ -164,5 +164,34 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
   const ws4 = XLSX.utils.json_to_sheet(ws4Data)
   XLSX.utils.book_append_sheet(wb, ws4, 'Overtime')
 
+  // ── Tab 5: Expenses (itemized) ───────────────────────────────────────────────
+  const expenseRows = data.expenses.map(x => ({
+    'EMPLOYEE NAME': x.employee_name,
+    'DESCRIPTION': x.description,
+    'CATEGORY': x.category ?? '',
+    'DATE': x.date,
+    'STATUS': x.approval_status,
+    'AMOUNT $': x.amount,
+  }))
+  const ws5 = XLSX.utils.json_to_sheet(expenseRows.length ? expenseRows : [
+    { 'EMPLOYEE NAME': 'No expenses for this period', 'DESCRIPTION': '', 'CATEGORY': '', 'DATE': '', 'STATUS': '', 'AMOUNT $': '' },
+  ])
+  XLSX.utils.book_append_sheet(wb, ws5, 'Expenses')
+
+  // ── Tab 6: Mileage (itemized) ────────────────────────────────────────────────
+  const mileageRows = data.mileage.map(m => ({
+    'EMPLOYEE NAME': m.employee_name,
+    'DATE': m.date,
+    'ORIGIN': m.origin,
+    'DESTINATION': m.destination,
+    'MILES': m.miles,
+    'STATUS': m.approval_status,
+    'AMOUNT $': m.amount,
+  }))
+  const ws6 = XLSX.utils.json_to_sheet(mileageRows.length ? mileageRows : [
+    { 'EMPLOYEE NAME': 'No mileage trips for this period', 'DATE': '', 'ORIGIN': '', 'DESTINATION': '', 'MILES': '', 'STATUS': '', 'AMOUNT $': '' },
+  ])
+  XLSX.utils.book_append_sheet(wb, ws6, 'Mileage')
+
   XLSX.writeFile(wb, `Payroll-${data.period_start ?? new Date().toISOString().slice(0, 10)}.xlsx`)
 }

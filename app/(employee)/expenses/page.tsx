@@ -15,9 +15,12 @@ import {
   updateExpense,
   deleteExpense,
   submitExpense,
+  createReceipt,
 } from '@/app/actions/expenseActions'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
+
+const RECEIPT_BUCKET = 'receipts'
 
 interface Category { id: string; name: string; color: string | null }
 interface Project { id: string; name: string }
@@ -31,6 +34,7 @@ interface Expense {
   category: Category | null
   project: { id: string; name: string } | null
   submitted_by: { id: string; full_name: string } | null
+  receipt: { id: string; file_url: string; merchant_name: string | null; last_four_digits: string | null } | null
   reviewer_notes: string | null
   created_at: string
 }
@@ -73,6 +77,7 @@ export default function EmployeeExpensesPage() {
   const [err, setErr] = useState('')
   const [scanning, setScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState('')
+  const [receiptId, setReceiptId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -108,6 +113,8 @@ export default function EmployeeExpensesPage() {
     setEditing(null)
     setForm({ ...BLANK_FORM })
     setErr('')
+    setScanMsg('')
+    setReceiptId(null)
     setShowModal(true)
   }
 
@@ -122,6 +129,8 @@ export default function EmployeeExpensesPage() {
       project_id: exp.project?.id ?? '',
     })
     setErr('')
+    setScanMsg('')
+    setReceiptId(exp.receipt?.id ?? null)
     setShowModal(true)
   }
 
@@ -139,6 +148,7 @@ export default function EmployeeExpensesPage() {
       expense_type: form.expense_type,
       category_id: form.category_id || undefined,
       project_id: form.project_id || undefined,
+      receipt_id: receiptId ?? undefined,
     }
 
     const res = editing
@@ -159,6 +169,7 @@ export default function EmployeeExpensesPage() {
   async function handleScanReceipt(file: File) {
     setScanning(true)
     setScanMsg('')
+    setReceiptId(null)
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
@@ -180,6 +191,27 @@ export default function EmployeeExpensesPage() {
           amount: x.total != null ? String(x.total) : f.amount,
           expense_date: x.date ?? f.expense_date,
         }))
+
+        // Keep the photo — previously it was discarded right after the scan.
+        if (companyId) {
+          const ext = file.name.split('.').pop() || 'jpg'
+          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+          const supabase = createClient()
+          const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, file)
+          if (!uploadErr) {
+            const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
+            const receiptRes = await createReceipt({
+              file_path: path,
+              file_url: urlData.publicUrl,
+              merchant_name: x.merchant ?? null,
+              transaction_date: x.date ?? null,
+              total_amount: x.total ?? null,
+              last_four_digits: x.last_four_digits ?? null,
+            })
+            if (receiptRes.ok && receiptRes.id) setReceiptId(receiptRes.id)
+          }
+        }
+
         setScanMsg('✓ Receipt scanned — review the fields below')
       } else if (data.error === 'not_configured') {
         setScanMsg('Scanner not configured. Contact your admin.')
@@ -231,6 +263,16 @@ export default function EmployeeExpensesPage() {
                       </div>
                       <p className="text-sm text-gray-500 mt-1">{exp.expense_date}{exp.category ? ` · ${exp.category.name}` : ''}</p>
                       {exp.reviewer_notes && <p className="text-xs text-gray-400 mt-1 italic">{exp.reviewer_notes}</p>}
+                      {exp.receipt?.file_url && (
+                        <a
+                          href={exp.receipt.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue hover:opacity-80 mt-1 inline-block"
+                        >
+                          View receipt{exp.receipt.last_four_digits ? ` · Card •••• ${exp.receipt.last_four_digits}` : ''}
+                        </a>
+                      )}
                     </div>
                     <div className="text-right shrink-0">
                       <div className="font-bold">{fmt$(exp.amount)}</div>
