@@ -235,7 +235,7 @@ export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: Sess
                   </span>
                 )}
                 {isApprovalsItem && pendingCount > 0 && (
-                  <span className="ml-auto min-w-[18px] h-[18px] rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none">
+                  <span className="ml-auto min-w-[18px] h-[18px] rounded-full bg-amber text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none">
                     {pendingCount > 99 ? '99+' : pendingCount}
                   </span>
                 )}

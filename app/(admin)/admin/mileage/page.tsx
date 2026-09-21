@@ -225,7 +225,7 @@ export default function MileagePage() {
         </Card>
         <Card className="p-3 text-center">
           <div className="text-xs text-gray-500">{m('summaryReimbursement')}</div>
-          <div className="text-lg font-bold mt-1 text-green-600">{fmt$(totalReimbursement)}</div>
+          <div className="text-lg font-bold mt-1 text-green">{fmt$(totalReimbursement)}</div>
         </Card>
       </div>
 
@@ -249,7 +249,7 @@ export default function MileagePage() {
             <button
               onClick={handleSaveRate}
               disabled={savingRate}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
+              className="text-xs font-medium text-blue hover:opacity-80 disabled:opacity-50"
             >{savingRate ? 'Saving…' : 'Save'}</button>
             <button
               onClick={() => setEditingRate(false)}
@@ -261,7 +261,7 @@ export default function MileagePage() {
             <span className="text-xs text-gray-400">{m('currentRate')}: {fmt$(rate)}{m('perMile')}</span>
             <button
               onClick={() => { setRateInput(String(rate)); setEditingRate(true) }}
-              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              className="text-xs font-medium text-blue hover:opacity-80"
             >Edit</button>
           </>
         )}
@@ -313,7 +313,7 @@ export default function MileagePage() {
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-bold">{fmtMi(trip.distance_miles)}</div>
-                  <div className="text-green-600 font-semibold">{fmt$(trip.reimbursement_amount)}</div>
+                  <div className="text-green font-semibold">{fmt$(trip.reimbursement_amount)}</div>
                   <div className="flex gap-1 mt-2 flex-wrap justify-end">
                     {trip.approval_status === 'draft' && (
                       <>
