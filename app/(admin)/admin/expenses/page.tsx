@@ -165,30 +165,46 @@ export default function ExpensesPage() {
     setUploading(true)
     setReceiptId(null)
     setReceiptPreviewUrl(null)
-    try {
-      if (companyId) {
-        const bytes = atob(base64)
-        const ab = new ArrayBuffer(bytes.length)
-        const ia = new Uint8Array(ab)
-        for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
-        const blob = new Blob([ab], { type: mediaType })
-        const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
-        const supabase = createClient()
-        const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
-        if (!uploadErr) {
-          const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
-          const receiptRes = await createReceipt({ file_path: path, file_url: urlData.publicUrl })
-          if (receiptRes.ok && receiptRes.id) {
-            setReceiptId(receiptRes.id)
-            setReceiptPreviewUrl(urlData.publicUrl)
-          }
-        }
-      }
-    } catch {
-      // Proceed to form even if upload fails
-    } finally {
+
+    if (!companyId) {
       setUploading(false)
+      setErr('Company not found. Please refresh and try again.')
+      return
     }
+
+    try {
+      const bytes = atob(base64)
+      const ab = new ArrayBuffer(bytes.length)
+      const ia = new Uint8Array(ab)
+      for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
+      const blob = new Blob([ab], { type: mediaType })
+      const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+      const supabase = createClient()
+
+      const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
+      if (uploadErr) {
+        setErr(`Image upload failed: ${uploadErr.message}`)
+        setUploading(false)
+        return
+      }
+
+      const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
+      const receiptRes = await createReceipt({ file_path: path, file_url: urlData.publicUrl })
+      if (receiptRes.ok && receiptRes.id) {
+        setReceiptId(receiptRes.id)
+        setReceiptPreviewUrl(urlData.publicUrl)
+      } else if (receiptRes.error) {
+        setErr(`Could not save receipt: ${receiptRes.error}`)
+        setUploading(false)
+        return
+      }
+    } catch (e) {
+      setErr(`Unexpected error: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      setUploading(false)
+      return
+    }
+
+    setUploading(false)
     setEditing(null)
     setForm({ ...BLANK_FORM })
     setErr('')
