@@ -137,7 +137,7 @@ export default function EmployeeMileagePage() {
 
   if (!canTrack) {
     return (
-      <div className="p-4 pt-20 pb-28 flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="p-4 flex flex-col items-center justify-center min-h-screen gap-3">
         <p className="text-gray-400 text-center">You do not have permission to track mileage. Contact your admin.</p>
       </div>
     )
@@ -255,7 +255,7 @@ export default function EmployeeMileagePage() {
     : 0
 
   return (
-    <div className="p-4 pt-20 pb-28 space-y-4">
+    <div className="p-4 space-y-4">
       <div>
         <h1 className="text-xl font-bold">{m('title')}</h1>
         <p className="text-sm text-gray-500">{m('subtitle')}</p>
@@ -298,10 +298,10 @@ export default function EmployeeMileagePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{trip.origin} → {trip.destination}</span>
+                        <span className="font-medium text-sm truncate">{trip.origin} → {trip.destination}</span>
                         {statusBadge(trip.approval_status)}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">{trip.trip_date}{trip.purpose ? ` · ${trip.purpose}` : ''}</p>
+                      <p className="text-sm text-gray-500 mt-1 truncate">{trip.trip_date}{trip.purpose ? ` · ${trip.purpose}` : ''}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-medium">{fmtMi(trip.distance_miles)}</div>
@@ -328,10 +328,10 @@ export default function EmployeeMileagePage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{trip.origin} → {trip.destination}</span>
+                        <span className="font-medium text-sm truncate">{trip.origin} → {trip.destination}</span>
                         {statusBadge(trip.approval_status)}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">{trip.trip_date}</p>
+                      <p className="text-sm text-gray-500 mt-1 truncate">{trip.trip_date}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm">{fmtMi(trip.distance_miles)}</div>
@@ -348,9 +348,12 @@ export default function EmployeeMileagePage() {
       {/* Manual entry modal */}
       {showManual && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center p-4">
-          <Card className="w-full max-w-md p-5 space-y-4">
-            <h2 className="font-semibold text-lg">{editing ? m('editTrip') : m('addTripTitle')}</h2>
-
+          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-2xl flex flex-col">
+            <div className="px-5 pt-5 pb-1 flex items-center justify-between shrink-0">
+              <h2 className="font-semibold text-[17px] tracking-tight">{editing ? m('editTrip') : m('addTripTitle')}</h2>
+              <button onClick={() => setShowManual(false)} className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 text-sm">✕</button>
+            </div>
+            <div className="px-5 pb-5 pt-3 space-y-4 overflow-y-auto">
             <Input label={m('tripDate')} type="date" value={form.trip_date} onChange={e => setForm(f => ({ ...f, trip_date: e.target.value }))} />
             <Input label={m('origin')} value={form.origin} onChange={e => setForm(f => ({ ...f, origin: e.target.value }))} placeholder={m('originPlaceholder')} />
             <Input label={m('destination')} value={form.destination} onChange={e => setForm(f => ({ ...f, destination: e.target.value }))} placeholder={m('destinationPlaceholder')} />
@@ -376,6 +379,7 @@ export default function EmployeeMileagePage() {
             <div className="flex gap-2 pt-1">
               <Button onClick={handleSaveManual} disabled={saving} className="flex-1">{saving ? 'Saving…' : m('saveDraft')}</Button>
               <Button variant="ghost" onClick={() => setShowManual(false)} className="flex-1">{t('common.cancel')}</Button>
+            </div>
             </div>
           </Card>
         </div>

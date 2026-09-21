@@ -353,8 +353,12 @@ export default function MileagePage() {
       {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4">
-          <Card className="w-full max-w-md p-5 space-y-4">
-            <h2 className="font-semibold text-lg">{editing ? m('editTrip') : m('addTripTitle')}</h2>
+          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-2xl flex flex-col">
+            <div className="px-5 pt-5 pb-1 flex items-center justify-between shrink-0">
+              <h2 className="font-semibold text-[17px] tracking-tight">{editing ? m('editTrip') : m('addTripTitle')}</h2>
+              <button onClick={() => setShowModal(false)} className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 text-sm">✕</button>
+            </div>
+            <div className="px-5 pb-5 pt-3 space-y-4 overflow-y-auto">
 
             <Input
               label={m('tripDate')}
@@ -428,6 +432,7 @@ export default function MileagePage() {
                 {saving ? 'Saving…' : editing ? t('common.saveChanges') : m('saveDraft')}
               </Button>
               <Button variant="ghost" onClick={() => setShowModal(false)} className="flex-1">{t('common.cancel')}</Button>
+            </div>
             </div>
           </Card>
         </div>

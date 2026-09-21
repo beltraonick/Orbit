@@ -102,7 +102,7 @@ export default function EmployeeExpensesPage() {
 
   if (!canUpload) {
     return (
-      <div className="p-4 pt-20 pb-28 flex flex-col items-center justify-center min-h-screen gap-3">
+      <div className="p-4 flex flex-col items-center justify-center min-h-screen gap-3">
         <p className="text-gray-400 text-center">{t('admin.employees.permissionDesc_upload_receipts')}</p>
         <p className="text-xs text-gray-400 text-center">You do not have permission to submit expenses. Contact your admin.</p>
       </div>
@@ -235,7 +235,7 @@ export default function EmployeeExpensesPage() {
   const history = expenses.filter(e => ['approved', 'rejected'].includes(e.approval_status))
 
   return (
-    <div className="p-4 pt-20 pb-28 space-y-4">
+    <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold">{e('title')}</h1>
@@ -314,8 +314,8 @@ export default function EmployeeExpensesPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-3">
-          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-3 sm:p-6">
+          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-3xl flex flex-col">
             <div className="flex items-center justify-between px-5 pt-5 pb-1">
               <h2 className="font-semibold text-[17px] tracking-tight">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
               <button
