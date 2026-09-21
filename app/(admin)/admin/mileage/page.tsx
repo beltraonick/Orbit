@@ -15,6 +15,7 @@ import {
   approveMileageTrip,
   rejectMileageTrip,
   getMileageRate,
+  updateMileageRate,
   getVehicles,
 } from '@/app/actions/mileageActions'
 import { createClient } from '@/lib/supabase/client'
@@ -84,6 +85,9 @@ export default function MileagePage() {
   const [reviewNotes, setReviewNotes] = useState('')
   const [form, setForm] = useState({ ...BLANK_FORM })
   const [err, setErr] = useState('')
+  const [editingRate, setEditingRate] = useState(false)
+  const [rateInput, setRateInput] = useState('')
+  const [savingRate, setSavingRate] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -158,6 +162,15 @@ export default function MileagePage() {
     load()
   }
 
+  async function handleSaveRate() {
+    const r = parseFloat(rateInput)
+    if (!r || r <= 0) return
+    setSavingRate(true)
+    const res = await updateMileageRate(r)
+    if (!res.error) { setRate(r); setEditingRate(false) }
+    setSavingRate(false)
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('Delete this trip?')) return
     await deleteMileageTrip(id)
@@ -216,8 +229,43 @@ export default function MileagePage() {
         </Card>
       </div>
 
-      {/* Rate info */}
-      <p className="text-xs text-gray-400">{m('currentRate')}: {fmt$(rate)}{m('perMile')}</p>
+      {/* Rate — inline editor */}
+      <div className="flex items-center gap-2">
+        {editingRate ? (
+          <>
+            <span className="text-xs text-gray-400">{m('currentRate')}:</span>
+            <span className="text-xs text-gray-400">$</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={rateInput}
+              onChange={e => setRateInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveRate(); if (e.key === 'Escape') setEditingRate(false) }}
+              className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              autoFocus
+            />
+            <span className="text-xs text-gray-400">/mi</span>
+            <button
+              onClick={handleSaveRate}
+              disabled={savingRate}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50"
+            >{savingRate ? 'Saving…' : 'Save'}</button>
+            <button
+              onClick={() => setEditingRate(false)}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >Cancel</button>
+          </>
+        ) : (
+          <>
+            <span className="text-xs text-gray-400">{m('currentRate')}: {fmt$(rate)}{m('perMile')}</span>
+            <button
+              onClick={() => { setRateInput(String(rate)); setEditingRate(true) }}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            >Edit</button>
+          </>
+        )}
+      </div>
 
       {/* Filter chips */}
       <div className="flex gap-2 flex-wrap">
