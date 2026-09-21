@@ -75,19 +75,6 @@ export function ClockButtons({
   const [confirmingOut, setConfirmingOut] = useState(false)
   const [nowLocal, setNowLocal] = useState('')
 
-  if (!canSelfClock) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-4">
-        <div className="w-10 h-10 rounded-full bg-surface-elevated flex items-center justify-center">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-tertiary">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-          </svg>
-        </div>
-        <p className="text-sm text-secondary text-center px-4">{t('employee.clockButtons.managedBySupervisor')}</p>
-      </div>
-    )
-  }
-
   // Only gates this employee's OWN clock-in — supervisors/admins clocking
   // someone else in via the Team Clock tool are never restricted by this.
   const windowActive = clockWindow.enforce_clock_window && !isSupervisor
@@ -115,6 +102,19 @@ export function ClockButtons({
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [localClockInTime])
+
+  if (!canSelfClock) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-4">
+        <div className="w-10 h-10 rounded-full bg-surface-elevated flex items-center justify-center">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-tertiary">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <p className="text-sm text-secondary text-center px-4">{t('employee.clockButtons.managedBySupervisor')}</p>
+      </div>
+    )
+  }
 
   async function clockIn() {
     setLoading(true)
