@@ -55,7 +55,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const Groq = (await import('groq-sdk')).default
+    let Groq: typeof import('groq-sdk').default
+    try {
+      Groq = (await import('groq-sdk')).default
+    } catch (importErr) {
+      const msg = importErr instanceof Error ? importErr.message : 'groq-sdk import failed'
+      return Response.json({ error: 'scan_failed', message: `SDK error: ${msg}` }, { status: 200 })
+    }
     const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
     const response = await client.chat.completions.create({
