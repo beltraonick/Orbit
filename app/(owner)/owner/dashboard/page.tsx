@@ -19,6 +19,7 @@ interface CompanyRow {
   months_overdue: number | null
   trial_ends_at: string | null
   created_at: string
+  unlimited_override: boolean | null
   plan: { name: string; price_cents: number; project_limit: number | null } | null
 }
 
@@ -57,7 +58,7 @@ export default async function OwnerDashboardPage() {
       const [{ data: companyRows }, { data: profileRows }, { data: projectRows }, { data: activityRows }] = await Promise.all([
         supabase
           .from('companies')
-          .select('id, name, subscription_status, months_overdue, trial_ends_at, created_at, plan:plan_id(name, price_cents, project_limit)')
+          .select('id, name, subscription_status, months_overdue, trial_ends_at, created_at, unlimited_override, plan:plan_id(name, price_cents, project_limit)')
           .order('created_at', { ascending: false }),
         supabase.from('profiles').select('company_id, role'),
         supabase.from('projects').select('company_id'),
@@ -166,6 +167,9 @@ export default async function OwnerDashboardPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium text-primary truncate">{c.name}</p>
                       {statusBadge(c.subscription_status, locale)}
+                      {c.unlimited_override && (
+                        <Badge variant="brand">{t(locale, 'owner.companyDetail.unlimitedBadge')}</Badge>
+                      )}
                       {c.subscription_status === 'trialing' && c.trial_ends_at && (() => {
                         const daysLeft = Math.ceil((new Date(c.trial_ends_at as string).getTime() - Date.now()) / 86400000)
                         return (

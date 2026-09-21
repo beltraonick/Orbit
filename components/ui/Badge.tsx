@@ -1,4 +1,4 @@
-type BadgeVariant = 'default' | 'green' | 'amber' | 'red' | 'blue' | 'gray'
+type BadgeVariant = 'default' | 'green' | 'amber' | 'red' | 'blue' | 'gray' | 'brand'
 
 interface BadgeProps {
   variant?: BadgeVariant
@@ -13,6 +13,7 @@ const variants: Record<BadgeVariant, string> = {
   red: 'bg-danger/10 text-danger border-danger/20',
   blue: 'bg-blue/10 text-blue border-blue/20',
   gray: 'bg-surface-elevated text-tertiary border-[var(--border)]',
+  brand: 'bg-brand/10 text-brand border-brand/20',
 }
 
 export function Badge({ variant = 'default', className = '', children }: BadgeProps) {

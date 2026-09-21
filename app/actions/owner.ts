@@ -31,6 +31,26 @@ export async function updateCompanyBilling(
   return {}
 }
 
+// One-click Master override: grants (or revokes) unlimited access for a
+// single company regardless of its plan tier. Distinct from picking a
+// bigger plan in updateCompanyBilling — this is the owner personally
+// unblocking someone, not a billing decision.
+export async function setUnlimitedOverride(
+  companyId: string,
+  enabled: boolean
+): Promise<{ error?: string }> {
+  if (!requireOwner()) return { error: 'Not authorized.' }
+
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('companies')
+    .update({ unlimited_override: enabled })
+    .eq('id', companyId)
+
+  if (error) return { error: error.message }
+  return {}
+}
+
 // Suspend/reactivate/approve any account platform-wide — how the owner
 // helps a company lock someone out or lets a pending signup in without
 // having to go through that company's own admin.

@@ -8,9 +8,15 @@ interface LimitResult {
 async function getPlanLimits(supabase: SupabaseClient, companyId: string) {
   const { data: company } = await supabase
     .from('companies')
-    .select('plan_id')
+    .select('plan_id, unlimited_override')
     .eq('id', companyId)
     .maybeSingle()
+
+  // Master override from the owner panel — bypasses every limit below
+  // regardless of what plan the company is on.
+  if (company?.unlimited_override) {
+    return { project_limit: null, admin_limit: null, employee_limit: null }
+  }
 
   // No plan assigned yet — don't block anyone until billing is actually wired up.
   if (!company?.plan_id) return null
