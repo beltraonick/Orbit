@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { LogoutForm } from '@/components/LogoutForm'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
@@ -197,17 +198,77 @@ function useNav() {
   ]
 }
 
-// The bottom nav only has room for 5 items — the rest moved to
-// Quick Actions on the Dashboard/Home page.
-const MOBILE_NAV_HREFS = ['/admin/dashboard', '/admin/tasks', '/admin/projects', '/admin/employees', '/admin/ai']
+// Primary mobile tabs
+const PRIMARY_HREFS = ['/admin/dashboard', '/admin/payroll', '/admin/reports']
+
+// Sheet groups — all non-primary routes
+const OPERATIONS_HREFS = [
+  '/admin/employees',
+  '/admin/projects',
+  '/admin/tasks',
+  '/admin/members',
+  '/admin/team-clock',
+  '/admin/time',
+  '/admin/photos',
+  '/admin/change-orders',
+]
+const FINANCIAL_HREFS = [
+  '/admin/expenses',
+  '/admin/receipts',
+  '/admin/mileage',
+  '/admin/vehicles',
+  '/admin/approvals',
+]
+const TOOLS_HREFS = ['/admin/ai', '/admin/settings']
+
+const SHEET_HREFS = [...OPERATIONS_HREFS, ...FINANCIAL_HREFS, ...TOOLS_HREFS]
 
 export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: SessionUser; pendingCount?: number; auditCount?: number }) {
   const pathname = usePathname()
   const { t } = useTranslation()
   const NAV = useNav()
-  const MOBILE_NAV = MOBILE_NAV_HREFS.map(href => NAV.find(item => item.href === href)).filter(
+
+  const [moreOpen, setMoreOpen] = useState(false)
+
+  // Close sheet on navigation
+  useEffect(() => {
+    setMoreOpen(false)
+  }, [pathname])
+
+  const MOBILE_PRIMARY = PRIMARY_HREFS.map(h => NAV.find(i => i.href === h)).filter(
     (item): item is ReturnType<typeof useNav>[number] => !!item
   )
+
+  const sheetGroups = [
+    {
+      label: 'Operations',
+      items: OPERATIONS_HREFS.map(h => NAV.find(i => i.href === h)).filter(
+        (item): item is ReturnType<typeof useNav>[number] => !!item
+      ),
+    },
+    {
+      label: 'Financial',
+      items: FINANCIAL_HREFS.map(h => NAV.find(i => i.href === h)).filter(
+        (item): item is ReturnType<typeof useNav>[number] => !!item
+      ),
+    },
+    {
+      label: 'Tools',
+      items: TOOLS_HREFS.map(h => NAV.find(i => i.href === h)).filter(
+        (item): item is ReturnType<typeof useNav>[number] => !!item
+      ),
+    },
+  ]
+
+  const sheetActive = SHEET_HREFS.some(h => pathname === h || pathname.startsWith(h + '/'))
+  const moreHasBadge = (pendingCount > 0 || auditCount > 0)
+
+  const getBadge = (href: string) => {
+    if (href === '/admin/members' && pendingCount > 0) return { count: pendingCount, color: 'brand' }
+    if (href === '/admin/approvals' && pendingCount > 0) return { count: pendingCount, color: 'amber' }
+    if (href === '/admin/tasks' && auditCount > 0) return { count: auditCount, color: 'amber' }
+    return null
+  }
 
   return (
     <>
@@ -316,41 +377,133 @@ export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: Sess
         </div>
       </header>
 
-      {/* ── Mobile Bottom Nav (< md) — 5 fixed tabs, the rest live as Quick Actions on Home ── */}
+      {/* ── Mobile Bottom Nav (< md) — 3 primary tabs + More ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface border-t border-[var(--border)] safe-bottom">
         <div className="flex">
-          {MOBILE_NAV.map(item => {
+          {MOBILE_PRIMARY.map(item => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/')
-            const isMembersItem = item.href === '/admin/members'
-            const isTasksItem = item.href === '/admin/tasks'
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={[
-                  'flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors duration-150',
+                  'relative flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors duration-150',
                   active ? 'text-brand' : 'text-tertiary',
                 ].join(' ')}
               >
-                <span className={`relative [&>svg]:w-5 [&>svg]:h-5 ${active ? 'text-brand' : 'text-tertiary'}`}>
+                <span className={`[&>svg]:w-5 [&>svg]:h-5 ${active ? 'text-brand' : 'text-tertiary'}`}>
                   {item.icon}
-                  {isMembersItem && pendingCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-brand border border-surface" />
-                  )}
-                  {isTasksItem && auditCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border border-surface"
-                      style={{ background: 'rgb(var(--color-amber))' }} />
-                  )}
                 </span>
-                <span className="leading-tight text-center">{item.mobileLabel}</span>
+                <span className="leading-tight">{item.mobileLabel}</span>
                 {active && (
                   <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-brand" />
                 )}
               </Link>
             )
           })}
+
+          {/* More tab */}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            className={[
+              'relative flex-1 flex flex-col items-center justify-center gap-1 py-3 text-xs font-medium transition-colors duration-150',
+              sheetActive ? 'text-brand' : 'text-tertiary',
+            ].join(' ')}
+          >
+            <span className={`relative [&>svg]:w-5 [&>svg]:h-5 ${sheetActive ? 'text-brand' : 'text-tertiary'}`}>
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
+              </svg>
+              {moreHasBadge && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-brand border border-surface" />
+              )}
+            </span>
+            <span className="leading-tight">More</span>
+            {sheetActive && (
+              <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-brand" />
+            )}
+          </button>
         </div>
       </nav>
+
+      {/* ── More Sheet Backdrop ── */}
+      <div
+        className={[
+          'md:hidden fixed inset-0 z-50 bg-black/50 transition-opacity duration-300',
+          moreOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
+        ].join(' ')}
+        onClick={() => setMoreOpen(false)}
+      />
+
+      {/* ── More Sheet Panel ── */}
+      <div
+        className={[
+          'md:hidden fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-3xl shadow-2xl transition-transform duration-300 ease-out overflow-hidden',
+          moreOpen ? 'translate-y-0' : 'translate-y-full',
+        ].join(' ')}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
+          <p className="text-sm font-semibold text-primary">Menu</p>
+          <button
+            type="button"
+            onClick={() => setMoreOpen(false)}
+            className="p-1.5 rounded-button text-secondary hover:text-primary hover:bg-surface-elevated transition-colors"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Groups */}
+        <div className="overflow-y-auto max-h-[60vh] px-4 py-3 space-y-5">
+          {sheetGroups.map(group => (
+            <div key={group.label}>
+              <p className="text-[10px] font-semibold text-tertiary uppercase tracking-widest mb-2 px-1">
+                {group.label}
+              </p>
+              <div className="grid grid-cols-4 gap-1">
+                {group.items.map(item => {
+                  const active = pathname === item.href || pathname.startsWith(item.href + '/')
+                  const badge = getBadge(item.href)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMoreOpen(false)}
+                      className={[
+                        'flex flex-col items-center gap-1.5 px-1 py-3 rounded-xl text-center transition-colors duration-150',
+                        active ? 'bg-brand/10 text-brand' : 'text-secondary hover:bg-surface-elevated hover:text-primary',
+                      ].join(' ')}
+                    >
+                      <span className={`relative [&>svg]:w-5 [&>svg]:h-5 ${active ? 'text-brand' : 'text-tertiary'}`}>
+                        {item.icon}
+                        {badge && (
+                          <span className={[
+                            'absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border border-surface',
+                            badge.color === 'brand' ? 'bg-brand' : 'bg-amber',
+                          ].join(' ')} />
+                        )}
+                      </span>
+                      <span className="text-[10px] font-medium leading-tight text-center">
+                        {item.mobileLabel}
+                      </span>
+                    </Link>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </>
   )
 }

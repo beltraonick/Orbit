@@ -24,10 +24,34 @@ function StatCard({ label, value, sub, color = 'default' }: {
 
 const QUICK_ACTIONS = [
   {
+    href: '/admin/team-clock',
+    labelKey: 'common.nav.teamClock',
+    iconBg: 'bg-blue/10',
+    iconColor: 'text-blue',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
+        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/admin/approvals',
+    labelKey: 'common.nav.approvals',
+    iconBg: 'bg-green/10',
+    iconColor: 'text-green',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
+        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+      </svg>
+    ),
+  },
+  {
     href: '/admin/members',
     labelKey: 'common.nav.members',
+    iconBg: 'bg-brand/10',
+    iconColor: 'text-brand',
     icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
         <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
       </svg>
     ),
@@ -35,82 +59,11 @@ const QUICK_ACTIONS = [
   {
     href: '/admin/change-orders',
     labelKey: 'common.nav.changeOrders',
+    iconBg: 'bg-amber/10',
+    iconColor: 'text-amber',
     icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-6 h-6">
         <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm7 4a1 1 0 10-2 0v1H8a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V8z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/time',
-    labelKey: 'common.nav.time',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/payroll',
-    labelKey: 'common.nav.payroll',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/photos',
-    labelKey: 'common.nav.photos',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/reports',
-    labelKey: 'common.nav.reports',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm2 10a1 1 0 10-2 0v3a1 1 0 102 0v-3zm2-3a1 1 0 011 1v5a1 1 0 11-2 0v-5a1 1 0 011-1zm4-1a1 1 0 10-2 0v6a1 1 0 102 0V8z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/expenses',
-    labelKey: 'common.nav.expenses',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/mileage',
-    labelKey: 'common.nav.mileage',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-        <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1v-1h3.05a2.5 2.5 0 014.9 0H19a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0017 6h-3V5a1 1 0 00-1-1H3zm11 4h2.586L18 9.414V10h-4V8z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/approvals',
-    labelKey: 'common.nav.approvals',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-      </svg>
-    ),
-  },
-  {
-    href: '/admin/settings',
-    labelKey: 'common.nav.settings',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
       </svg>
     ),
   },
@@ -230,18 +183,20 @@ export default async function AdminDashboardPage() {
         <StatCard label={t(locale, 'admin.dashboard.totalEmployees')} value={stats?.totalEmployees ?? '—'} sub={stats ? t(locale, 'admin.dashboard.activeWorkers') : t(locale, 'admin.dashboard.connectSupabase')} />
       </div>
 
-      {/* Quick Actions — the tabs that no longer live in the bottom nav */}
+      {/* Quick Actions */}
       <div className="mb-6 md:mb-8">
         <p className="text-xs font-medium text-secondary uppercase tracking-wide mb-3">{t(locale, 'admin.dashboard.quickActions')}</p>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {QUICK_ACTIONS.map(action => (
             <a
               key={action.href}
               href={action.href}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-button bg-surface border border-[var(--border)] text-secondary hover:text-primary hover:border-brand/30 transition-colors text-sm font-medium"
+              className="flex flex-col items-center gap-3 p-4 rounded-card bg-surface border border-[var(--border)] hover:border-brand/30 hover:bg-surface-elevated transition-colors"
             >
-              <span className="text-tertiary [&>svg]:w-4 [&>svg]:h-4">{action.icon}</span>
-              {t(locale, action.labelKey)}
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${action.iconBg}`}>
+                <span className={action.iconColor}>{action.icon}</span>
+              </div>
+              <span className="text-sm font-medium text-primary text-center leading-tight">{t(locale, action.labelKey)}</span>
             </a>
           ))}
         </div>
