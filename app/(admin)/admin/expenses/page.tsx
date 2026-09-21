@@ -158,21 +158,39 @@ export default function ExpensesPage() {
     load()
   }
 
+  async function compressImage(file: File): Promise<{ base64: string; media_type: string }> {
+    const MAX_PX = 1024
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        const scale = Math.min(1, MAX_PX / Math.max(img.width, img.height))
+        const w = Math.round(img.width * scale)
+        const h = Math.round(img.height * scale)
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, w, h)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+        resolve({ base64: dataUrl.split(',')[1], media_type: 'image/jpeg' })
+      }
+      img.onerror = reject
+      img.src = objectUrl
+    })
+  }
+
   async function handleScanReceipt(file: File) {
     setScanning(true)
     setScanMsg('')
     setReceiptId(null)
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve((reader.result as string).split(',')[1])
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
+      const { base64, media_type } = await compressImage(file)
       const res = await fetch('/api/receipts/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, media_type: file.type }),
+        body: JSON.stringify({ base64, media_type }),
       })
       const data = await res.json()
       if (data.ok && data.extracted) {

@@ -2,10 +2,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
 
-// Receipt scanning via Groq vision API (llama-4-scout).
-// Accepts a base64-encoded image or a publicly accessible URL.
-// Returns extracted fields: merchant, date, total, tax, category.
-// Gracefully degrades when GROQ_API_KEY is not set.
+export const maxDuration = 30
 
 export async function POST(req: Request) {
   const user = getCurrentUser()
@@ -65,7 +62,7 @@ export async function POST(req: Request) {
     const client = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
     const response = await client.chat.completions.create({
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      model: 'llama-3.2-11b-vision-preview',
       max_tokens: 512,
       messages: [
         {
@@ -102,6 +99,7 @@ If a field cannot be determined, use null. Amounts should be numbers (no currenc
     return Response.json({ ok: true, extracted })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[receipts/scan] Groq error:', message)
     return Response.json({ error: 'scan_failed', message }, { status: 200 })
   }
 }
