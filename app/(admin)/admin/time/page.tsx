@@ -8,6 +8,7 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
+import { createManualTimeEntry } from '@/app/actions/workerActions'
 import type { Locale } from '@/lib/i18n/translate'
 
 interface TimeEntry {
@@ -83,6 +84,8 @@ export default function TimePage() {
   const [filter, setFilter] = useState('week')
   const [empFilter, setEmpFilter] = useState('')
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
+  const [workers, setWorkers] = useState<{ id: string; full_name: string }[]>([])
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
 
   // Edit modal
   const [editEntry, setEditEntry] = useState<TimeEntry | null>(null)
@@ -91,6 +94,17 @@ export default function TimePage() {
   const [editNotes, setEditNotes] = useState('')
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
+
+  // Add entry modal
+  const [addOpen, setAddOpen] = useState(false)
+  const [addType, setAddType] = useState<'profile' | 'worker'>('profile')
+  const [addPersonId, setAddPersonId] = useState('')
+  const [addClockIn, setAddClockIn] = useState('')
+  const [addClockOut, setAddClockOut] = useState('')
+  const [addProjectId, setAddProjectId] = useState('')
+  const [addNotes, setAddNotes] = useState('')
+  const [addSaving, setAddSaving] = useState(false)
+  const [addError, setAddError] = useState('')
 
   // Delete confirm
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -119,13 +133,17 @@ export default function TimePage() {
     if (rangeStart) query = query.gte('clock_in', rangeStart.toISOString())
     if (empFilter) query = query.eq('employee_id', empFilter)
 
-    const [{ data }, { data: emps }] = await Promise.all([
+    const [{ data }, { data: emps }, { data: wkrs }, { data: projs }] = await Promise.all([
       query,
-      supabase.from('profiles').select('id, full_name').eq('company_id', companyId).eq('status', 'active').order('full_name'),
+      supabase.from('profiles').select('id, full_name').eq('company_id', companyId).eq('status', 'active').eq('role', 'employee').order('full_name'),
+      supabase.from('workers').select('id, full_name').eq('company_id', companyId).eq('status', 'active').order('full_name'),
+      supabase.from('projects').select('id, name').eq('company_id', companyId).eq('status', 'active').order('name'),
     ])
 
     setEntries((data ?? []) as unknown as TimeEntry[])
     setEmployees(emps ?? [])
+    setWorkers(wkrs ?? [])
+    setProjects(projs ?? [])
     setLoading(false)
   }, [filter, empFilter, companyId])
 
@@ -153,6 +171,40 @@ export default function TimePage() {
     await supabase.from('time_entries').update({ clock_out: new Date().toISOString() }).eq('id', id)
     load()
     setActionId(null)
+  }
+
+  function openAdd() {
+    const now = new Date()
+    now.setSeconds(0, 0)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+    setAddType('profile')
+    setAddPersonId(employees[0]?.id ?? '')
+    setAddClockIn(local)
+    setAddClockOut('')
+    setAddProjectId('')
+    setAddNotes('')
+    setAddError('')
+    setAddOpen(true)
+  }
+
+  async function saveAdd() {
+    if (!addPersonId) { setAddError('Select an employee or worker.'); return }
+    if (!addClockIn) { setAddError('Clock-in is required.'); return }
+    setAddSaving(true)
+    setAddError('')
+    const res = await createManualTimeEntry({
+      profileId: addType === 'profile' ? addPersonId : undefined,
+      workerId: addType === 'worker' ? addPersonId : undefined,
+      clockIn: new Date(addClockIn).toISOString(),
+      clockOut: addClockOut ? new Date(addClockOut).toISOString() : undefined,
+      projectId: addProjectId || undefined,
+      notes: addNotes || undefined,
+    })
+    setAddSaving(false)
+    if (res.error) { setAddError(res.error); return }
+    setAddOpen(false)
+    load()
   }
 
   function openEdit(entry: TimeEntry) {
@@ -217,12 +269,20 @@ export default function TimePage() {
 
   return (
     <div className="p-4 md:p-8 max-w-[1400px]">
-      <div className="mb-6 md:mb-8">
-        <h1 className="text-xl md:text-2xl font-bold text-primary tracking-tight">{t('admin.time.title')}</h1>
-        <p className="text-sm text-secondary mt-1">
-          {activeCount > 0 && `${t('admin.time.clockedInCount').replace('{n}', String(activeCount))} · `}
-          {t('admin.time.hoursTotal').replace('{n}', totalHours.toFixed(1))} · {pendingCount > 0 && <span className="text-amber">{t('admin.time.pendingApprovalCount').replace('{n}', String(pendingCount))}</span>}
-        </p>
+      <div className="mb-6 md:mb-8 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-primary tracking-tight">{t('admin.time.title')}</h1>
+          <p className="text-sm text-secondary mt-1">
+            {activeCount > 0 && `${t('admin.time.clockedInCount').replace('{n}', String(activeCount))} · `}
+            {t('admin.time.hoursTotal').replace('{n}', totalHours.toFixed(1))} · {pendingCount > 0 && <span className="text-amber">{t('admin.time.pendingApprovalCount').replace('{n}', String(pendingCount))}</span>}
+          </p>
+        </div>
+        <button
+          onClick={openAdd}
+          className="shrink-0 px-3 py-2 text-sm font-medium rounded-button bg-brand text-white hover:bg-brand/90 transition-colors"
+        >
+          + Add Entry
+        </button>
       </div>
 
       {/* Filters */}
@@ -386,6 +446,111 @@ export default function TimePage() {
                 className="flex-1 px-4 py-2 text-sm rounded-button bg-brand text-white font-medium hover:bg-brand/90 transition-colors disabled:opacity-60"
               >
                 {editSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Entry Modal ── */}
+      {addOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-[var(--surface)] rounded-card w-full max-w-sm shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h2 className="text-base font-semibold text-primary">Add Time Entry</h2>
+            <p className="text-xs text-secondary -mt-2">Manual entries are saved as approved.</p>
+
+            {/* Person type */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setAddType('profile'); setAddPersonId(employees[0]?.id ?? '') }}
+                className={`flex-1 py-1.5 text-sm rounded-button border transition-colors ${addType === 'profile' ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary'}`}
+              >Employee</button>
+              <button
+                onClick={() => { setAddType('worker'); setAddPersonId(workers[0]?.id ?? '') }}
+                className={`flex-1 py-1.5 text-sm rounded-button border transition-colors ${addType === 'worker' ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary'}`}
+              >Worker</button>
+            </div>
+
+            {/* Person selector */}
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-1">
+                {addType === 'profile' ? 'Employee' : 'Worker'}
+              </label>
+              <select
+                value={addPersonId}
+                onChange={e => setAddPersonId(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
+              >
+                <option value="">— select —</option>
+                {(addType === 'profile' ? employees : workers).map(p => (
+                  <option key={p.id} value={p.id}>{p.full_name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clock-in */}
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-1">Clock-in *</label>
+              <input
+                type="datetime-local"
+                value={addClockIn}
+                onChange={ev => setAddClockIn(ev.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
+              />
+            </div>
+
+            {/* Clock-out */}
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-1">Clock-out (optional — leave blank if still active)</label>
+              <input
+                type="datetime-local"
+                value={addClockOut}
+                onChange={ev => setAddClockOut(ev.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
+              />
+            </div>
+
+            {/* Project */}
+            {projects.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-secondary mb-1">Project (optional)</label>
+                <select
+                  value={addProjectId}
+                  onChange={e => setAddProjectId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
+                >
+                  <option value="">— no project —</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-1">Notes (optional)</label>
+              <Input
+                value={addNotes}
+                onChange={ev => setAddNotes(ev.target.value)}
+                placeholder="e.g. make-up shift from last week"
+              />
+            </div>
+
+            {addError && <p className="text-xs text-danger">{addError}</p>}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setAddOpen(false)}
+                className="flex-1 px-4 py-2 text-sm rounded-button border border-[var(--border)] text-secondary hover:text-primary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveAdd}
+                disabled={addSaving}
+                className="flex-1 px-4 py-2 text-sm rounded-button bg-brand text-white font-medium hover:bg-brand/90 transition-colors disabled:opacity-60"
+              >
+                {addSaving ? 'Saving…' : 'Add Entry'}
               </button>
             </div>
           </div>
