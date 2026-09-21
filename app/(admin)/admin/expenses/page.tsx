@@ -393,11 +393,11 @@ export default function ExpensesPage() {
                 type="button"
                 disabled={scanning}
                 onClick={() => setShowScanner(true)}
-                className={`flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl transition-all text-sm font-semibold select-none border
-                  ${scanning
-                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
-                    : 'bg-blue-500 dark:bg-blue-600 text-white border-blue-500 dark:border-blue-600 hover:bg-blue-600 dark:hover:bg-blue-700 active:scale-[.98] shadow-sm cursor-pointer'
-                  }`}
+                className="flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl transition-all text-sm font-semibold select-none border active:scale-[.98]"
+                style={scanning
+                  ? { backgroundColor: '#f3f4f6', color: '#9ca3af', borderColor: '#e5e7eb', cursor: 'not-allowed' }
+                  : { backgroundColor: '#3b82f6', color: '#ffffff', borderColor: '#3b82f6', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }
+                }
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
