@@ -273,7 +273,7 @@ export default function EmployeeExpensesPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-3">
-          <Card className="w-full max-w-md overflow-y-auto max-h-[92vh] rounded-2xl">
+          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-2xl flex flex-col">
             <div className="flex items-center justify-between px-5 pt-5 pb-1">
               <h2 className="font-semibold text-[17px] tracking-tight">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
               <button
@@ -282,7 +282,7 @@ export default function EmployeeExpensesPage() {
               >✕</button>
             </div>
 
-            <div className="px-5 pb-5 space-y-3 mt-3">
+            <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
               {/* Receipt scanner — Apple-style */}
               <label className={`flex items-center justify-center gap-2.5 w-full py-3 rounded-xl cursor-pointer transition-all text-sm font-semibold select-none
                 ${scanning
@@ -314,10 +314,8 @@ export default function EmployeeExpensesPage() {
 
               <Input label={e('description')} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={e('descriptionPlaceholder')} />
 
-              <div className="grid grid-cols-2 gap-3">
-                <Input label={e('amount')} type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
-                <Input label={e('date')} type="date" value={form.expense_date} onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
-              </div>
+              <Input label={e('amount')} type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+              <Input label={e('date')} type="date" value={form.expense_date} onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
 
               {categories.length > 0 && (
                 <div className="space-y-1.5">

@@ -334,7 +334,7 @@ export default function ExpensesPage() {
       {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-3 md:p-4">
-          <Card className="w-full max-w-md overflow-y-auto max-h-[92vh] rounded-2xl">
+          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-2xl flex flex-col">
             {/* Modal header */}
             <div className="flex items-center justify-between px-5 pt-5 pb-1">
               <h2 className="font-semibold text-[17px] tracking-tight">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
@@ -344,7 +344,7 @@ export default function ExpensesPage() {
               >✕</button>
             </div>
 
-            <div className="px-5 pb-5 space-y-3 mt-3">
+            <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
               {/* Receipt scanner — Apple-style pill button */}
               <label className={`flex items-center justify-center gap-2.5 w-full py-3 rounded-xl cursor-pointer transition-all text-sm font-semibold select-none
                 ${scanning
@@ -382,21 +382,19 @@ export default function ExpensesPage() {
                 placeholder={e('descriptionPlaceholder')}
               />
 
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label={e('amount')}
-                  type="number"
-                  value={form.amount}
-                  onChange={ev => setForm(f => ({ ...f, amount: ev.target.value }))}
-                  placeholder="0.00"
-                />
-                <Input
-                  label={e('date')}
-                  type="date"
-                  value={form.expense_date}
-                  onChange={ev => setForm(f => ({ ...f, expense_date: ev.target.value }))}
-                />
-              </div>
+              <Input
+                label={e('amount')}
+                type="number"
+                value={form.amount}
+                onChange={ev => setForm(f => ({ ...f, amount: ev.target.value }))}
+                placeholder="0.00"
+              />
+              <Input
+                label={e('date')}
+                type="date"
+                value={form.expense_date}
+                onChange={ev => setForm(f => ({ ...f, expense_date: ev.target.value }))}
+              />
 
               {/* Expense type — segmented control */}
               <div className="space-y-1.5">
