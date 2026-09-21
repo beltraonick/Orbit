@@ -8,6 +8,8 @@ import { ClockButtons } from './ClockButtons'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { t } from '@/lib/i18n/translate'
+import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
+import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -25,6 +27,8 @@ export default async function EmployeeHomePage() {
   let profileId: string | null = null
   let openEntryId: string | null = null
   let clockInTime: string | null = null
+  let isSupervisor = false
+  let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let weekHours = 0
   let weekEarnings = 0
   let tasks: {
@@ -41,7 +45,7 @@ export default async function EmployeeHomePage() {
 
       let { data: profile } = await supabase
         .from('profiles')
-        .select('id, hourly_rate')
+        .select('id, hourly_rate, permissions')
         .eq('email', user.email)
         .maybeSingle()
 
@@ -55,19 +59,20 @@ export default async function EmployeeHomePage() {
             email: user.email,
             status: 'active',
           })
-          .select('id, hourly_rate')
+          .select('id, hourly_rate, permissions')
           .single()
         profile = newProfile
       }
 
       if (profile) {
         profileId = profile.id
+        isSupervisor = user.role === 'admin' || hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
 
         const weekStart = new Date(today)
         weekStart.setDate(today.getDate() - today.getDay())
         weekStart.setHours(0, 0, 0, 0)
 
-        const [{ data: openEntry }, { data: weekEntries }, { data: myTasks }] = await Promise.all([
+        const [{ data: openEntry }, { data: weekEntries }, { data: myTasks }, { data: docSettings }] = await Promise.all([
           supabase
             .from('time_entries')
             .select('id, clock_in')
@@ -89,7 +94,22 @@ export default async function EmployeeHomePage() {
             .neq('status', 'completed')
             .order('created_at', { ascending: false })
             .limit(3),
+          supabase
+            .from('company_document_settings')
+            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline')
+            .eq('company_id', user.company_id)
+            .maybeSingle(),
         ])
+
+        if (docSettings) {
+          clockWindow = {
+            timezone: docSettings.timezone ?? DEFAULT_CLOCK_WINDOW.timezone,
+            enforce_clock_window: docSettings.enforce_clock_window ?? false,
+            clock_in_window_start: docSettings.clock_in_window_start ?? DEFAULT_CLOCK_WINDOW.clock_in_window_start,
+            clock_in_window_end: docSettings.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
+            clock_out_deadline: docSettings.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
+          }
+        }
 
         if (openEntry) {
           openEntryId = openEntry.id
@@ -155,6 +175,8 @@ export default async function EmployeeHomePage() {
             companyId={user.company_id as string}
             openEntryId={openEntryId}
             clockInTime={clockInTime}
+            isSupervisor={isSupervisor}
+            clockWindow={clockWindow}
           />
         ) : (
           <div className="flex flex-col items-center gap-4 py-2">
