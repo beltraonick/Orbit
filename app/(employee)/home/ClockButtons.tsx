@@ -6,12 +6,15 @@ import { createClient } from '@/lib/supabase/client'
 import { queueIfOffline } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/Button'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
+import { localDateTimeParts, isWithinWindow, DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
 
 interface ClockButtonsProps {
   employeeId: string
   companyId: string
   openEntryId: string | null
   clockInTime: string | null
+  isSupervisor?: boolean
+  clockWindow?: ClockWindowSettings
 }
 
 function formatElapsed(iso: string) {
@@ -54,13 +57,35 @@ async function getLocation() {
   })
 }
 
-export function ClockButtons({ employeeId, companyId, openEntryId, clockInTime }: ClockButtonsProps) {
+export function ClockButtons({
+  employeeId,
+  companyId,
+  openEntryId,
+  clockInTime,
+  isSupervisor = false,
+  clockWindow = DEFAULT_CLOCK_WINDOW,
+}: ClockButtonsProps) {
   const router = useRouter()
   const { t } = useTranslation()
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('')
   const [locationInfo, setLocationInfo] = useState('')
   const [confirmingOut, setConfirmingOut] = useState(false)
+  const [nowLocal, setNowLocal] = useState('')
+
+  // Only gates this employee's OWN clock-in — supervisors/admins clocking
+  // someone else in via the Team Clock tool are never restricted by this.
+  const windowActive = clockWindow.enforce_clock_window && !isSupervisor
+
+  useEffect(() => {
+    if (!windowActive) return
+    const tick = () => setNowLocal(localDateTimeParts(new Date(), clockWindow.timezone).time)
+    tick()
+    const id = setInterval(tick, 30000)
+    return () => clearInterval(id)
+  }, [windowActive, clockWindow.timezone])
+
+  const canClockInNow = !windowActive || !nowLocal || isWithinWindow(nowLocal, clockWindow.clock_in_window_start, clockWindow.clock_in_window_end)
 
   // Optimistic local state — lets clock in/out work instantly even
   // offline, without waiting on (or depending on) a server round-trip.
@@ -201,7 +226,12 @@ export function ClockButtons({ employeeId, companyId, openEntryId, clockInTime }
           {locationInfo}
         </p>
       )}
-      <Button size="lg" onClick={clockIn} loading={loading} className="w-full">
+      {!canClockInNow && (
+        <p className="text-xs text-amber text-center">
+          Clock-in is only available between {clockWindow.clock_in_window_start} and {clockWindow.clock_in_window_end}.
+        </p>
+      )}
+      <Button size="lg" onClick={clockIn} loading={loading} disabled={!canClockInNow} className="w-full">
         {t('employee.clockButtons.clockIn')}
       </Button>
     </div>

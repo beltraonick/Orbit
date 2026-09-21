@@ -11,6 +11,7 @@ import { subscriptionStatusKey, subscriptionStatusVariant } from '@/lib/owner-st
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { useCompanyId } from '@/lib/company-context'
 import { createClient } from '@/lib/supabase/client'
+import { DEFAULT_CLOCK_WINDOW, COMMON_TIMEZONES } from '@/lib/clock-window'
 
 const VERSION = '1.0.0'
 
@@ -378,6 +379,12 @@ export default function SettingsPage() {
   const [mileageRateSaving, setMileageRateSaving] = useState(false)
   const [mileageRateSaved, setMileageRateSaved] = useState(false)
 
+  // Clock-in/out window state
+  const [clockWindow, setClockWindow] = useState({ ...DEFAULT_CLOCK_WINDOW })
+  const [clockWindowLoading, setClockWindowLoading] = useState(true)
+  const [clockWindowSaving, setClockWindowSaving] = useState(false)
+  const [clockWindowSaved, setClockWindowSaved] = useState(false)
+
   useEffect(() => {
     getCompanyInviteCode().then(res => {
       setInviteCode(res.code ?? null)
@@ -431,6 +438,23 @@ export default function SettingsPage() {
         else setMileageRate('0.6700')
         setMileageRateLoading(false)
       })
+    supabase
+      .from('company_document_settings')
+      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline')
+      .eq('company_id', companyId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setClockWindow({
+            timezone: data.timezone ?? DEFAULT_CLOCK_WINDOW.timezone,
+            enforce_clock_window: data.enforce_clock_window ?? false,
+            clock_in_window_start: data.clock_in_window_start ?? DEFAULT_CLOCK_WINDOW.clock_in_window_start,
+            clock_in_window_end: data.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
+            clock_out_deadline: data.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
+          })
+        }
+        setClockWindowLoading(false)
+      })
   }, [companyId])
 
   async function handleSaveMileageRate(e: React.FormEvent) {
@@ -457,6 +481,31 @@ export default function SettingsPage() {
     setMileageRateSaving(false)
     setMileageRateSaved(true)
     setTimeout(() => setMileageRateSaved(false), 2500)
+  }
+
+  async function handleSaveClockWindow(e: React.FormEvent) {
+    e.preventDefault()
+    if (!companyId) return
+    setClockWindowSaving(true)
+    const supabase = createClient()
+    const { data: existing } = await supabase
+      .from('company_document_settings')
+      .select('id')
+      .eq('company_id', companyId)
+      .maybeSingle()
+    if (existing) {
+      await supabase
+        .from('company_document_settings')
+        .update(clockWindow)
+        .eq('company_id', companyId)
+    } else {
+      await supabase
+        .from('company_document_settings')
+        .insert({ company_id: companyId, ...clockWindow })
+    }
+    setClockWindowSaving(false)
+    setClockWindowSaved(true)
+    setTimeout(() => setClockWindowSaved(false), 2500)
   }
 
   async function handleSaveCompany(e: React.FormEvent) {
@@ -735,6 +784,91 @@ export default function SettingsPage() {
                 {t('common.saveChanges')}
               </Button>
               {mileageRateSaved && (
+                <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
+              )}
+            </div>
+          </form>
+        </Card>
+      </Section>
+
+      {/* Clock-in/out Window */}
+      <Section title="Clock-in/out Window">
+        <Card>
+          <form onSubmit={handleSaveClockWindow} className="space-y-4">
+            {clockWindowLoading ? (
+              <div className="h-11 bg-surface-elevated rounded-input animate-pulse" />
+            ) : (
+              <>
+                <p className="text-xs text-secondary">
+                  Optional — off by default. When on, employees can only clock <em>themselves</em> in during the window below,
+                  and anyone still clocked in past the deadline gets automatically clocked out. Supervisors/admins clocking a
+                  team member in via the Team Clock tool are never restricted by this.
+                </p>
+
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={clockWindow.enforce_clock_window}
+                    onChange={e => setClockWindow(w => ({ ...w, enforce_clock_window: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-brand"
+                  />
+                  <span className="text-sm text-primary">Enforce a clock-in/out window for this company</span>
+                </label>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-secondary">Timezone</label>
+                  <select
+                    value={clockWindow.timezone}
+                    onChange={e => setClockWindow(w => ({ ...w, timezone: e.target.value }))}
+                    className="h-11 w-full rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+                  >
+                    {COMMON_TIMEZONES.map(tz => (
+                      <option key={tz.value} value={tz.value}>{tz.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-secondary">Clock-in opens</label>
+                    <input
+                      type="time"
+                      value={clockWindow.clock_in_window_start}
+                      onChange={e => setClockWindow(w => ({ ...w, clock_in_window_start: e.target.value }))}
+                      className="h-11 w-full rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-secondary">Clock-in closes</label>
+                    <input
+                      type="time"
+                      value={clockWindow.clock_in_window_end}
+                      onChange={e => setClockWindow(w => ({ ...w, clock_in_window_end: e.target.value }))}
+                      className="h-11 w-full rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-secondary">Auto clock-out at</label>
+                    <input
+                      type="time"
+                      value={clockWindow.clock_out_deadline}
+                      onChange={e => setClockWindow(w => ({ ...w, clock_out_deadline: e.target.value }))}
+                      className="h-11 w-full rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="pt-1 flex items-center gap-3">
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={clockWindowSaving}
+                disabled={clockWindowLoading || clockWindowSaving}
+              >
+                {t('common.saveChanges')}
+              </Button>
+              {clockWindowSaved && (
                 <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
               )}
             </div>
