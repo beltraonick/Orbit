@@ -47,12 +47,14 @@ const BLANK_FORM = {
   expense_type: 'reimbursement' as 'company' | 'reimbursement',
   category_id: '',
   project_id: '',
+  notes: '',
 }
 
 const fmt$ = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
 function statusBadge(status: string) {
   if (status === 'approved') return <Badge variant="green">Approved</Badge>
+  if (status === 'paid') return <Badge variant="green">Paid</Badge>
   if (status === 'rejected') return <Badge variant="red">Rejected</Badge>
   if (status === 'needs_review') return <Badge variant="amber">Needs Review</Badge>
   if (status === 'submitted') return <Badge variant="blue">Submitted</Badge>
@@ -69,16 +71,16 @@ export default function EmployeeExpensesPage() {
 
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [_projects, setProjects] = useState<Project[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Expense | null>(null)
   const [form, setForm] = useState({ ...BLANK_FORM })
   const [err, setErr] = useState('')
-  const [scanning, setScanning] = useState(false)
-  const [scanMsg, setScanMsg] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [receiptId, setReceiptId] = useState<string | null>(null)
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null)
   const [showScanner, setShowScanner] = useState(false)
 
   const load = useCallback(async () => {
@@ -105,8 +107,7 @@ export default function EmployeeExpensesPage() {
   if (!canUpload) {
     return (
       <div className="p-4 flex flex-col items-center justify-center min-h-screen gap-3">
-        <p className="text-gray-400 text-center">{t('admin.employees.permissionDesc_upload_receipts')}</p>
-        <p className="text-xs text-gray-400 text-center">You do not have permission to submit expenses. Contact your admin.</p>
+        <p className="text-gray-400 text-center">You do not have permission to submit expenses. Contact your admin.</p>
       </div>
     )
   }
@@ -115,8 +116,8 @@ export default function EmployeeExpensesPage() {
     setEditing(null)
     setForm({ ...BLANK_FORM })
     setErr('')
-    setScanMsg('')
     setReceiptId(null)
+    setReceiptPreviewUrl(null)
     setShowModal(true)
   }
 
@@ -129,22 +130,22 @@ export default function EmployeeExpensesPage() {
       expense_type: exp.expense_type,
       category_id: exp.category?.id ?? '',
       project_id: exp.project?.id ?? '',
+      notes: '',
     })
     setErr('')
-    setScanMsg('')
     setReceiptId(exp.receipt?.id ?? null)
+    setReceiptPreviewUrl(exp.receipt?.file_url ?? null)
     setShowModal(true)
   }
 
   async function handleSave() {
-    if (!form.description.trim()) return setErr('Description required')
     const amt = parseFloat(form.amount)
-    if (!amt || amt <= 0) return setErr('Valid amount required')
+    if (!amt || amt <= 0) return setErr('Enter a valid amount')
 
     setSaving(true)
     setErr('')
     const payload = {
-      description: form.description,
+      description: form.description.trim() || (form.notes.trim() || 'Expense'),
       amount: amt,
       expense_date: form.expense_date,
       expense_type: form.expense_type,
@@ -170,61 +171,44 @@ export default function EmployeeExpensesPage() {
 
   async function handleScanCapture(base64: string, mediaType: string) {
     setShowScanner(false)
-    setScanning(true)
-    setScanMsg('')
+    setUploading(true)
+    setErr('')
     setReceiptId(null)
+    setReceiptPreviewUrl(null)
+
     try {
-      const res = await fetch('/api/receipts/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, media_type: mediaType }),
-      })
-      const data = await res.json()
-      if (data.ok && data.extracted) {
-        const x = data.extracted
-        setForm(f => ({
-          ...f,
-          description: x.merchant ? `${x.merchant}${x.category ? ` — ${x.category}` : ''}` : f.description,
-          amount: x.total != null ? String(x.total) : f.amount,
-          expense_date: x.date ?? f.expense_date,
-        }))
-        if (companyId) {
-          const bytes = atob(base64)
-          const ab = new ArrayBuffer(bytes.length)
-          const ia = new Uint8Array(ab)
-          for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
-          const blob = new Blob([ab], { type: mediaType })
-          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
-          const supabase = createClient()
-          const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
-          if (!uploadErr) {
-            const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
-            const receiptRes = await createReceipt({
-              file_path: path,
-              file_url: urlData.publicUrl,
-              merchant_name: x.merchant ?? null,
-              transaction_date: x.date ?? null,
-              total_amount: x.total ?? null,
-              last_four_digits: x.last_four_digits ?? null,
-            })
-            if (receiptRes.ok && receiptRes.id) setReceiptId(receiptRes.id)
+      if (companyId) {
+        const bytes = atob(base64)
+        const ab = new ArrayBuffer(bytes.length)
+        const ia = new Uint8Array(ab)
+        for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
+        const blob = new Blob([ab], { type: mediaType })
+        const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+        const supabase = createClient()
+        const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
+          const receiptRes = await createReceipt({
+            file_path: path,
+            file_url: urlData.publicUrl,
+          })
+          if (receiptRes.ok && receiptRes.id) {
+            setReceiptId(receiptRes.id)
+            setReceiptPreviewUrl(urlData.publicUrl)
           }
         }
-        setScanMsg('✓ Receipt scanned — review the fields below')
-      } else if (data.error === 'not_configured') {
-        setScanMsg('Scanner not configured. Contact your admin.')
-      } else if (data.error === 'parse_failed') {
-        setScanMsg('AI couldn\'t extract data — try a clearer photo with better lighting.')
-      } else if (data.error === 'unsupported_type') {
-        setScanMsg(data.message ?? 'Only JPEG and PNG images are supported.')
-      } else {
-        setScanMsg(data.message ? `Scan failed: ${data.message}` : 'Could not read receipt. Fill in manually.')
       }
     } catch {
-      setScanMsg('Scan failed. Fill in manually.')
+      // Photo still usable even if upload fails — just no stored receipt
     } finally {
-      setScanning(false)
+      setUploading(false)
     }
+
+    // Open the form with today's date pre-filled
+    setEditing(null)
+    setForm({ ...BLANK_FORM })
+    setErr('')
+    setShowModal(true)
   }
 
   async function handleDelete(id: string) {
@@ -234,16 +218,35 @@ export default function EmployeeExpensesPage() {
   }
 
   const pending = expenses.filter(e => ['draft', 'submitted', 'needs_review'].includes(e.approval_status))
-  const history = expenses.filter(e => ['approved', 'rejected'].includes(e.approval_status))
+  const history = expenses.filter(e => ['approved', 'rejected', 'paid'].includes(e.approval_status))
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">{e('title')}</h1>
           <p className="text-sm text-gray-500">{e('subtitle')}</p>
         </div>
-        <Button onClick={openAdd}>{e('addExpense')}</Button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => setShowScanner(true)}
+            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-sm font-semibold transition-all border active:scale-[.98]"
+            style={uploading
+              ? { backgroundColor: '#f3f4f6', color: '#9ca3af', borderColor: '#e5e7eb', cursor: 'not-allowed' }
+              : { backgroundColor: '#3b82f6', color: '#ffffff', borderColor: '#3b82f6', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }
+            }
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            {uploading ? 'Uploading…' : 'Scan'}
+          </button>
+          <Button onClick={openAdd}>{e('addExpense')}</Button>
+        </div>
       </div>
 
       {loading ? (
@@ -272,7 +275,7 @@ export default function EmployeeExpensesPage() {
                           rel="noopener noreferrer"
                           className="text-xs text-blue hover:opacity-80 mt-1 inline-block"
                         >
-                          View receipt{exp.receipt.last_four_digits ? ` · Card •••• ${exp.receipt.last_four_digits}` : ''}
+                          View receipt
                         </a>
                       )}
                     </div>
@@ -314,7 +317,7 @@ export default function EmployeeExpensesPage() {
         </>
       )}
 
-      {/* Modal */}
+      {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-3 sm:p-6">
           <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-3xl flex flex-col">
@@ -327,48 +330,87 @@ export default function EmployeeExpensesPage() {
             </div>
 
             <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
-              {/* Receipt scanner button */}
-              <button
-                type="button"
-                disabled={scanning}
-                onClick={() => setShowScanner(true)}
-                className="flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl transition-all text-sm font-semibold select-none border active:scale-[.98]"
-                style={scanning
-                  ? { backgroundColor: '#f3f4f6', color: '#9ca3af', borderColor: '#e5e7eb', cursor: 'not-allowed' }
-                  : { backgroundColor: '#3b82f6', color: '#ffffff', borderColor: '#3b82f6', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }
-                }
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
-                {scanning ? 'Scanning…' : 'Scan Receipt with AI'}
-              </button>
-              {scanMsg && (
-                <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green' : 'text-amber'}`}>{scanMsg}</p>
+              {/* Receipt preview */}
+              {receiptPreviewUrl && (
+                <div className="rounded-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={receiptPreviewUrl} alt="Receipt" className="w-full object-cover max-h-40" />
+                </div>
+              )}
+              {!receiptPreviewUrl && !editing && (
+                <button
+                  type="button"
+                  onClick={() => { setShowModal(false); setShowScanner(true) }}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                  Attach a receipt photo
+                </button>
               )}
 
-              <div className="flex items-center gap-3 py-0.5">
-                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
-                <span className="text-[11px] text-gray-400 font-medium tracking-wide uppercase">or fill manually</span>
-                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
-              </div>
+              <Input
+                label="Merchant / Store"
+                value={form.description}
+                onChange={ev => setForm(f => ({ ...f, description: ev.target.value }))}
+                placeholder="e.g. Home Depot"
+              />
 
-              <Input label={e('description')} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={e('descriptionPlaceholder')} />
+              <Input
+                label={`${e('amount')} *`}
+                type="number"
+                value={form.amount}
+                onChange={ev => setForm(f => ({ ...f, amount: ev.target.value }))}
+                placeholder="0.00"
+              />
 
-              <Input label={e('amount')} type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
-              <Input label={e('date')} type="date" value={form.expense_date} onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
+              <Input
+                label={`${e('date')} *`}
+                type="date"
+                value={form.expense_date}
+                onChange={ev => setForm(f => ({ ...f, expense_date: ev.target.value }))}
+              />
 
               {categories.length > 0 && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('category')}</label>
-                  <select value={form.category_id} onChange={ev => setForm(f => ({ ...f, category_id: ev.target.value }))}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                  <select
+                    value={form.category_id}
+                    onChange={ev => setForm(f => ({ ...f, category_id: ev.target.value }))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
                     <option value="">— Select —</option>
                     {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </div>
               )}
+
+              {projects.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Project</label>
+                  <select
+                    value={form.project_id}
+                    onChange={ev => setForm(f => ({ ...f, project_id: ev.target.value }))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">— None —</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={ev => setForm(f => ({ ...f, notes: ev.target.value }))}
+                  placeholder="Optional note…"
+                  rows={2}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none"
+                />
+              </div>
 
               {err && <p className="text-red-500 text-sm">{err}</p>}
 

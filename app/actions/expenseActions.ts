@@ -353,6 +353,32 @@ export async function deleteExpense(expenseId: string) {
   return { ok: true }
 }
 
+export async function markExpensePaid(expenseId: string) {
+  const user = getCurrentUser()
+  if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
+
+  const supabase = createClient()
+  const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
+  if (!profile) return { error: 'Profile not found' }
+
+  const { error } = await supabase
+    .from('expenses')
+    .update({
+      approval_status: 'paid',
+      paid_at: new Date().toISOString(),
+      paid_by: profile.id,
+    })
+    .eq('id', expenseId)
+    .eq('company_id', user.company_id)
+    .eq('approval_status', 'approved')
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/expenses')
+  revalidatePath('/admin/receipts')
+  revalidatePath('/expenses')
+  return { ok: true }
+}
+
 // ─── Pending approvals count (for dashboard badge) ────────────────────────────
 
 export async function getPendingApprovalsCount() {

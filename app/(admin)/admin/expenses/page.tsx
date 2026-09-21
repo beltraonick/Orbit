@@ -82,9 +82,9 @@ export default function ExpensesPage() {
   const [reviewNotes, setReviewNotes] = useState('')
   const [form, setForm] = useState({ ...BLANK_FORM })
   const [err, setErr] = useState('')
-  const [scanning, setScanning] = useState(false)
-  const [scanMsg, setScanMsg] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [receiptId, setReceiptId] = useState<string | null>(null)
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null)
   const [showScanner, setShowScanner] = useState(false)
 
   const load = useCallback(async () => {
@@ -112,8 +112,8 @@ export default function ExpensesPage() {
     setEditing(null)
     setForm({ ...BLANK_FORM })
     setErr('')
-    setScanMsg('')
     setReceiptId(null)
+    setReceiptPreviewUrl(null)
     setShowModal(true)
   }
 
@@ -128,8 +128,8 @@ export default function ExpensesPage() {
       project_id: exp.project?.id ?? '',
     })
     setErr('')
-    setScanMsg('')
     setReceiptId(exp.receipt?.id ?? null)
+    setReceiptPreviewUrl(exp.receipt?.file_url ?? null)
     setShowModal(true)
   }
 
@@ -162,61 +162,37 @@ export default function ExpensesPage() {
 
   async function handleScanCapture(base64: string, mediaType: string) {
     setShowScanner(false)
-    setScanning(true)
-    setScanMsg('')
+    setUploading(true)
     setReceiptId(null)
+    setReceiptPreviewUrl(null)
     try {
-      const res = await fetch('/api/receipts/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, media_type: mediaType }),
-      })
-      const data = await res.json()
-      if (data.ok && data.extracted) {
-        const x = data.extracted
-        setForm(f => ({
-          ...f,
-          description: x.merchant ? `${x.merchant}${x.category ? ` — ${x.category}` : ''}` : f.description,
-          amount: x.total != null ? String(x.total) : f.amount,
-          expense_date: x.date ?? f.expense_date,
-        }))
-        if (companyId) {
-          const bytes = atob(base64)
-          const ab = new ArrayBuffer(bytes.length)
-          const ia = new Uint8Array(ab)
-          for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
-          const blob = new Blob([ab], { type: mediaType })
-          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
-          const supabase = createClient()
-          const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
-          if (!uploadErr) {
-            const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
-            const receiptRes = await createReceipt({
-              file_path: path,
-              file_url: urlData.publicUrl,
-              merchant_name: x.merchant ?? null,
-              transaction_date: x.date ?? null,
-              total_amount: x.total ?? null,
-              last_four_digits: x.last_four_digits ?? null,
-            })
-            if (receiptRes.ok && receiptRes.id) setReceiptId(receiptRes.id)
+      if (companyId) {
+        const bytes = atob(base64)
+        const ab = new ArrayBuffer(bytes.length)
+        const ia = new Uint8Array(ab)
+        for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
+        const blob = new Blob([ab], { type: mediaType })
+        const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
+        const supabase = createClient()
+        const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
+          const receiptRes = await createReceipt({ file_path: path, file_url: urlData.publicUrl })
+          if (receiptRes.ok && receiptRes.id) {
+            setReceiptId(receiptRes.id)
+            setReceiptPreviewUrl(urlData.publicUrl)
           }
         }
-        setScanMsg('✓ Receipt scanned — review the fields below')
-      } else if (data.error === 'not_configured') {
-        setScanMsg('Scanner not configured. Contact your admin.')
-      } else if (data.error === 'parse_failed') {
-        setScanMsg('AI couldn\'t extract data — try a clearer photo with better lighting.')
-      } else if (data.error === 'unsupported_type') {
-        setScanMsg(data.message ?? 'Only JPEG and PNG images are supported.')
-      } else {
-        setScanMsg(data.message ? `Scan failed: ${data.message}` : 'Could not read receipt. Fill in manually.')
       }
     } catch {
-      setScanMsg('Scan failed. Fill in manually.')
+      // Proceed to form even if upload fails
     } finally {
-      setScanning(false)
+      setUploading(false)
     }
+    setEditing(null)
+    setForm({ ...BLANK_FORM })
+    setErr('')
+    setShowModal(true)
   }
 
   async function handleDelete(id: string) {
@@ -264,7 +240,25 @@ export default function ExpensesPage() {
           <h1 className="text-2xl font-bold">{e('title')}</h1>
           <p className="text-sm text-gray-500 mt-0.5">{e('subtitle')}</p>
         </div>
-        <Button onClick={openAdd}>{e('addExpense')}</Button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => setShowScanner(true)}
+            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-sm font-semibold transition-all border active:scale-[.98]"
+            style={uploading
+              ? { backgroundColor: '#f3f4f6', color: '#9ca3af', borderColor: '#e5e7eb', cursor: 'not-allowed' }
+              : { backgroundColor: '#3b82f6', color: '#ffffff', borderColor: '#3b82f6', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }
+            }
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            {uploading ? 'Uploading…' : 'Scan'}
+          </button>
+          <Button onClick={openAdd}>{e('addExpense')}</Button>
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -388,33 +382,25 @@ export default function ExpensesPage() {
             </div>
 
             <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
-              {/* Receipt scanner button */}
-              <button
-                type="button"
-                disabled={scanning}
-                onClick={() => setShowScanner(true)}
-                className="flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl transition-all text-sm font-semibold select-none border active:scale-[.98]"
-                style={scanning
-                  ? { backgroundColor: '#f3f4f6', color: '#9ca3af', borderColor: '#e5e7eb', cursor: 'not-allowed' }
-                  : { backgroundColor: '#3b82f6', color: '#ffffff', borderColor: '#3b82f6', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }
-                }
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                  <circle cx="12" cy="13" r="4"/>
-                </svg>
-                {scanning ? 'Scanning…' : 'Scan Receipt with AI'}
-              </button>
-              {scanMsg && (
-                <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green' : 'text-amber'}`}>{scanMsg}</p>
+              {/* Receipt preview or attach button */}
+              {receiptPreviewUrl ? (
+                <div className="rounded-xl overflow-hidden border border-gray-100 dark:border-gray-800">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={receiptPreviewUrl} alt="Receipt" className="w-full object-cover max-h-40" />
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setShowModal(false); setShowScanner(true) }}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                  Attach a receipt photo
+                </button>
               )}
-
-              {/* Divider */}
-              <div className="flex items-center gap-3 py-0.5">
-                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
-                <span className="text-[11px] text-gray-400 font-medium tracking-wide uppercase">or fill manually</span>
-                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
-              </div>
 
               <Input
                 label={e('description')}

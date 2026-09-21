@@ -12,6 +12,7 @@ export function ReceiptScanner({ onCapture, onClose }: Props) {
   const streamRef = useRef<MediaStream | null>(null)
   const [ready, setReady] = useState(false)
   const [cameraError, setCameraError] = useState(false)
+  const [captured, setCaptured] = useState<{ base64: string; mediaType: string; dataUrl: string } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -55,15 +56,17 @@ export function ReceiptScanner({ onCapture, onClose }: Props) {
     canvas.height = h
     canvas.getContext('2d')!.drawImage(video, 0, 0, w, h)
     stopCamera()
-    onCapture(canvas.toDataURL('image/jpeg', 0.9).split(',')[1], 'image/jpeg')
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+    const base64 = dataUrl.split(',')[1]
+    setCaptured({ base64, mediaType: 'image/jpeg', dataUrl })
   }
 
-  function compressAndReturn(file: File) {
+  function compressFile(file: File) {
     const reader = new FileReader()
     reader.onload = () => {
       const img = new Image()
       img.onload = () => {
-        const MAX_PX = 1024
+        const MAX_PX = 1600
         const scale = Math.min(1, MAX_PX / Math.max(img.width, img.height))
         const w = Math.round(img.width * scale)
         const h = Math.round(img.height * scale)
@@ -72,7 +75,9 @@ export function ReceiptScanner({ onCapture, onClose }: Props) {
         canvas.height = h
         canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
         stopCamera()
-        onCapture(canvas.toDataURL('image/jpeg', 0.85).split(',')[1], 'image/jpeg')
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+        const base64 = dataUrl.split(',')[1]
+        setCaptured({ base64, mediaType: 'image/jpeg', dataUrl })
       }
       img.src = reader.result as string
     }
@@ -81,7 +86,79 @@ export function ReceiptScanner({ onCapture, onClose }: Props) {
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) compressAndReturn(file)
+    if (file) compressFile(file)
+  }
+
+  function handleRetake() {
+    setCaptured(null)
+    // Restart camera
+    navigator.mediaDevices
+      ?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } } })
+      .then(stream => {
+        streamRef.current = stream
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play().then(() => setReady(true))
+        }
+      })
+      .catch(() => setCameraError(true))
+  }
+
+  function handleConfirm() {
+    if (!captured) return
+    onCapture(captured.base64, captured.mediaType)
+  }
+
+  /* ── Review screen ── */
+  if (captured) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-black flex flex-col select-none" style={{ touchAction: 'none' }}>
+        {/* Header */}
+        <div className="relative flex items-center justify-center px-5 pb-2" style={{ paddingTop: 'max(48px, env(safe-area-inset-top, 0px) + 16px)' }}>
+          <button
+            onClick={handleClose}
+            className="absolute left-5 text-white/70 text-sm font-medium active:opacity-50 transition-opacity"
+          >
+            Cancel
+          </button>
+          <span className="text-white text-sm font-semibold tracking-wide">Review Photo</span>
+        </div>
+
+        {/* Image preview */}
+        <div className="flex-1 relative overflow-hidden flex items-center justify-center p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={captured.dataUrl}
+            alt="Captured receipt"
+            className="max-w-full max-h-full object-contain rounded-xl"
+            style={{ boxShadow: '0 4px 30px rgba(0,0,0,0.5)' }}
+          />
+        </div>
+
+        <p className="text-white/50 text-xs text-center py-2 px-8">Make sure the receipt is clear and readable</p>
+
+        {/* Bottom controls */}
+        <div
+          className="flex items-center gap-4 px-6"
+          style={{ paddingBottom: 'max(40px, env(safe-area-inset-bottom, 0px) + 28px)' }}
+        >
+          <button
+            onClick={handleRetake}
+            className="flex-1 py-3.5 rounded-2xl text-sm font-semibold text-white transition-opacity active:opacity-70"
+            style={{ background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.25)' }}
+          >
+            Retake
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="flex-1 py-3.5 rounded-2xl text-sm font-semibold text-white transition-opacity active:opacity-70"
+            style={{ background: '#3b82f6' }}
+          >
+            Use Photo
+          </button>
+        </div>
+      </div>
+    )
   }
 
   /* ── Camera unavailable: show file picker ── */

@@ -28,6 +28,7 @@ export default async function EmployeeHomePage() {
   let openEntryId: string | null = null
   let clockInTime: string | null = null
   let isSupervisor = false
+  let canSelfClock = true
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let weekHours = 0
   let weekEarnings = 0
@@ -67,6 +68,11 @@ export default async function EmployeeHomePage() {
       if (profile) {
         profileId = profile.id
         isSupervisor = user.role === 'admin' || hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
+        // self_clockin defaults to true for all employees (migration 034 backfills this)
+        // For admins always allow; for employees check the permission (absent = true for backwards compat)
+        const perms = profile.permissions as EmployeePermissions | null
+        const selfClockPerm = perms?.self_clockin
+        canSelfClock = user.role === 'admin' || selfClockPerm !== false
 
         const weekStart = new Date(today)
         weekStart.setDate(today.getDate() - today.getDay())
@@ -177,6 +183,7 @@ export default async function EmployeeHomePage() {
             clockInTime={clockInTime}
             isSupervisor={isSupervisor}
             clockWindow={clockWindow}
+            canSelfClock={canSelfClock}
           />
         ) : (
           <div className="flex flex-col items-center gap-4 py-2">

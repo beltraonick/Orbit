@@ -12,6 +12,7 @@ export interface EmployeePermissions {
   track_mileage?: boolean
   manual_mileage?: boolean
   upload_receipts?: boolean
+  self_clockin?: boolean
 }
 
 export const PERMISSION_KEYS = [
@@ -23,6 +24,7 @@ export const PERMISSION_KEYS = [
   'track_mileage',
   'manual_mileage',
   'upload_receipts',
+  'self_clockin',
 ] as const
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number]
