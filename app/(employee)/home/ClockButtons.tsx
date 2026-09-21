@@ -60,6 +60,7 @@ export function ClockButtons({ employeeId, companyId, openEntryId, clockInTime }
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('')
   const [locationInfo, setLocationInfo] = useState('')
+  const [confirmingOut, setConfirmingOut] = useState(false)
 
   // Optimistic local state — lets clock in/out work instantly even
   // offline, without waiting on (or depending on) a server round-trip.
@@ -115,10 +116,11 @@ export function ClockButtons({ employeeId, companyId, openEntryId, clockInTime }
     setLocationInfo('')
   }
 
-  async function clockOut() {
+  async function clockOut(isFullDay: boolean) {
     if (!localEntryId) return
     setLoading(true)
-    const payload = { clock_out: new Date().toISOString() }
+    setConfirmingOut(false)
+    const payload = { clock_out: new Date().toISOString(), is_full_day: isFullDay }
 
     setClockedIn(false)
     setLocalClockInTime(null)
@@ -149,15 +151,41 @@ export function ClockButtons({ employeeId, companyId, openEntryId, clockInTime }
           <span className="w-2 h-2 rounded-full bg-green animate-pulse" />
           <span className="text-sm text-green font-medium">{t('employee.clockButtons.clockedIn')}</span>
         </div>
-        <p className="text-4xl font-bold text-primary tracking-widest font-mono">{elapsed}</p>
         {localClockInTime && (
-          <p className="text-xs text-secondary">
+          <p className="text-sm text-secondary">
             {t('employee.clockButtons.sinceLabel')} {new Date(localClockInTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
           </p>
         )}
-        <Button variant="danger" size="lg" onClick={clockOut} loading={loading} className="w-full mt-1">
-          {t('employee.clockButtons.clockOut')}
-        </Button>
+        <p className="text-lg font-semibold text-tertiary tracking-wide font-mono tabular-nums">{elapsed}</p>
+
+        {!confirmingOut ? (
+          <Button variant="danger" size="lg" onClick={() => setConfirmingOut(true)} loading={loading} className="w-full mt-1">
+            {t('employee.clockButtons.clockOut')}
+          </Button>
+        ) : (
+          <div className="w-full flex flex-col gap-2 mt-1">
+            <p className="text-xs font-medium text-secondary text-center">{t('supervisor.clockIn.fullDayQuestion')}</p>
+            <div className="flex gap-2 w-full">
+              <button
+                onClick={() => clockOut(true)}
+                disabled={loading}
+                className="flex-1 py-2.5 rounded-button text-sm font-medium bg-brand text-white disabled:opacity-50"
+              >
+                {t('supervisor.clockIn.fullDay')}
+              </button>
+              <button
+                onClick={() => clockOut(false)}
+                disabled={loading}
+                className="flex-1 py-2.5 rounded-button text-sm font-medium bg-amber text-white disabled:opacity-50"
+              >
+                {t('supervisor.clockIn.partialDay')}
+              </button>
+            </div>
+            <button onClick={() => setConfirmingOut(false)} disabled={loading} className="text-xs text-secondary underline">
+              {t('common.cancel')}
+            </button>
+          </div>
+        )}
       </div>
     )
   }

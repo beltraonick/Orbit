@@ -199,7 +199,7 @@ export default function ApprovalsPage() {
       {/* Batch controls */}
       {displayed.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={toggleAll} className="text-sm text-blue-500 underline">
+          <button onClick={toggleAll} className="text-sm text-blue underline">
             {selected.size === displayed.length ? a('deselectAll') : a('selectAll')}
           </button>
           {selected.size > 0 && (
@@ -220,7 +220,7 @@ export default function ApprovalsPage() {
       ) : (
         <div className="space-y-3">
           {displayed.map(item => (
-            <Card key={item.id} className={`p-4 ${selected.has(item.id) ? 'ring-2 ring-blue-500' : ''}`}>
+            <Card key={item.id} className={`p-4 ${selected.has(item.id) ? 'ring-2 ring-blue' : ''}`}>
               <div className="flex items-start gap-3">
                 <input
                   type="checkbox"

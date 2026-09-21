@@ -263,11 +263,11 @@ export default function EmployeeMileagePage() {
 
       {/* GPS Trip button */}
       {gps.active ? (
-        <Card className="p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+        <Card className="p-4 bg-green/10 border-green/20">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-semibold text-green-700 dark:text-green-400">{m('gpsTracking')}</p>
-              <p className="text-sm text-green-600 dark:text-green-500">{fmtMi(liveDistance)} recorded</p>
+              <p className="font-semibold text-green">{m('gpsTracking')}</p>
+              <p className="text-sm text-green">{fmtMi(liveDistance)} recorded</p>
             </div>
             <Button onClick={endGps} disabled={saving}>{m('endGps')}</Button>
           </div>
@@ -305,7 +305,7 @@ export default function EmployeeMileagePage() {
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-medium">{fmtMi(trip.distance_miles)}</div>
-                      <div className="text-green-600 font-bold">{fmt$(trip.reimbursement_amount)}</div>
+                      <div className="text-green font-bold">{fmt$(trip.reimbursement_amount)}</div>
                       {trip.approval_status === 'draft' && (
                         <div className="flex gap-1 mt-2">
                           {canManual && <Button size="sm" variant="ghost" onClick={() => openEdit(trip)}>{m('editTrip')}</Button>}

@@ -242,11 +242,11 @@ export default function ExpensesPage() {
         </Card>
         <Card className="p-3 text-center">
           <div className="text-xs text-gray-500">{e('summaryPending')}</div>
-          <div className="text-lg font-bold mt-1 text-amber-600">{fmt$(pending)}</div>
+          <div className="text-lg font-bold mt-1 text-amber">{fmt$(pending)}</div>
         </Card>
         <Card className="p-3 text-center">
           <div className="text-xs text-gray-500">{e('summaryApproved')}</div>
-          <div className="text-lg font-bold mt-1 text-green-600">{fmt$(approved)}</div>
+          <div className="text-lg font-bold mt-1 text-green">{fmt$(approved)}</div>
         </Card>
       </div>
 
@@ -349,7 +349,7 @@ export default function ExpensesPage() {
               <label className={`flex items-center justify-center gap-2.5 w-full py-3 rounded-xl cursor-pointer transition-all text-sm font-semibold select-none
                 ${scanning
                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
-                  : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/60 active:scale-[.98]'
+                  : 'bg-blue/10 text-blue hover:bg-blue/15 active:scale-[.98]'
                 }`}>
                 <input
                   type="file"
@@ -365,7 +365,7 @@ export default function ExpensesPage() {
                 {scanning ? 'Scanning…' : 'Scan Receipt with AI'}
               </label>
               {scanMsg && (
-                <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>{scanMsg}</p>
+                <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green' : 'text-amber'}`}>{scanMsg}</p>
               )}
 
               {/* Divider */}
