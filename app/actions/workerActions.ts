@@ -304,3 +304,53 @@ export async function getProjectTeamStatus(projectId?: string) {
 
   return { ok: true, team }
 }
+
+// ─── Admin: manual time entry ─────────────────────────────────────────────────
+
+export async function createManualTimeEntry(data: {
+  profileId?: string
+  workerId?: string
+  clockIn: string
+  clockOut?: string
+  projectId?: string
+  notes?: string
+}) {
+  const user = getCurrentUser()
+  if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
+
+  if (!data.profileId && !data.workerId) return { error: 'Must provide profileId or workerId' }
+
+  if (data.clockOut && new Date(data.clockOut) <= new Date(data.clockIn)) {
+    return { error: 'Clock-out must be after clock-in' }
+  }
+
+  const supabase = createClient()
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', user.email)
+    .eq('company_id', user.company_id)
+    .maybeSingle()
+
+  if (!profile) return { error: 'Profile not found' }
+
+  const { error } = await supabase
+    .from('time_entries')
+    .insert({
+      company_id: user.company_id,
+      project_id: data.projectId ?? null,
+      employee_id: data.profileId ?? null,
+      worker_id: data.workerId ?? null,
+      clock_in: data.clockIn,
+      clock_out: data.clockOut ?? null,
+      clocked_by_profile_id: profile.id,
+      is_manual_entry: true,
+      notes: data.notes?.trim() || null,
+      approval_status: 'approved',
+    })
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/time')
+  return { ok: true }
+}
