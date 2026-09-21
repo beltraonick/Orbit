@@ -272,46 +272,68 @@ export default function EmployeeExpensesPage() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center p-4">
-          <Card className="w-full max-w-md p-5 space-y-4">
-            <h2 className="font-semibold text-lg">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end justify-center p-3">
+          <Card padding="none" className="w-full max-w-md overflow-hidden max-h-[92vh] rounded-2xl flex flex-col">
+            <div className="flex items-center justify-between px-5 pt-5 pb-1">
+              <h2 className="font-semibold text-[17px] tracking-tight">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
+              >✕</button>
+            </div>
 
-            {/* Receipt scanner */}
-            <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-sm font-medium
-              ${scanning ? 'border-gray-300 text-gray-400' : 'border-blue-400 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30'}`}>
-              <input
-                type="file"
-                accept="image/jpeg,image/png"
-                className="hidden"
-                disabled={scanning}
-                onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
-              />
-              {scanning ? '📷 Scanning…' : '📷 Scan Receipt (AI)'}
-            </label>
-            {scanMsg && (
-              <p className={`text-xs ${scanMsg.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>{scanMsg}</p>
-            )}
+            <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
+              {/* Receipt scanner — Apple-style */}
+              <label className={`flex items-center justify-center gap-2.5 w-full py-3 rounded-xl cursor-pointer transition-all text-sm font-semibold select-none
+                ${scanning
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                  : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/60 active:scale-[.98]'
+                }`}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  disabled={scanning}
+                  onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
+                />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                {scanning ? 'Scanning…' : 'Scan Receipt with AI'}
+              </label>
+              {scanMsg && (
+                <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>{scanMsg}</p>
+              )}
 
-            <Input label={e('description')} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={e('descriptionPlaceholder')} />
-            <Input label={e('amount')} type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
-            <Input label={e('date')} type="date" value={form.expense_date} onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
-
-            {categories.length > 0 && (
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('category')}</label>
-                <select value={form.category_id} onChange={ev => setForm(f => ({ ...f, category_id: ev.target.value }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800">
-                  <option value="">— Select —</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+              <div className="flex items-center gap-3 py-0.5">
+                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
+                <span className="text-[11px] text-gray-400 font-medium tracking-wide uppercase">or fill manually</span>
+                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
               </div>
-            )}
 
-            {err && <p className="text-red-500 text-sm">{err}</p>}
+              <Input label={e('description')} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={e('descriptionPlaceholder')} />
 
-            <div className="flex gap-2 pt-1">
-              <Button onClick={handleSave} disabled={saving} className="flex-1">{saving ? 'Saving…' : e('saveDraft')}</Button>
-              <Button variant="ghost" onClick={() => setShowModal(false)} className="flex-1">{t('common.cancel')}</Button>
+              <Input label={e('amount')} type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+              <Input label={e('date')} type="date" value={form.expense_date} onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))} />
+
+              {categories.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('category')}</label>
+                  <select value={form.category_id} onChange={ev => setForm(f => ({ ...f, category_id: ev.target.value }))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                    <option value="">— Select —</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {err && <p className="text-red-500 text-sm">{err}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button onClick={handleSave} disabled={saving} className="flex-1">{saving ? 'Saving…' : e('saveDraft')}</Button>
+                <Button variant="ghost" onClick={() => setShowModal(false)} className="flex-1">{t('common.cancel')}</Button>
+              </div>
             </div>
           </Card>
         </div>
