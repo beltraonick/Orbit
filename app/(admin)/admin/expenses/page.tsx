@@ -19,6 +19,7 @@ import {
 } from '@/app/actions/expenseActions'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
+import { ReceiptScanner } from '@/components/ReceiptScanner'
 
 const RECEIPT_BUCKET = 'receipts'
 
@@ -84,6 +85,7 @@ export default function ExpensesPage() {
   const [scanning, setScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState('')
   const [receiptId, setReceiptId] = useState<string | null>(null)
+  const [showScanner, setShowScanner] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -158,39 +160,16 @@ export default function ExpensesPage() {
     load()
   }
 
-  async function compressImage(file: File): Promise<{ base64: string; media_type: string }> {
-    const MAX_PX = 1024
-    return new Promise((resolve, reject) => {
-      const img = new Image()
-      const objectUrl = URL.createObjectURL(file)
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl)
-        const scale = Math.min(1, MAX_PX / Math.max(img.width, img.height))
-        const w = Math.round(img.width * scale)
-        const h = Math.round(img.height * scale)
-        const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')!
-        ctx.drawImage(img, 0, 0, w, h)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-        resolve({ base64: dataUrl.split(',')[1], media_type: 'image/jpeg' })
-      }
-      img.onerror = reject
-      img.src = objectUrl
-    })
-  }
-
-  async function handleScanReceipt(file: File) {
+  async function handleScanCapture(base64: string, mediaType: string) {
+    setShowScanner(false)
     setScanning(true)
     setScanMsg('')
     setReceiptId(null)
     try {
-      const { base64, media_type } = await compressImage(file)
       const res = await fetch('/api/receipts/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, media_type }),
+        body: JSON.stringify({ base64, media_type: mediaType }),
       })
       const data = await res.json()
       if (data.ok && data.extracted) {
@@ -201,13 +180,15 @@ export default function ExpensesPage() {
           amount: x.total != null ? String(x.total) : f.amount,
           expense_date: x.date ?? f.expense_date,
         }))
-
-        // Keep the photo — previously it was discarded right after the scan.
         if (companyId) {
-          const ext = file.name.split('.').pop() || 'jpg'
-          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+          const bytes = atob(base64)
+          const ab = new ArrayBuffer(bytes.length)
+          const ia = new Uint8Array(ab)
+          for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i)
+          const blob = new Blob([ab], { type: mediaType })
+          const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`
           const supabase = createClient()
-          const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, file)
+          const { error: uploadErr } = await supabase.storage.from(RECEIPT_BUCKET).upload(path, blob)
           if (!uploadErr) {
             const { data: urlData } = supabase.storage.from(RECEIPT_BUCKET).getPublicUrl(path)
             const receiptRes = await createReceipt({
@@ -221,7 +202,6 @@ export default function ExpensesPage() {
             if (receiptRes.ok && receiptRes.id) setReceiptId(receiptRes.id)
           }
         }
-
         setScanMsg('✓ Receipt scanned — review the fields below')
       } else if (data.error === 'not_configured') {
         setScanMsg('Scanner not configured. Contact your admin.')
@@ -408,25 +388,23 @@ export default function ExpensesPage() {
             </div>
 
             <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
-              {/* Receipt scanner */}
-              <label className={`flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl cursor-pointer transition-all text-sm font-semibold select-none border
-                ${scanning
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700'
-                  : 'bg-blue/10 text-blue border-blue/20 hover:bg-blue/15 active:scale-[.98]'
-                }`}>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png"
-                  className="hidden"
-                  disabled={scanning}
-                  onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
-                />
+              {/* Receipt scanner button */}
+              <button
+                type="button"
+                disabled={scanning}
+                onClick={() => setShowScanner(true)}
+                className={`flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl transition-all text-sm font-semibold select-none border
+                  ${scanning
+                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                    : 'bg-blue-500 dark:bg-blue-600 text-white border-blue-500 dark:border-blue-600 hover:bg-blue-600 dark:hover:bg-blue-700 active:scale-[.98] shadow-sm cursor-pointer'
+                  }`}
+              >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
                 {scanning ? 'Scanning…' : 'Scan Receipt with AI'}
-              </label>
+              </button>
               {scanMsg && (
                 <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green' : 'text-amber'}`}>{scanMsg}</p>
               )}
@@ -519,6 +497,13 @@ export default function ExpensesPage() {
             </div>
           </Card>
         </div>
+      )}
+
+      {showScanner && (
+        <ReceiptScanner
+          onCapture={handleScanCapture}
+          onClose={() => setShowScanner(false)}
+        />
       )}
     </div>
   )
