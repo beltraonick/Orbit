@@ -77,7 +77,8 @@ export async function POST(req: Request) {
   "date": "YYYY-MM-DD or null",
   "total": number or null,
   "tax": number or null,
-  "category": "one of: food, fuel, supplies, equipment, travel, lodging, utilities, other"
+  "category": "one of: food, fuel, supplies, equipment, travel, lodging, utilities, other",
+  "last_four_digits": "last 4 digits of the card used, if printed on the receipt, or null"
 }
 If a field cannot be determined, use null. Amounts should be numbers (no currency symbols).`,
             },
