@@ -230,40 +230,50 @@ export default function MileagePage() {
       </div>
 
       {/* Rate — inline editor */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-surface-elevated border border-[var(--border)]">
+        <div className="flex-1">
+          <p className="text-xs text-secondary font-medium uppercase tracking-wide">{m('currentRate')}</p>
+          {editingRate ? (
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-sm text-secondary">$</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={rateInput}
+                onChange={e => setRateInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveRate(); if (e.key === 'Escape') setEditingRate(false) }}
+                className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                autoFocus
+              />
+              <span className="text-sm text-secondary">/mi</span>
+            </div>
+          ) : (
+            <p className="text-lg font-bold text-primary">{fmt$(rate)}<span className="text-xs font-normal text-secondary ml-1">/mi</span></p>
+          )}
+        </div>
         {editingRate ? (
-          <>
-            <span className="text-xs text-gray-400">{m('currentRate')}:</span>
-            <span className="text-xs text-gray-400">$</span>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={rateInput}
-              onChange={e => setRateInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSaveRate(); if (e.key === 'Escape') setEditingRate(false) }}
-              className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-0.5 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              autoFocus
-            />
-            <span className="text-xs text-gray-400">/mi</span>
+          <div className="flex items-center gap-2">
             <button
               onClick={handleSaveRate}
               disabled={savingRate}
-              className="text-xs font-medium text-blue hover:opacity-80 disabled:opacity-50"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand text-white disabled:opacity-50"
             >{savingRate ? 'Saving…' : 'Save'}</button>
             <button
               onClick={() => setEditingRate(false)}
-              className="text-xs text-gray-400 hover:text-gray-600"
+              className="text-xs text-secondary hover:text-primary"
             >Cancel</button>
-          </>
+          </div>
         ) : (
-          <>
-            <span className="text-xs text-gray-400">{m('currentRate')}: {fmt$(rate)}{m('perMile')}</span>
-            <button
-              onClick={() => { setRateInput(String(rate)); setEditingRate(true) }}
-              className="text-xs font-medium text-blue hover:opacity-80"
-            >Edit</button>
-          </>
+          <button
+            onClick={() => { setRateInput(String(rate)); setEditingRate(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-[var(--border)] text-primary hover:bg-surface transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <path d="M12.146.854a.5.5 0 01.707 0l2.293 2.293a.5.5 0 010 .707L4.854 14.146a.5.5 0 01-.353.146H2a.5.5 0 01-.5-.5v-2.5a.5.5 0 01.146-.354L12.146.854z"/>
+            </svg>
+            Edit Rate
+          </button>
         )}
       </div>
 

@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { t } from '@/lib/i18n/translate'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -160,17 +161,20 @@ export default async function EmployeeHomePage() {
             {today.toLocaleDateString(locale === 'pt' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
           </p>
         </div>
-        <LogoutForm>
-          <button
-            type="submit"
-            className="p-2 rounded-button text-secondary hover:text-danger hover:bg-danger/10 transition-colors"
-            aria-label="Sign Out"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-              <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
-            </svg>
-          </button>
-        </LogoutForm>
+        <div className="flex items-center gap-1">
+          <ThemeToggle layout="icon" />
+          <LogoutForm>
+            <button
+              type="submit"
+              className="p-2 rounded-button text-secondary hover:text-danger hover:bg-danger/10 transition-colors"
+              aria-label="Sign Out"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </LogoutForm>
+        </div>
       </div>
 
       {/* Clock In/Out */}

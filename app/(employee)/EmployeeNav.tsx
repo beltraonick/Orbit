@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { usePermissions } from '@/lib/permissions-context'
 import { hasPermission } from '@/lib/permissions'
 
@@ -35,16 +34,6 @@ export function EmployeeNav() {
             icon: (
               <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-5L9 4H4zm7 5a1 1 0 10-2 0v1H8a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
-              </svg>
-            ),
-          },
-          {
-            href: '/tasks',
-            label: t('common.nav.tasks'),
-            icon: (
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
               </svg>
             ),
           },
@@ -128,7 +117,6 @@ export function EmployeeNav() {
           </Link>
         )
       })}
-      <ThemeToggle layout="nav" />
     </nav>
   )
 }
