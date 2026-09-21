@@ -386,11 +386,11 @@ export default function ExpensesPage() {
             </div>
 
             <div className="px-5 pb-5 space-y-3 mt-3 overflow-y-auto">
-              {/* Receipt scanner — Apple-style pill button */}
-              <label className={`flex items-center justify-center gap-2.5 w-full py-3 rounded-xl cursor-pointer transition-all text-sm font-semibold select-none
+              {/* Receipt scanner */}
+              <label className={`flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl cursor-pointer transition-all text-sm font-semibold select-none border
                 ${scanning
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
-                  : 'bg-blue/10 text-blue hover:bg-blue/15 active:scale-[.98]'
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700'
+                  : 'bg-blue-500 dark:bg-blue-600 text-white border-blue-500 dark:border-blue-600 hover:bg-blue-600 dark:hover:bg-blue-700 active:scale-[.98] shadow-sm'
                 }`}>
                 <input
                   type="file"
