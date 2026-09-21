@@ -333,97 +333,128 @@ export default function ExpensesPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4">
-          <Card className="w-full max-w-md p-5 space-y-4">
-            <h2 className="font-semibold text-lg">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
-
-            {/* Receipt scanner */}
-            <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-sm font-medium
-              ${scanning ? 'border-gray-300 text-gray-400' : 'border-blue-400 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30'}`}>
-              <input
-                type="file"
-                accept="image/jpeg,image/png"
-                className="hidden"
-                disabled={scanning}
-                onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
-              />
-              {scanning ? '📷 Scanning…' : '📷 Scan Receipt (AI)'}
-            </label>
-            {scanMsg && (
-              <p className={`text-xs ${scanMsg.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>{scanMsg}</p>
-            )}
-
-            <Input
-              label={e('description')}
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder={e('descriptionPlaceholder')}
-            />
-            <Input
-              label={e('amount')}
-              type="number"
-              value={form.amount}
-              onChange={ev => setForm(f => ({ ...f, amount: ev.target.value }))}
-              placeholder="0.00"
-            />
-            <Input
-              label={e('date')}
-              type="date"
-              value={form.expense_date}
-              onChange={ev => setForm(f => ({ ...f, expense_date: ev.target.value }))}
-            />
-
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('expenseType')}</label>
-              <div className="flex gap-3">
-                {(['reimbursement', 'company'] as const).map(type => (
-                  <label key={type} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={form.expense_type === type}
-                      onChange={() => setForm(f => ({ ...f, expense_type: type }))}
-                    />
-                    <span className="text-sm">{type === 'company' ? e('typeCompany') : e('typeReimbursement')}</span>
-                  </label>
-                ))}
-              </div>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center p-3 md:p-4">
+          <Card className="w-full max-w-md overflow-y-auto max-h-[92vh] rounded-2xl">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-1">
+              <h2 className="font-semibold text-[17px] tracking-tight">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
+              >✕</button>
             </div>
 
-            {categories.length > 0 && (
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('category')}</label>
-                <select
-                  value={form.category_id}
-                  onChange={ev => setForm(f => ({ ...f, category_id: ev.target.value }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800"
-                >
-                  <option value="">— Select —</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+            <div className="px-5 pb-5 space-y-3 mt-3">
+              {/* Receipt scanner — Apple-style pill button */}
+              <label className={`flex items-center justify-center gap-2.5 w-full py-3 rounded-xl cursor-pointer transition-all text-sm font-semibold select-none
+                ${scanning
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-400'
+                  : 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/60 active:scale-[.98]'
+                }`}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  disabled={scanning}
+                  onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
+                />
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                {scanning ? 'Scanning…' : 'Scan Receipt with AI'}
+              </label>
+              {scanMsg && (
+                <p className={`text-xs px-1 ${scanMsg.startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>{scanMsg}</p>
+              )}
+
+              {/* Divider */}
+              <div className="flex items-center gap-3 py-0.5">
+                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
+                <span className="text-[11px] text-gray-400 font-medium tracking-wide uppercase">or fill manually</span>
+                <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
               </div>
-            )}
 
-            {projects.length > 0 && (
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('project')}</label>
-                <select
-                  value={form.project_id}
-                  onChange={ev => setForm(f => ({ ...f, project_id: ev.target.value }))}
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800"
-                >
-                  <option value="">— None —</option>
-                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+              <Input
+                label={e('description')}
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                placeholder={e('descriptionPlaceholder')}
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label={e('amount')}
+                  type="number"
+                  value={form.amount}
+                  onChange={ev => setForm(f => ({ ...f, amount: ev.target.value }))}
+                  placeholder="0.00"
+                />
+                <Input
+                  label={e('date')}
+                  type="date"
+                  value={form.expense_date}
+                  onChange={ev => setForm(f => ({ ...f, expense_date: ev.target.value }))}
+                />
               </div>
-            )}
 
-            {err && <p className="text-red-500 text-sm">{err}</p>}
+              {/* Expense type — segmented control */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('expenseType')}</label>
+                <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 gap-1">
+                  {(['reimbursement', 'company'] as const).map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, expense_type: type }))}
+                      className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        form.expense_type === type
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                      }`}
+                    >
+                      {type === 'company' ? e('typeCompany') : e('typeReimbursement')}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-            <div className="flex gap-2 pt-1">
-              <Button onClick={handleSave} disabled={saving} className="flex-1">
-                {saving ? 'Saving…' : editing ? t('common.saveChanges') : e('saveDraft')}
-              </Button>
-              <Button variant="ghost" onClick={() => setShowModal(false)} className="flex-1">{t('common.cancel')}</Button>
+              {categories.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('category')}</label>
+                  <select
+                    value={form.category_id}
+                    onChange={ev => setForm(f => ({ ...f, category_id: ev.target.value }))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">— Select —</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {projects.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{e('project')}</label>
+                  <select
+                    value={form.project_id}
+                    onChange={ev => setForm(f => ({ ...f, project_id: ev.target.value }))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">— None —</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {err && <p className="text-red-500 text-sm">{err}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <Button onClick={handleSave} disabled={saving} className="flex-1">
+                  {saving ? 'Saving…' : editing ? t('common.saveChanges') : e('saveDraft')}
+                </Button>
+                <Button variant="ghost" onClick={() => setShowModal(false)} className="flex-1">{t('common.cancel')}</Button>
+              </div>
             </div>
           </Card>
         </div>
