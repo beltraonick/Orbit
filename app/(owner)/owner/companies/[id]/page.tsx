@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { subscriptionStatusKey, subscriptionStatusVariant } from '@/lib/owner-status'
 import { BillingForm } from './BillingForm'
+import { UnlimitedOverrideToggle } from './UnlimitedOverrideToggle'
 import { PeopleTable } from './PeopleTable'
 import { PhotoThumb } from './PhotoThumb'
 
@@ -55,7 +56,7 @@ export default async function OwnerCompanyDetailPage({ params }: { params: { id:
   ] = await Promise.all([
     supabase
       .from('companies')
-      .select('id, name, subscription_status, months_overdue, trial_ends_at, owner_notes, created_at, plan_id, plan:plan_id(name, price_cents, project_limit)')
+      .select('id, name, subscription_status, months_overdue, trial_ends_at, owner_notes, created_at, plan_id, unlimited_override, plan:plan_id(name, price_cents, project_limit)')
       .eq('id', params.id)
       .maybeSingle(),
     supabase
@@ -155,10 +156,18 @@ export default async function OwnerCompanyDetailPage({ params }: { params: { id:
         <Badge variant="gray">
           {plan ? `${plan.name} · $${(plan.price_cents / 100).toFixed(0)}/mo` : t(locale, 'owner.dashboard.noPlan')}
         </Badge>
+        {company.unlimited_override && (
+          <Badge variant="brand">{t(locale, 'owner.companyDetail.unlimitedBadge')}</Badge>
+        )}
         <span className="text-xs text-tertiary">
           {t(locale, 'owner.dashboard.since')} {new Date(company.created_at).toLocaleDateString(DATE_LOCALE[locale], { month: 'short', day: 'numeric', year: 'numeric' })}
         </span>
       </div>
+
+      <Card className="mb-6">
+        <h2 className="text-sm font-semibold text-primary mb-3">{t(locale, 'owner.companyDetail.unlimitedTitle')}</h2>
+        <UnlimitedOverrideToggle companyId={company.id} initialEnabled={company.unlimited_override ?? false} />
+      </Card>
 
       <Card className="mb-6">
         <h2 className="text-sm font-semibold text-primary mb-3">{t(locale, 'owner.companyDetail.billingTitle')}</h2>
