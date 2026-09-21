@@ -215,8 +215,12 @@ export default function EmployeeExpensesPage() {
         setScanMsg('✓ Receipt scanned — review the fields below')
       } else if (data.error === 'not_configured') {
         setScanMsg('Scanner not configured. Contact your admin.')
+      } else if (data.error === 'parse_failed') {
+        setScanMsg('AI couldn\'t extract data — try a clearer photo with better lighting.')
+      } else if (data.error === 'unsupported_type') {
+        setScanMsg(data.message ?? 'Only JPEG and PNG images are supported.')
       } else {
-        setScanMsg('Could not read receipt. Fill in manually.')
+        setScanMsg(data.message ? `Scan failed: ${data.message}` : 'Could not read receipt. Fill in manually.')
       }
     } catch {
       setScanMsg('Scan failed. Fill in manually.')
@@ -329,7 +333,7 @@ export default function EmployeeExpensesPage() {
               <label className={`flex items-center justify-center gap-2.5 w-full py-3.5 rounded-2xl cursor-pointer transition-all text-sm font-semibold select-none border
                 ${scanning
                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 border-gray-200 dark:border-gray-700'
-                  : 'bg-blue-500 dark:bg-blue-600 text-white border-blue-500 dark:border-blue-600 hover:bg-blue-600 dark:hover:bg-blue-700 active:scale-[.98] shadow-sm'
+                  : 'bg-blue/10 text-blue border-blue/20 hover:bg-blue/15 active:scale-[.98]'
                 }`}>
                 <input
                   type="file"
@@ -338,7 +342,7 @@ export default function EmployeeExpensesPage() {
                   disabled={scanning}
                   onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
                 />
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                   <circle cx="12" cy="13" r="4"/>
                 </svg>
