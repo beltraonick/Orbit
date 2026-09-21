@@ -632,7 +632,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-[1600px]">
+    <div className="p-4 md:p-8 max-w-[1600px] overflow-x-hidden">
       {/* Employee change alerts */}
       <TaskAuditAlerts
         entries={auditEntries}
@@ -879,7 +879,7 @@ export default function TasksPage() {
           onClick={() => { if (!bulkOperating) setBulkAction(null) }}
         >
           <div
-            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-sm p-6 flex flex-col gap-4"
+            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-sm p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <h2 className="text-base font-semibold text-primary">
@@ -910,7 +910,7 @@ export default function TasksPage() {
           onClick={() => { if (!bulkOperating) setBulkAction(null) }}
         >
           <div
-            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-sm p-6 flex flex-col gap-4"
+            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-sm p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <h2 className="text-base font-semibold text-primary">
@@ -941,7 +941,7 @@ export default function TasksPage() {
           onClick={() => { if (!bulkAssigning) setBulkAssignProject(null) }}
         >
           <div
-            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-sm p-6 flex flex-col gap-4"
+            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-sm p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <h2 className="text-base font-semibold text-primary">

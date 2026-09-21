@@ -254,7 +254,7 @@ export default function TimePage() {
                 <div key={e.id} className="px-5 py-4 flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-primary">{personName(e)}</p>
+                      <p className="text-sm font-medium text-primary truncate max-w-[160px]">{personName(e)}</p>
                       {e.worker_id && <Badge variant="gray">Worker</Badge>}
                       {status === 'active' && <Badge variant="green">{t('common.active')}</Badge>}
                       {status === 'pending' && <Badge variant="amber">{t('common.pending')}</Badge>}
@@ -343,7 +343,7 @@ export default function TimePage() {
       {/* ── Edit Modal ── */}
       {editEntry && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-[var(--surface)] rounded-card w-full max-w-sm shadow-xl p-5 space-y-4">
+          <div className="bg-[var(--surface)] rounded-card w-full max-w-sm shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-base font-semibold text-primary">Edit Entry</h2>
             <p className="text-sm text-secondary -mt-2">{personName(editEntry)}</p>
             <div>
@@ -395,7 +395,7 @@ export default function TimePage() {
       {/* ── Delete Confirm ── */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-[var(--surface)] rounded-card w-full max-w-xs shadow-xl p-5 space-y-4">
+          <div className="bg-[var(--surface)] rounded-card w-full max-w-xs shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-base font-semibold text-primary">Delete entry?</h2>
             <p className="text-sm text-secondary">This clock-in record will be permanently removed.</p>
             <div className="flex gap-3">

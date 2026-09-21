@@ -245,7 +245,7 @@ export default async function PayrollReceiptPage({
           return (
             <div key={name} className="mb-5">
               <div className="text-sm font-bold border-b border-gray-300 pb-1 mb-2">{name}</div>
-              <table className="w-full text-xs border-collapse">
+              <div className="overflow-x-auto"><table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="text-left px-2 py-1.5 font-semibold uppercase tracking-wide text-gray-500 w-[18%]">
@@ -292,7 +292,7 @@ export default async function PayrollReceiptPage({
                     <td className="px-2 py-1.5 text-right font-bold tabular-nums">{fmt$(subtotal)}</td>
                   </tr>
                 </tbody>
-              </table>
+              </table></div>
             </div>
           )
         })}
