@@ -78,6 +78,8 @@ export default function ExpensesPage() {
   const [reviewNotes, setReviewNotes] = useState('')
   const [form, setForm] = useState({ ...BLANK_FORM })
   const [err, setErr] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [scanMsg, setScanMsg] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,6 +147,43 @@ export default function ExpensesPage() {
     setSaving(false)
     setShowModal(false)
     load()
+  }
+
+  async function handleScanReceipt(file: File) {
+    setScanning(true)
+    setScanMsg('')
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const res = await fetch('/api/receipts/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, media_type: file.type }),
+      })
+      const data = await res.json()
+      if (data.ok && data.extracted) {
+        const x = data.extracted
+        setForm(f => ({
+          ...f,
+          description: x.merchant ? `${x.merchant}${x.category ? ` — ${x.category}` : ''}` : f.description,
+          amount: x.total != null ? String(x.total) : f.amount,
+          expense_date: x.date ?? f.expense_date,
+        }))
+        setScanMsg('✓ Receipt scanned — review the fields below')
+      } else if (data.error === 'not_configured') {
+        setScanMsg('Scanner not configured. Contact your admin.')
+      } else {
+        setScanMsg('Could not read receipt. Fill in manually.')
+      }
+    } catch {
+      setScanMsg('Scan failed. Fill in manually.')
+    } finally {
+      setScanning(false)
+    }
   }
 
   async function handleDelete(id: string) {
@@ -297,6 +336,22 @@ export default function ExpensesPage() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-4">
           <Card className="w-full max-w-md p-5 space-y-4">
             <h2 className="font-semibold text-lg">{editing ? e('editExpense') : e('addExpenseTitle')}</h2>
+
+            {/* Receipt scanner */}
+            <label className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-sm font-medium
+              ${scanning ? 'border-gray-300 text-gray-400' : 'border-blue-400 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30'}`}>
+              <input
+                type="file"
+                accept="image/jpeg,image/png"
+                className="hidden"
+                disabled={scanning}
+                onChange={ev => { if (ev.target.files?.[0]) handleScanReceipt(ev.target.files[0]); ev.target.value = '' }}
+              />
+              {scanning ? '📷 Scanning…' : '📷 Scan Receipt (AI)'}
+            </label>
+            {scanMsg && (
+              <p className={`text-xs ${scanMsg.startsWith('✓') ? 'text-green-600' : 'text-amber-600'}`}>{scanMsg}</p>
+            )}
 
             <Input
               label={e('description')}
