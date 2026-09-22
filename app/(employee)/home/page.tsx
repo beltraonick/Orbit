@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { Language } from '@/lib/auth/types'
 import { getCurrentUser } from '@/lib/auth/session'
 import { redirect } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
@@ -34,13 +35,13 @@ function getPeriodRange(periodType: PeriodType, today: Date): { start: Date } {
   return { start }
 }
 
-function periodDaysLabel(periodType: PeriodType, locale: string) {
+function periodDaysLabel(periodType: PeriodType, locale: Language) {
   if (periodType === 'weekly') return t(locale, 'employee.home.daysThisWeek')
   if (periodType === 'monthly') return t(locale, 'employee.home.daysThisMonth')
   return t(locale, 'employee.home.daysThisPeriod')
 }
 
-function periodEarningsLabel(periodType: PeriodType, locale: string) {
+function periodEarningsLabel(periodType: PeriodType, locale: Language) {
   if (periodType === 'weekly') return t(locale, 'employee.home.earningsThisWeek')
   if (periodType === 'monthly') return t(locale, 'employee.home.earningsThisMonth')
   return t(locale, 'employee.home.earningsThisPeriod')
