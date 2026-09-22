@@ -78,20 +78,20 @@ function getQuinzenaDates(which: 'current' | 'last'): { start: string; end: stri
 
   let start: Date, end: Date
   if (which === 'current') {
-    if (day <= 14) {
+    if (day <= 15) {
       start = new Date(year, month, 1)
-      end = new Date(year, month, 14)
+      end = new Date(year, month, 15)
     } else {
-      start = new Date(year, month, 15)
+      start = new Date(year, month, 16)
       end = new Date(year, month + 1, 0)
     }
   } else {
-    if (day <= 14) {
-      start = new Date(year, month - 1, 15)
+    if (day <= 15) {
+      start = new Date(year, month - 1, 16)
       end = new Date(year, month, 0)
     } else {
       start = new Date(year, month, 1)
-      end = new Date(year, month, 14)
+      end = new Date(year, month, 15)
     }
   }
   return {
@@ -403,9 +403,27 @@ ${perPerson}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-primary tracking-tight">{t('admin.payroll.title')}</h1>
-          <p className="text-sm text-secondary mt-0.5">
-            {periodStart && periodEnd ? `${fmtDateLong(periodStart)} – ${fmtDateLong(periodEnd)}` : ''}
-          </p>
+          {periodStart && periodEnd && (
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-sm text-secondary">
+                {fmtDateLong(periodStart)} – {fmtDateLong(periodEnd)}
+              </p>
+              <button
+                onClick={() => {
+                  setCustomStart(periodStart)
+                  setCustomEnd(periodEnd)
+                  setPreset('custom')
+                }}
+                className="p-1 rounded text-tertiary hover:text-brand hover:bg-brand/10 transition-colors"
+                aria-label="Edit date range"
+                title="Edit date range"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 print:hidden flex-wrap">
           {rows.length > 0 && (
