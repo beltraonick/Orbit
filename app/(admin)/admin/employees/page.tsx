@@ -29,10 +29,10 @@ interface Employee {
   permissions: EmployeePermissions | null
 }
 
-const BLANK: Omit<Employee, 'id' | 'created_at'> & { password: string } = {
+const BLANK: Omit<Employee, 'id' | 'created_at'> & { password: string; pay_mode: 'hourly' | 'daily' } = {
   full_name: '', email: '', role: 'employee', position: '',
   company_name: '', hourly_rate: 0, daily_rate: null, phone: '', status: 'active', password: '',
-  permissions: {},
+  permissions: {}, pay_mode: 'hourly',
 }
 
 interface Project { id: string; name: string }
@@ -56,7 +56,7 @@ export default function EmployeesPage() {
   const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
-  const [form, setForm] = useState({ ...BLANK })
+  const [form, setForm] = useState<typeof BLANK>({ ...BLANK })
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [activationUrl, setActivationUrl] = useState('')
@@ -127,6 +127,7 @@ export default function EmployeesPage() {
 
   async function openEdit(emp: Employee) {
     setEditing(emp)
+    const empDailyRate = emp.daily_rate != null ? Number(emp.daily_rate) : null
     setForm({
       full_name: emp.full_name,
       email: emp.email,
@@ -134,11 +135,12 @@ export default function EmployeesPage() {
       position: emp.position ?? '',
       company_name: emp.company_name ?? '',
       hourly_rate: emp.hourly_rate,
-      daily_rate: emp.daily_rate ?? null,
+      daily_rate: empDailyRate,
       phone: emp.phone ?? '',
       status: emp.status,
       password: '',
       permissions: emp.permissions ?? {},
+      pay_mode: (empDailyRate != null && empDailyRate > 0) ? 'daily' : 'hourly',
     })
     setError('')
     setActivationUrl('')
@@ -342,7 +344,9 @@ export default function EmployeesPage() {
                 </div>
                 <div className="hidden md:block text-right flex-shrink-0 mr-4">
                   <p className="text-sm font-semibold text-primary">
-                    ${Number(emp.hourly_rate).toFixed(2)}{t('admin.employees.perHour')}
+                    {emp.daily_rate != null && Number(emp.daily_rate) > 0
+                      ? `$${Number(emp.daily_rate).toFixed(2)}${t('admin.employees.perDay')}`
+                      : `$${Number(emp.hourly_rate).toFixed(2)}${t('admin.employees.perHour')}`}
                   </p>
                   {emp.phone && <p className="text-xs text-secondary">{emp.phone}</p>}
                 </div>
@@ -665,23 +669,58 @@ export default function EmployeesPage() {
                     value={form.position ?? ''}
                     onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
                   />
-                  <Input
-                    label={t('admin.employees.hourlyRateLabel')}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.hourly_rate}
-                    onChange={e => setForm(f => ({ ...f, hourly_rate: Number(e.target.value) }))}
-                  />
-                  <Input
-                    label={t('admin.employees.dailyRateLabel')}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder={t('admin.employees.dailyRatePlaceholder')}
-                    value={form.daily_rate ?? ''}
-                    onChange={e => setForm(f => ({ ...f, daily_rate: e.target.value === '' ? null : Number(e.target.value) }))}
-                  />
+                  {/* Pay Type toggle */}
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
+                    <div className="flex rounded-button border border-[var(--border)] overflow-hidden w-full">
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, pay_mode: 'hourly', daily_rate: null }))}
+                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                          form.pay_mode === 'hourly'
+                            ? 'bg-brand text-white'
+                            : 'text-secondary hover:text-primary bg-surface'
+                        }`}
+                      >
+                        {t('admin.employees.payTypeHourly')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setForm(f => ({ ...f, pay_mode: 'daily', hourly_rate: 0 }))}
+                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                          form.pay_mode === 'daily'
+                            ? 'bg-brand text-white'
+                            : 'text-secondary hover:text-primary bg-surface'
+                        }`}
+                      >
+                        {t('admin.employees.payTypeDaily')}
+                      </button>
+                    </div>
+                  </div>
+                  {form.pay_mode === 'hourly' ? (
+                    <div className="col-span-2">
+                      <Input
+                        label={t('admin.employees.hourlyRateLabel')}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.hourly_rate}
+                        onChange={e => setForm(f => ({ ...f, hourly_rate: Number(e.target.value) }))}
+                      />
+                    </div>
+                  ) : (
+                    <div className="col-span-2">
+                      <Input
+                        label={t('admin.employees.dailyRateLabel')}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder={t('admin.employees.dailyRatePlaceholder')}
+                        value={form.daily_rate ?? ''}
+                        onChange={e => setForm(f => ({ ...f, daily_rate: e.target.value === '' ? null : Number(e.target.value) }))}
+                      />
+                    </div>
+                  )}
                   <Input
                     label={t('admin.employees.companyLabel')}
                     placeholder={t('admin.employees.companyPlaceholder')}
