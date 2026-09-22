@@ -8,7 +8,8 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-import { createManualTimeEntry } from '@/app/actions/workerActions'
+import { createManualTimeEntry, supervisorClockOut } from '@/app/actions/workerActions'
+import { TeamClockIn } from '@/app/(employee)/projects/[id]/TeamClockIn'
 import type { Locale } from '@/lib/i18n/translate'
 
 interface TimeEntry {
@@ -29,6 +30,16 @@ interface TimeEntry {
   clocked_by: { full_name: string } | null
 }
 
+const ENTRY_SELECT = `
+  id, employee_id, worker_id, clock_in, clock_out,
+  city, state, notes, is_full_day, approval_status,
+  clocked_by_profile_id,
+  project:project_id(name),
+  profile:employee_id(full_name, email),
+  worker:worker_id(full_name),
+  clocked_by:clocked_by_profile_id(full_name)
+`
+
 function filterOptions(t: (key: string) => string) {
   return [
     { value: 'today', label: t('common.today') },
@@ -38,9 +49,10 @@ function filterOptions(t: (key: string) => string) {
   ]
 }
 
-function calcHours(clockIn: string, clockOut: string | null) {
-  if (!clockOut) return null
-  return (new Date(clockOut).getTime() - new Date(clockIn).getTime()) / 3600000
+function calcHours(clockIn: string, clockOut: string | null, fallbackNow?: Date) {
+  const end = clockOut ? new Date(clockOut) : fallbackNow
+  if (!end) return null
+  return (end.getTime() - new Date(clockIn).getTime()) / 3600000
 }
 
 function localeTag(locale: Locale) {
@@ -53,6 +65,12 @@ function fmtTime(iso: string, locale: Locale) {
 
 function fmtDate(iso: string, locale: Locale) {
   return new Date(iso).toLocaleDateString(localeTag(locale), { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+function fmtElapsed(hours: number, label: string) {
+  const h = Math.floor(hours)
+  const m = Math.floor((hours - h) * 60)
+  return `${h}h ${m}m ${label}`
 }
 
 function toLocalDatetimeValue(iso: string) {
@@ -78,7 +96,10 @@ function getRange(filter: string): Date | null {
 export default function TimePage() {
   const { t, locale } = useTranslation()
   const companyId = useCompanyId()
-  const [entries, setEntries] = useState<TimeEntry[]>([])
+
+  const [tab, setTab] = useState<'entries' | 'team'>('entries')
+  const [activeEntries, setActiveEntries] = useState<TimeEntry[]>([])
+  const [closedEntries, setClosedEntries] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
   const [filter, setFilter] = useState('week')
@@ -86,6 +107,14 @@ export default function TimePage() {
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
   const [workers, setWorkers] = useState<{ id: string; full_name: string }[]>([])
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
+  const [now, setNow] = useState(() => new Date())
+
+  // Clock-out modal
+  const [clockOutEntry, setClockOutEntry] = useState<TimeEntry | null>(null)
+  const [clockOutIsFullDay, setClockOutIsFullDay] = useState(true)
+  const [clockOutNotes, setClockOutNotes] = useState('')
+  const [clockOutSaving, setClockOutSaving] = useState(false)
+  const [clockOutError, setClockOutError] = useState('')
 
   // Edit modal
   const [editEntry, setEditEntry] = useState<TimeEntry | null>(null)
@@ -110,40 +139,46 @@ export default function TimePage() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Tick elapsed time every minute
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const rangeStart = getRange(filter)
 
-    let query = supabase
+    let closedQuery = supabase
       .from('time_entries')
-      .select(`
-        id, employee_id, worker_id, clock_in, clock_out,
-        city, state, notes, is_full_day, approval_status,
-        clocked_by_profile_id,
-        project:project_id(name),
-        profile:employee_id(full_name, email),
-        worker:worker_id(full_name),
-        clocked_by:clocked_by_profile_id(full_name)
-      `)
+      .select(ENTRY_SELECT)
       .eq('company_id', companyId)
+      .not('clock_out', 'is', null)
       .order('clock_in', { ascending: false })
       .limit(200)
 
-    if (rangeStart) query = query.gte('clock_in', rangeStart.toISOString())
-    if (empFilter) query = query.eq('employee_id', empFilter)
+    if (rangeStart) closedQuery = closedQuery.gte('clock_in', rangeStart.toISOString())
+    if (empFilter) closedQuery = closedQuery.eq('employee_id', empFilter)
 
-    const [{ data }, { data: emps }, { data: wkrs }, { data: projs }] = await Promise.all([
-      query,
+    const [activeRes, closedRes, empsRes, wkrsRes, projsRes] = await Promise.all([
+      supabase
+        .from('time_entries')
+        .select(ENTRY_SELECT)
+        .eq('company_id', companyId)
+        .is('clock_out', null)
+        .order('clock_in', { ascending: false }),
+      closedQuery,
       supabase.from('profiles').select('id, full_name').eq('company_id', companyId).eq('status', 'active').eq('role', 'employee').order('full_name'),
       supabase.from('workers').select('id, full_name').eq('company_id', companyId).eq('status', 'active').order('full_name'),
       supabase.from('projects').select('id, name').eq('company_id', companyId).eq('status', 'active').order('name'),
     ])
 
-    setEntries((data ?? []) as unknown as TimeEntry[])
-    setEmployees(emps ?? [])
-    setWorkers(wkrs ?? [])
-    setProjects(projs ?? [])
+    setActiveEntries((activeRes.data ?? []) as unknown as TimeEntry[])
+    setClosedEntries((closedRes.data ?? []) as unknown as TimeEntry[])
+    setEmployees(empsRes.data ?? [])
+    setWorkers(wkrsRes.data ?? [])
+    setProjects(projsRes.data ?? [])
     setLoading(false)
   }, [filter, empFilter, companyId])
 
@@ -165,19 +200,33 @@ export default function TimePage() {
     setActionId(null)
   }
 
-  async function clockOut(id: string) {
-    setActionId(id)
-    const supabase = createClient()
-    await supabase.from('time_entries').update({ clock_out: new Date().toISOString() }).eq('id', id)
+  function openClockOut(entry: TimeEntry) {
+    setClockOutEntry(entry)
+    setClockOutIsFullDay(true)
+    setClockOutNotes('')
+    setClockOutError('')
+  }
+
+  async function handleClockOut() {
+    if (!clockOutEntry) return
+    setClockOutSaving(true)
+    setClockOutError('')
+    const res = await supervisorClockOut({
+      entryId: clockOutEntry.id,
+      isFullDay: clockOutIsFullDay,
+      notes: clockOutNotes || undefined,
+    })
+    setClockOutSaving(false)
+    if (res.error) { setClockOutError(res.error); return }
+    setClockOutEntry(null)
     load()
-    setActionId(null)
   }
 
   function openAdd() {
-    const now = new Date()
-    now.setSeconds(0, 0)
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
+    const n = new Date()
+    n.setSeconds(0, 0)
+    const pad = (x: number) => String(x).padStart(2, '0')
+    const local = `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}`
     setAddType('profile')
     setAddPersonId(employees[0]?.id ?? '')
     setAddClockIn(local)
@@ -225,21 +274,17 @@ export default function TimePage() {
       notes: editNotes || null,
     }
     if (editClockOut) {
-      updates.clock_out = new Date(editClockOut).toISOString()
       if (new Date(editClockOut) <= new Date(editClockIn)) {
         setEditError('Clock-out must be after clock-in.')
         setEditSaving(false)
         return
       }
+      updates.clock_out = new Date(editClockOut).toISOString()
     } else {
       updates.clock_out = null
     }
     const { error } = await supabase.from('time_entries').update(updates).eq('id', editEntry.id)
-    if (error) {
-      setEditError(error.message)
-      setEditSaving(false)
-      return
-    }
+    if (error) { setEditError(error.message); setEditSaving(false); return }
     setEditEntry(null)
     setEditSaving(false)
     load()
@@ -260,21 +305,27 @@ export default function TimePage() {
     ...employees.map(e => ({ value: e.id, label: e.full_name })),
   ]
 
-  const pendingCount = entries.filter(e => e.approval_status === 'pending' && e.clock_out).length
-  const activeCount = entries.filter(e => !e.clock_out).length
-  const totalHours = entries.reduce((sum, e) => sum + (calcHours(e.clock_in, e.clock_out) ?? 0), 0)
+  const pendingEntries = closedEntries.filter(e => e.approval_status === 'pending')
+  const historyEntries = closedEntries.filter(e => e.approval_status !== 'pending')
+  const totalHours = closedEntries.reduce((sum, e) => sum + (calcHours(e.clock_in, e.clock_out) ?? 0), 0)
 
   const personName = (e: TimeEntry) =>
     e.profile?.full_name ?? e.worker?.full_name ?? t('admin.time.unknownEmployee')
 
   return (
     <div className="p-4 md:p-8 max-w-[1400px]">
-      <div className="mb-6 md:mb-8 flex items-start justify-between gap-3">
+      {/* Header */}
+      <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-primary tracking-tight">{t('admin.time.title')}</h1>
           <p className="text-sm text-secondary mt-1">
-            {activeCount > 0 && `${t('admin.time.clockedInCount').replace('{n}', String(activeCount))} · `}
-            {t('admin.time.hoursTotal').replace('{n}', totalHours.toFixed(1))} · {pendingCount > 0 && <span className="text-amber">{t('admin.time.pendingApprovalCount').replace('{n}', String(pendingCount))}</span>}
+            {activeEntries.length > 0 && (
+              <span>{t('admin.time.clockedInCount').replace('{n}', String(activeEntries.length))} · </span>
+            )}
+            <span>{t('admin.time.hoursTotal').replace('{n}', totalHours.toFixed(1))}</span>
+            {pendingEntries.length > 0 && (
+              <span className="text-amber"> · {t('admin.time.pendingApprovalCount').replace('{n}', String(pendingEntries.length))}</span>
+            )}
           </p>
         </div>
         <button
@@ -285,120 +336,302 @@ export default function TimePage() {
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-4 flex-wrap">
-        <div className="w-40">
-          <Select options={filterOptions(t)} value={filter} onChange={e => setFilter(e.target.value)} />
-        </div>
-        <div className="w-52">
-          <Select options={empOptions} value={empFilter} onChange={e => setEmpFilter(e.target.value)} />
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-[var(--border)]">
+        {(['entries', 'team'] as const).map(t2 => (
+          <button
+            key={t2}
+            onClick={() => setTab(t2)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t2
+                ? 'border-brand text-primary'
+                : 'border-transparent text-secondary hover:text-primary'
+            }`}
+          >
+            {t2 === 'entries' ? t('admin.time.tabEntries') : t('admin.time.tabTeam')}
+          </button>
+        ))}
       </div>
 
-      <Card padding="none">
-        {loading ? (
-          <p className="px-5 py-10 text-sm text-secondary text-center">{t('common.loading')}</p>
-        ) : entries.length === 0 ? (
-          <p className="px-5 py-10 text-sm text-secondary text-center">{t('admin.time.noEntriesForPeriod')}</p>
-        ) : (
-          <div className="divide-y divide-[var(--border)]">
-            {entries.map(e => {
-              const hours = calcHours(e.clock_in, e.clock_out)
-              const status = e.clock_out ? (e.approval_status ?? 'approved') : 'active'
-              const isActing = actionId === e.id
-              const clockedBySomeoneElse =
-                e.clocked_by_profile_id &&
-                e.clocked_by_profile_id !== e.employee_id &&
-                e.clocked_by?.full_name
-              return (
-                <div key={e.id} className="px-5 py-4 flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-primary truncate max-w-[160px]">{personName(e)}</p>
-                      {e.worker_id && <Badge variant="gray">Worker</Badge>}
-                      {status === 'active' && <Badge variant="green">{t('common.active')}</Badge>}
-                      {status === 'pending' && <Badge variant="amber">{t('common.pending')}</Badge>}
-                      {status === 'rejected' && <Badge variant="gray">{t('common.rejected')}</Badge>}
-                    </div>
-                    <p className="text-xs text-secondary mt-0.5">
-                      {fmtDate(e.clock_in, locale)} · {fmtTime(e.clock_in, locale)}
-                      {e.clock_out ? ` → ${fmtTime(e.clock_out, locale)}` : t('admin.time.inProgress')}
-                      {e.is_full_day === true && ' · Full day'}
-                      {e.is_full_day === false && e.clock_out && ` · Partial`}
-                    </p>
-                    {(e.city || e.project?.name) && (
-                      <p className="text-xs text-tertiary mt-0.5 truncate">
-                        {e.project?.name ?? ''}
-                        {e.city ? ` · ${e.city}${e.state ? `, ${e.state}` : ''}` : ''}
+      {/* ── Team tab ── */}
+      {tab === 'team' && <TeamClockIn />}
+
+      {/* ── Entries tab ── */}
+      {tab === 'entries' && (
+        <div className="space-y-8">
+
+          {/* Live Now */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="inline-block w-2 h-2 rounded-full bg-green animate-pulse" />
+              <h2 className="text-xs font-semibold text-secondary uppercase tracking-wider">
+                {t('admin.time.liveNow')}
+                {activeEntries.length > 0 && ` · ${activeEntries.length}`}
+              </h2>
+            </div>
+            {loading ? (
+              <p className="text-sm text-secondary">{t('common.loading')}</p>
+            ) : activeEntries.length === 0 ? (
+              <p className="text-sm text-secondary">{t('admin.time.noActiveSifts')}</p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {activeEntries.map(e => {
+                  const hours = calcHours(e.clock_in, null, now) ?? 0
+                  const isLong = hours >= 10
+                  return (
+                    <div
+                      key={e.id}
+                      className={`rounded-card border p-4 ${
+                        isLong
+                          ? 'border-amber/40 bg-amber/5'
+                          : 'border-[var(--border)] bg-[var(--surface)]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-primary truncate">{personName(e)}</p>
+                          {e.project?.name && (
+                            <p className="text-xs text-tertiary truncate">{e.project.name}</p>
+                          )}
+                        </div>
+                        {isLong && (
+                          <span className="shrink-0 text-xs font-medium text-amber bg-amber/10 border border-amber/20 px-2 py-0.5 rounded-full">
+                            {t('admin.time.longShiftAlert')}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-secondary mb-3">
+                        {fmtTime(e.clock_in, locale)}
+                        {' · '}
+                        <span className="font-medium text-primary tabular-nums">
+                          {fmtElapsed(hours, t('admin.time.elapsedOn'))}
+                        </span>
                       </p>
-                    )}
-                    {e.notes && (
-                      <p className="text-xs text-tertiary mt-0.5 italic">&ldquo;{e.notes}&rdquo;</p>
-                    )}
-                    {/* Attribution footer — like photo credit */}
-                    {clockedBySomeoneElse && (
-                      <p className="text-xs text-tertiary mt-1">
-                        ↳ {e.clock_out
-                          ? `Clocked out by ${e.clocked_by!.full_name}`
-                          : `Clocked in by ${e.clocked_by!.full_name}`}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                    {hours != null && (
-                      <span className="text-sm font-semibold text-primary tabular-nums">
-                        {hours.toFixed(2)}h
-                      </span>
-                    )}
-                    <div className="flex gap-1.5 flex-wrap justify-end">
-                      {!e.clock_out && (
-                        <button
-                          onClick={() => clockOut(e.id)}
-                          disabled={isActing}
-                          className="text-xs px-2 py-1 rounded-button bg-danger/10 text-danger hover:bg-danger/20 transition-colors disabled:opacity-50"
-                        >
-                          {t('admin.time.clockOut')}
-                        </button>
+                      {e.notes && (
+                        <p className="text-xs text-tertiary italic mb-2">&ldquo;{e.notes}&rdquo;</p>
                       )}
-                      {status === 'pending' && (
-                        <>
-                          <button
-                            onClick={() => approve(e.id)}
-                            disabled={isActing}
-                            className="text-xs px-2 py-1 rounded-button bg-green/10 text-green hover:bg-green/20 transition-colors disabled:opacity-50"
-                          >
-                            {t('admin.time.approve')}
-                          </button>
-                          <button
-                            onClick={() => reject(e.id)}
-                            disabled={isActing}
-                            className="text-xs px-2 py-1 rounded-button bg-surface-elevated text-secondary hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
-                          >
-                            {t('admin.time.reject')}
-                          </button>
-                        </>
-                      )}
-                      {/* Admin-only edit & delete */}
                       <button
-                        onClick={() => openEdit(e)}
-                        className="text-xs px-2 py-1 rounded-button bg-surface-elevated text-secondary hover:text-primary hover:bg-[var(--border)] transition-colors"
+                        onClick={() => openClockOut(e)}
+                        className="w-full py-1.5 text-xs font-medium rounded-button bg-danger/10 text-danger hover:bg-danger/20 transition-colors"
                       >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(e.id)}
-                        className="text-xs px-2 py-1 rounded-button text-tertiary hover:text-danger hover:bg-danger/10 transition-colors"
-                      >
-                        ✕
+                        {t('admin.time.clockOut')}
                       </button>
                     </div>
-                  </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Pending Approvals */}
+          {!loading && pendingEntries.length > 0 && (
+            <section>
+              <h2 className="text-xs font-semibold text-secondary uppercase tracking-wider mb-3">
+                {t('admin.time.pendingSection')} · {pendingEntries.length}
+              </h2>
+              <Card padding="none">
+                <div className="divide-y divide-[var(--border)]">
+                  {pendingEntries.map(e => {
+                    const hours = calcHours(e.clock_in, e.clock_out)
+                    const isActing = actionId === e.id
+                    return (
+                      <div key={e.id} className="px-5 py-4 flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-primary truncate max-w-[160px]">{personName(e)}</p>
+                            {e.worker_id && <Badge variant="gray">Worker</Badge>}
+                            <Badge variant="amber">{t('common.pending')}</Badge>
+                          </div>
+                          <p className="text-xs text-secondary mt-0.5">
+                            {fmtDate(e.clock_in, locale)} · {fmtTime(e.clock_in, locale)}
+                            {e.clock_out ? ` → ${fmtTime(e.clock_out, locale)}` : ''}
+                            {e.is_full_day === false && ' · Partial'}
+                          </p>
+                          {e.project?.name && (
+                            <p className="text-xs text-tertiary mt-0.5">{e.project.name}</p>
+                          )}
+                          {e.notes && <p className="text-xs text-tertiary mt-0.5 italic">&ldquo;{e.notes}&rdquo;</p>}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          {hours != null && (
+                            <span className="text-sm font-semibold text-primary tabular-nums">{hours.toFixed(2)}h</span>
+                          )}
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => approve(e.id)}
+                              disabled={isActing}
+                              className="text-xs px-2 py-1 rounded-button bg-green/10 text-green hover:bg-green/20 transition-colors disabled:opacity-50"
+                            >
+                              {t('admin.time.approve')}
+                            </button>
+                            <button
+                              onClick={() => reject(e.id)}
+                              disabled={isActing}
+                              className="text-xs px-2 py-1 rounded-button bg-surface-elevated text-secondary hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
+                            >
+                              {t('admin.time.reject')}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
+              </Card>
+            </section>
+          )}
+
+          {/* History */}
+          <section>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-xs font-semibold text-secondary uppercase tracking-wider">
+                {t('admin.time.history')}
+              </h2>
+              <div className="flex gap-2">
+                <div className="w-36">
+                  <Select options={filterOptions(t)} value={filter} onChange={e => setFilter(e.target.value)} />
+                </div>
+                <div className="w-48">
+                  <Select options={empOptions} value={empFilter} onChange={e => setEmpFilter(e.target.value)} />
+                </div>
+              </div>
+            </div>
+            <Card padding="none">
+              {loading ? (
+                <p className="px-5 py-10 text-sm text-secondary text-center">{t('common.loading')}</p>
+              ) : historyEntries.length === 0 ? (
+                <p className="px-5 py-10 text-sm text-secondary text-center">{t('admin.time.noHistory')}</p>
+              ) : (
+                <div className="divide-y divide-[var(--border)]">
+                  {historyEntries.map(e => {
+                    const hours = calcHours(e.clock_in, e.clock_out)
+                    const status = e.approval_status ?? 'approved'
+                    const clockedBySomeoneElse =
+                      e.clocked_by_profile_id &&
+                      e.clocked_by_profile_id !== e.employee_id &&
+                      e.clocked_by?.full_name
+                    return (
+                      <div key={e.id} className="px-5 py-4 flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-primary truncate max-w-[160px]">{personName(e)}</p>
+                            {e.worker_id && <Badge variant="gray">Worker</Badge>}
+                            {status === 'rejected' && <Badge variant="gray">{t('common.rejected')}</Badge>}
+                            {e.is_full_day === true && <Badge variant="green">{t('admin.time.fullDay')}</Badge>}
+                            {e.is_full_day === false && <Badge variant="amber">{t('admin.time.halfDay')}</Badge>}
+                          </div>
+                          <p className="text-xs text-secondary mt-0.5">
+                            {fmtDate(e.clock_in, locale)} · {fmtTime(e.clock_in, locale)}
+                            {e.clock_out ? ` → ${fmtTime(e.clock_out, locale)}` : ''}
+                          </p>
+                          {(e.city || e.project?.name) && (
+                            <p className="text-xs text-tertiary mt-0.5 truncate">
+                              {e.project?.name ?? ''}
+                              {e.city ? ` · ${e.city}${e.state ? `, ${e.state}` : ''}` : ''}
+                            </p>
+                          )}
+                          {e.notes && (
+                            <p className="text-xs text-tertiary mt-0.5 italic">&ldquo;{e.notes}&rdquo;</p>
+                          )}
+                          {clockedBySomeoneElse && (
+                            <p className="text-xs text-tertiary mt-1">
+                              ↳ {e.clock_out
+                                ? `Clocked out by ${e.clocked_by!.full_name}`
+                                : `Clocked in by ${e.clocked_by!.full_name}`}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          {hours != null && (
+                            <span className="text-sm font-semibold text-primary tabular-nums">
+                              {hours.toFixed(2)}h
+                            </span>
+                          )}
+                          <div className="flex gap-1.5 flex-wrap justify-end">
+                            <button
+                              onClick={() => openEdit(e)}
+                              className="text-xs px-2 py-1 rounded-button bg-surface-elevated text-secondary hover:text-primary hover:bg-[var(--border)] transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => setDeleteId(e.id)}
+                              className="text-xs px-2 py-1 rounded-button text-tertiary hover:text-danger hover:bg-danger/10 transition-colors"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Card>
+          </section>
+        </div>
+      )}
+
+      {/* ── Clock Out Modal ── */}
+      {clockOutEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-[var(--surface)] rounded-card w-full max-w-sm shadow-xl p-5 space-y-4">
+            <h2 className="text-base font-semibold text-primary">{t('admin.time.clockOut')}</h2>
+            <p className="text-sm text-secondary -mt-2">{personName(clockOutEntry)}</p>
+            <div>
+              <p className="text-xs font-medium text-secondary mb-2">
+                {t('admin.time.fullDay')} / {t('admin.time.halfDay')}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setClockOutIsFullDay(true)}
+                  className={`flex-1 py-2 text-sm rounded-button border font-medium transition-colors ${
+                    clockOutIsFullDay
+                      ? 'bg-brand text-white border-brand'
+                      : 'border-[var(--border)] text-secondary'
+                  }`}
+                >
+                  {t('admin.time.fullDay')}
+                </button>
+                <button
+                  onClick={() => setClockOutIsFullDay(false)}
+                  className={`flex-1 py-2 text-sm rounded-button border font-medium transition-colors ${
+                    !clockOutIsFullDay
+                      ? 'bg-amber text-white border-amber'
+                      : 'border-[var(--border)] text-secondary'
+                  }`}
+                >
+                  {t('admin.time.halfDay')}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-1">Notes</label>
+              <Input
+                value={clockOutNotes}
+                onChange={ev => setClockOutNotes(ev.target.value)}
+                placeholder="Optional note"
+              />
+            </div>
+            {clockOutError && <p className="text-xs text-danger">{clockOutError}</p>}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setClockOutEntry(null)}
+                className="flex-1 px-4 py-2 text-sm rounded-button border border-[var(--border)] text-secondary hover:text-primary transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={handleClockOut}
+                disabled={clockOutSaving}
+                className="flex-1 px-4 py-2 text-sm rounded-button bg-danger text-white font-medium hover:bg-danger/90 transition-colors disabled:opacity-60"
+              >
+                {clockOutSaving ? t('common.saving') : t('admin.time.confirmClockOut')}
+              </button>
+            </div>
           </div>
-        )}
-      </Card>
+        </div>
+      )}
 
       {/* ── Edit Modal ── */}
       {editEntry && (
@@ -438,14 +671,14 @@ export default function TimePage() {
                 onClick={() => setEditEntry(null)}
                 className="flex-1 px-4 py-2 text-sm rounded-button border border-[var(--border)] text-secondary hover:text-primary transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={saveEdit}
                 disabled={editSaving}
                 className="flex-1 px-4 py-2 text-sm rounded-button bg-brand text-white font-medium hover:bg-brand/90 transition-colors disabled:opacity-60"
               >
-                {editSaving ? 'Saving…' : 'Save'}
+                {editSaving ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </div>
@@ -458,8 +691,6 @@ export default function TimePage() {
           <div className="bg-[var(--surface)] rounded-card w-full max-w-sm shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-base font-semibold text-primary">Add Time Entry</h2>
             <p className="text-xs text-secondary -mt-2">Manual entries are saved as approved.</p>
-
-            {/* Person type */}
             <div className="flex gap-2">
               <button
                 onClick={() => { setAddType('profile'); setAddPersonId(employees[0]?.id ?? '') }}
@@ -470,8 +701,6 @@ export default function TimePage() {
                 className={`flex-1 py-1.5 text-sm rounded-button border transition-colors ${addType === 'worker' ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary'}`}
               >Worker</button>
             </div>
-
-            {/* Person selector */}
             <div>
               <label className="block text-xs font-medium text-secondary mb-1">
                 {addType === 'profile' ? 'Employee' : 'Worker'}
@@ -487,8 +716,6 @@ export default function TimePage() {
                 ))}
               </select>
             </div>
-
-            {/* Clock-in */}
             <div>
               <label className="block text-xs font-medium text-secondary mb-1">Clock-in *</label>
               <input
@@ -498,10 +725,8 @@ export default function TimePage() {
                 className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
               />
             </div>
-
-            {/* Clock-out */}
             <div>
-              <label className="block text-xs font-medium text-secondary mb-1">Clock-out (optional — leave blank if still active)</label>
+              <label className="block text-xs font-medium text-secondary mb-1">Clock-out (optional)</label>
               <input
                 type="datetime-local"
                 value={addClockOut}
@@ -509,8 +734,6 @@ export default function TimePage() {
                 className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
               />
             </div>
-
-            {/* Project */}
             {projects.length > 0 && (
               <div>
                 <label className="block text-xs font-medium text-secondary mb-1">Project (optional)</label>
@@ -526,8 +749,6 @@ export default function TimePage() {
                 </select>
               </div>
             )}
-
-            {/* Notes */}
             <div>
               <label className="block text-xs font-medium text-secondary mb-1">Notes (optional)</label>
               <Input
@@ -536,21 +757,20 @@ export default function TimePage() {
                 placeholder="e.g. make-up shift from last week"
               />
             </div>
-
             {addError && <p className="text-xs text-danger">{addError}</p>}
             <div className="flex gap-3 pt-1">
               <button
                 onClick={() => setAddOpen(false)}
                 className="flex-1 px-4 py-2 text-sm rounded-button border border-[var(--border)] text-secondary hover:text-primary transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={saveAdd}
                 disabled={addSaving}
                 className="flex-1 px-4 py-2 text-sm rounded-button bg-brand text-white font-medium hover:bg-brand/90 transition-colors disabled:opacity-60"
               >
-                {addSaving ? 'Saving…' : 'Add Entry'}
+                {addSaving ? t('common.saving') : 'Add Entry'}
               </button>
             </div>
           </div>
@@ -560,7 +780,7 @@ export default function TimePage() {
       {/* ── Delete Confirm ── */}
       {deleteId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-[var(--surface)] rounded-card w-full max-w-xs shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-[var(--surface)] rounded-card w-full max-w-xs shadow-xl p-5 space-y-4">
             <h2 className="text-base font-semibold text-primary">Delete entry?</h2>
             <p className="text-sm text-secondary">This clock-in record will be permanently removed.</p>
             <div className="flex gap-3">
@@ -568,14 +788,14 @@ export default function TimePage() {
                 onClick={() => setDeleteId(null)}
                 className="flex-1 px-4 py-2 text-sm rounded-button border border-[var(--border)] text-secondary hover:text-primary transition-colors"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={deleting}
                 className="flex-1 px-4 py-2 text-sm rounded-button bg-danger text-white font-medium hover:bg-danger/90 transition-colors disabled:opacity-60"
               >
-                {deleting ? 'Deleting…' : 'Delete'}
+                {deleting ? t('common.saving') : t('common.delete')}
               </button>
             </div>
           </div>
