@@ -332,6 +332,7 @@ export async function createManualTimeEntry(data: {
   workerId?: string
   clockIn: string
   clockOut?: string
+  isFullDay?: boolean
   projectId?: string
   notes?: string
 }) {
@@ -364,6 +365,7 @@ export async function createManualTimeEntry(data: {
       worker_id: data.workerId ?? null,
       clock_in: data.clockIn,
       clock_out: data.clockOut ?? null,
+      is_full_day: data.isFullDay ?? null,
       clocked_by_profile_id: profile.id,
       is_manual_entry: true,
       notes: data.notes?.trim() || null,

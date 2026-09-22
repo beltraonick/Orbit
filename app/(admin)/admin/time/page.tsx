@@ -128,8 +128,8 @@ export default function TimePage() {
   const [addOpen, setAddOpen] = useState(false)
   const [addType, setAddType] = useState<'profile' | 'worker'>('profile')
   const [addPersonId, setAddPersonId] = useState('')
-  const [addClockIn, setAddClockIn] = useState('')
-  const [addClockOut, setAddClockOut] = useState('')
+  const [addDate, setAddDate] = useState('')
+  const [addIsFullDay, setAddIsFullDay] = useState(true)
   const [addProjectId, setAddProjectId] = useState('')
   const [addNotes, setAddNotes] = useState('')
   const [addSaving, setAddSaving] = useState(false)
@@ -224,13 +224,12 @@ export default function TimePage() {
 
   function openAdd() {
     const n = new Date()
-    n.setSeconds(0, 0)
     const pad = (x: number) => String(x).padStart(2, '0')
-    const local = `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}T${pad(n.getHours())}:${pad(n.getMinutes())}`
+    const today = `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`
     setAddType('profile')
     setAddPersonId(employees[0]?.id ?? '')
-    setAddClockIn(local)
-    setAddClockOut('')
+    setAddDate(today)
+    setAddIsFullDay(true)
     setAddProjectId('')
     setAddNotes('')
     setAddError('')
@@ -239,14 +238,17 @@ export default function TimePage() {
 
   async function saveAdd() {
     if (!addPersonId) { setAddError('Select an employee or worker.'); return }
-    if (!addClockIn) { setAddError('Clock-in is required.'); return }
+    if (!addDate) { setAddError('Date is required.'); return }
     setAddSaving(true)
     setAddError('')
+    const clockIn = new Date(`${addDate}T08:00:00`).toISOString()
+    const clockOut = new Date(`${addDate}T${addIsFullDay ? '17:00:00' : '12:00:00'}`).toISOString()
     const res = await createManualTimeEntry({
       profileId: addType === 'profile' ? addPersonId : undefined,
       workerId: addType === 'worker' ? addPersonId : undefined,
-      clockIn: new Date(addClockIn).toISOString(),
-      clockOut: addClockOut ? new Date(addClockOut).toISOString() : undefined,
+      clockIn,
+      clockOut,
+      isFullDay: addIsFullDay,
       projectId: addProjectId || undefined,
       notes: addNotes || undefined,
     })
@@ -717,22 +719,28 @@ export default function TimePage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-secondary mb-1">Clock-in *</label>
+              <label className="block text-xs font-medium text-secondary mb-1">Date *</label>
               <input
-                type="datetime-local"
-                value={addClockIn}
-                onChange={ev => setAddClockIn(ev.target.value)}
+                type="date"
+                value={addDate}
+                onChange={ev => setAddDate(ev.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-secondary mb-1">Clock-out (optional)</label>
-              <input
-                type="datetime-local"
-                value={addClockOut}
-                onChange={ev => setAddClockOut(ev.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
-              />
+              <label className="block text-xs font-medium text-secondary mb-2">Was this a full day?</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddIsFullDay(true)}
+                  className={`flex-1 py-2 text-sm font-medium rounded-button border transition-colors ${addIsFullDay ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary hover:text-primary'}`}
+                >Full Day</button>
+                <button
+                  type="button"
+                  onClick={() => setAddIsFullDay(false)}
+                  className={`flex-1 py-2 text-sm font-medium rounded-button border transition-colors ${!addIsFullDay ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary hover:text-primary'}`}
+                >Partial Day</button>
+              </div>
             </div>
             {projects.length > 0 && (
               <div>
