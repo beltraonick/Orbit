@@ -22,20 +22,20 @@ function getQuinzenaDates(which: 'current' | 'last'): { start: string; end: stri
   const month = now.getMonth()
   let start: Date, end: Date
   if (which === 'current') {
-    if (day <= 14) {
+    if (day <= 15) {
       start = new Date(year, month, 1)
-      end = new Date(year, month, 14)
+      end = new Date(year, month, 15)
     } else {
-      start = new Date(year, month, 15)
+      start = new Date(year, month, 16)
       end = new Date(year, month + 1, 0)
     }
   } else {
-    if (day <= 14) {
-      start = new Date(year, month - 1, 15)
+    if (day <= 15) {
+      start = new Date(year, month - 1, 16)
       end = new Date(year, month, 0)
     } else {
       start = new Date(year, month, 1)
-      end = new Date(year, month, 14)
+      end = new Date(year, month, 15)
     }
   }
   return {
