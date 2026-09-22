@@ -574,7 +574,7 @@ export default function EmployeesPage() {
               <div className="flex-1 overflow-y-auto">
                 <div className="flex items-center justify-between px-6 py-2.5 border-b border-[var(--border)] bg-[var(--color-surface-elevated)]">
                   <p className="text-xs font-semibold text-secondary uppercase tracking-wide">
-                    {bulkSelectedIds.size} {t('common.selected', { defaultValue: 'selected' })}
+                    {bulkSelectedIds.size} selected
                   </p>
                   <div className="flex gap-3">
                     <button
