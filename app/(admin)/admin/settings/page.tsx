@@ -385,6 +385,12 @@ export default function SettingsPage() {
   const [clockWindowSaving, setClockWindowSaving] = useState(false)
   const [clockWindowSaved, setClockWindowSaved] = useState(false)
 
+  // Dashboard period state
+  const [homePeriodType, setHomePeriodType] = useState<'weekly' | 'biweekly' | 'monthly'>('biweekly')
+  const [homePeriodLoading, setHomePeriodLoading] = useState(true)
+  const [homePeriodSaving, setHomePeriodSaving] = useState(false)
+  const [homePeriodSaved, setHomePeriodSaved] = useState(false)
+
   useEffect(() => {
     getCompanyInviteCode().then(res => {
       setInviteCode(res.code ?? null)
@@ -440,7 +446,7 @@ export default function SettingsPage() {
       })
     supabase
       .from('company_document_settings')
-      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline')
+      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type')
       .eq('company_id', companyId)
       .maybeSingle()
       .then(({ data }) => {
@@ -452,8 +458,12 @@ export default function SettingsPage() {
             clock_in_window_end: data.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: data.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
           })
+          if (data.home_period_type) {
+            setHomePeriodType(data.home_period_type as 'weekly' | 'biweekly' | 'monthly')
+          }
         }
         setClockWindowLoading(false)
+        setHomePeriodLoading(false)
       })
   }, [companyId])
 
@@ -506,6 +516,31 @@ export default function SettingsPage() {
     setClockWindowSaving(false)
     setClockWindowSaved(true)
     setTimeout(() => setClockWindowSaved(false), 2500)
+  }
+
+  async function handleSaveHomePeriod(e: React.FormEvent) {
+    e.preventDefault()
+    if (!companyId) return
+    setHomePeriodSaving(true)
+    const supabase = createClient()
+    const { data: existing } = await supabase
+      .from('company_document_settings')
+      .select('id')
+      .eq('company_id', companyId)
+      .maybeSingle()
+    if (existing) {
+      await supabase
+        .from('company_document_settings')
+        .update({ home_period_type: homePeriodType })
+        .eq('company_id', companyId)
+    } else {
+      await supabase
+        .from('company_document_settings')
+        .insert({ company_id: companyId, home_period_type: homePeriodType })
+    }
+    setHomePeriodSaving(false)
+    setHomePeriodSaved(true)
+    setTimeout(() => setHomePeriodSaved(false), 2500)
   }
 
   async function handleSaveCompany(e: React.FormEvent) {
@@ -870,6 +905,55 @@ export default function SettingsPage() {
               </Button>
               {clockWindowSaved && (
                 <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
+              )}
+            </div>
+          </form>
+        </Card>
+      </Section>
+
+      {/* Dashboard Period */}
+      <Section title="Dashboard Period">
+        <Card>
+          <form onSubmit={handleSaveHomePeriod} className="space-y-4">
+            <p className="text-xs text-secondary">
+              Controls the time window shown in the stats tiles on the employee and supervisor home screen (days worked + estimated earnings). Each company can set the period that matches its payroll cycle.
+            </p>
+            {homePeriodLoading ? (
+              <div className="h-11 bg-surface-elevated rounded-input animate-pulse" />
+            ) : (
+              <div className="flex gap-2">
+                {(['weekly', 'biweekly', 'monthly'] as const).map(opt => {
+                  const labels = { weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly' }
+                  const sublabels = { weekly: 'Sun – Sat', biweekly: '1–15 / 16–end', monthly: '1st – last day' }
+                  return (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setHomePeriodType(opt)}
+                      className={`flex-1 py-2.5 px-3 rounded-button border text-sm font-medium transition-colors text-left ${
+                        homePeriodType === opt
+                          ? 'bg-brand/10 border-brand text-brand'
+                          : 'border-[var(--border)] text-secondary hover:text-primary'
+                      }`}
+                    >
+                      <p>{labels[opt]}</p>
+                      <p className="text-xs font-normal text-tertiary mt-0.5">{sublabels[opt]}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="pt-1 flex items-center gap-3">
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={homePeriodSaving}
+                disabled={homePeriodLoading || homePeriodSaving}
+              >
+                {t('common.saveChanges')}
+              </Button>
+              {homePeriodSaved && (
+                <span className="text-xs text-green">{t('admin.settings.settingsSaved')}</span>
               )}
             </div>
           </form>

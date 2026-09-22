@@ -2,7 +2,6 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { redirect } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
-import { Badge } from '@/components/ui/Badge'
 import { LogoutForm } from '@/components/LogoutForm'
 import { ClockButtons } from './ClockButtons'
 import { createClient } from '@/lib/supabase/server'
@@ -16,6 +15,36 @@ const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
   !process.env.NEXT_PUBLIC_SUPABASE_URL.startsWith('your_')
 
+type PeriodType = 'weekly' | 'biweekly' | 'monthly'
+
+function getPeriodRange(periodType: PeriodType, today: Date): { start: Date } {
+  const start = new Date(today)
+  if (periodType === 'weekly') {
+    start.setDate(today.getDate() - today.getDay())
+    start.setHours(0, 0, 0, 0)
+  } else if (periodType === 'biweekly') {
+    const day = today.getDate()
+    start.setDate(day <= 15 ? 1 : 16)
+    start.setHours(0, 0, 0, 0)
+  } else {
+    start.setDate(1)
+    start.setHours(0, 0, 0, 0)
+  }
+  return { start }
+}
+
+function periodDaysLabel(periodType: PeriodType, locale: string) {
+  if (periodType === 'weekly') return t(locale, 'employee.home.daysThisWeek')
+  if (periodType === 'monthly') return t(locale, 'employee.home.daysThisMonth')
+  return t(locale, 'employee.home.daysThisPeriod')
+}
+
+function periodEarningsLabel(periodType: PeriodType, locale: string) {
+  if (periodType === 'weekly') return t(locale, 'employee.home.earningsThisWeek')
+  if (periodType === 'monthly') return t(locale, 'employee.home.earningsThisMonth')
+  return t(locale, 'employee.home.earningsThisPeriod')
+}
+
 export default async function EmployeeHomePage() {
   const user = getCurrentUser()
   if (!user) redirect('/login')
@@ -23,7 +52,11 @@ export default async function EmployeeHomePage() {
 
   const locale = user.language
   const today = new Date()
-  const greeting = today.getHours() < 12 ? t(locale, 'employee.home.goodMorning') : today.getHours() < 18 ? t(locale, 'employee.home.goodAfternoon') : t(locale, 'employee.home.goodEvening')
+  const greeting = today.getHours() < 12
+    ? t(locale, 'employee.home.goodMorning')
+    : today.getHours() < 18
+    ? t(locale, 'employee.home.goodAfternoon')
+    : t(locale, 'employee.home.goodEvening')
 
   let profileId: string | null = null
   let openEntryId: string | null = null
@@ -31,15 +64,9 @@ export default async function EmployeeHomePage() {
   let isSupervisor = false
   let canSelfClock = true
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
-  let weekHours = 0
-  let weekEarnings = 0
-  let tasks: {
-    id: string
-    title: string
-    priority: string
-    project: { name: string } | null
-    area: string | null
-  }[] = []
+  let periodDays = 0
+  let periodEarnings = 0
+  let homePeriodType: PeriodType = 'biweekly'
 
   if (supabaseReady) {
     try {
@@ -69,17 +96,10 @@ export default async function EmployeeHomePage() {
       if (profile) {
         profileId = profile.id
         isSupervisor = user.role === 'admin' || hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
-        // self_clockin defaults to true for all employees (migration 034 backfills this)
-        // For admins always allow; for employees check the permission (absent = true for backwards compat)
         const perms = profile.permissions as EmployeePermissions | null
-        const selfClockPerm = perms?.self_clockin
-        canSelfClock = user.role === 'admin' || selfClockPerm !== false
+        canSelfClock = user.role === 'admin' || perms?.self_clockin !== false
 
-        const weekStart = new Date(today)
-        weekStart.setDate(today.getDate() - today.getDay())
-        weekStart.setHours(0, 0, 0, 0)
-
-        const [{ data: openEntry }, { data: weekEntries }, { data: myTasks }, { data: docSettings }] = await Promise.all([
+        const [{ data: openEntry }, { data: docSettings }] = await Promise.all([
           supabase
             .from('time_entries')
             .select('id, clock_in')
@@ -89,21 +109,8 @@ export default async function EmployeeHomePage() {
             .limit(1)
             .maybeSingle(),
           supabase
-            .from('time_entries')
-            .select('clock_in, clock_out')
-            .eq('employee_id', profile.id)
-            .gte('clock_in', weekStart.toISOString())
-            .not('clock_out', 'is', null),
-          supabase
-            .from('tasks')
-            .select('id, title, priority, area, project:project_id(name)')
-            .eq('assigned_to', profile.id)
-            .neq('status', 'completed')
-            .order('created_at', { ascending: false })
-            .limit(3),
-          supabase
             .from('company_document_settings')
-            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline')
+            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type')
             .eq('company_id', user.company_id)
             .maybeSingle(),
         ])
@@ -116,6 +123,9 @@ export default async function EmployeeHomePage() {
             clock_in_window_end: docSettings.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: docSettings.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
           }
+          if (docSettings.home_period_type) {
+            homePeriodType = docSettings.home_period_type as PeriodType
+          }
         }
 
         if (openEntry) {
@@ -123,28 +133,95 @@ export default async function EmployeeHomePage() {
           clockInTime = openEntry.clock_in
         }
 
-        weekHours = (weekEntries ?? []).reduce((sum, e) => {
-          return sum + (new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime()) / 3600000
-        }, 0)
+        const { start: periodStart } = getPeriodRange(homePeriodType, today)
 
+        const { data: periodEntries } = await supabase
+          .from('time_entries')
+          .select('clock_in, clock_out')
+          .eq('employee_id', profile.id)
+          .gte('clock_in', periodStart.toISOString())
+          .not('clock_out', 'is', null)
+
+        const closed = periodEntries ?? []
+        // Count distinct calendar days with at least one closed entry
+        periodDays = new Set(closed.map(e => e.clock_in.slice(0, 10))).size
         const hourlyRate = Number(profile.hourly_rate) || 0
-        const regularHours = Math.min(weekHours, 40)
-        const overtimeHours = Math.max(weekHours - 40, 0)
-        weekEarnings = regularHours * hourlyRate + overtimeHours * hourlyRate * 1.5
-
-        tasks = (myTasks ?? []) as unknown as typeof tasks
+        periodEarnings = closed.reduce((sum, e) => {
+          const h = (new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime()) / 3600000
+          return sum + h * hourlyRate
+        }, 0)
       }
     } catch {
       // silent fallback
     }
   }
 
-  const PRIORITY_DOT: Record<string, string> = {
-    urgent: 'bg-danger',
-    high: 'bg-danger/60',
-    medium: 'bg-amber',
-    low: 'bg-blue',
-  }
+  const daysLabel = periodDaysLabel(homePeriodType, locale)
+  const earningsLabel = periodEarningsLabel(homePeriodType, locale)
+
+  // Quick actions config
+  type QA = { href: string; label: string; icon: React.ReactNode }
+  const supervisorActions: QA[] = [
+    {
+      href: '/team/checkin',
+      label: t(locale, 'employee.home.actionTeamClock'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        </svg>
+      ),
+    },
+    {
+      href: '/mileage',
+      label: t(locale, 'employee.home.actionMileage'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
+        </svg>
+      ),
+    },
+    {
+      href: '/expenses',
+      label: t(locale, 'employee.home.actionExpenses'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+        </svg>
+      ),
+    },
+    {
+      href: '/pagamento',
+      label: t(locale, 'employee.home.actionPay'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      ),
+    },
+  ]
+
+  const employeeActions: QA[] = [
+    {
+      href: '/pagamento',
+      label: t(locale, 'employee.home.actionPay'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        </svg>
+      ),
+    },
+    {
+      href: '/ponto',
+      label: t(locale, 'employee.home.actionTime'),
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        </svg>
+      ),
+    },
+  ]
+
+  const quickActions = isSupervisor ? supervisorActions : employeeActions
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 md:py-8">
@@ -204,72 +281,44 @@ export default async function EmployeeHomePage() {
         )}
       </Card>
 
-      {/* Week Summary */}
+      {/* Period Stats */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'employee.home.hoursThisWeek')}</p>
-          <p className="text-2xl font-bold text-primary">
-            {supabaseReady && profileId ? `${weekHours.toFixed(1)}h` : '—'}
+          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{daysLabel}</p>
+          <p className="text-2xl font-bold text-primary tabular-nums">
+            {supabaseReady && profileId ? periodDays : '—'}
           </p>
-          {weekHours > 40 && (
-            <p className="text-xs text-amber mt-0.5">{(weekHours - 40).toFixed(1)}h {t(locale, 'employee.home.overtimeSuffix')}</p>
-          )}
         </Card>
         <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'employee.home.earningsThisWeek')}</p>
-          <p className="text-2xl font-bold text-primary">
-            {supabaseReady && profileId && weekEarnings > 0
-              ? `$${weekEarnings.toFixed(0)}`
+          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{earningsLabel}</p>
+          <p className="text-2xl font-bold text-primary tabular-nums">
+            {supabaseReady && profileId && periodEarnings > 0
+              ? `$${periodEarnings.toFixed(0)}`
               : '—'}
           </p>
-          {weekEarnings > 0 && (
+          {periodEarnings > 0 && (
             <p className="text-xs text-secondary mt-0.5">{t(locale, 'employee.home.projected')}</p>
           )}
         </Card>
       </div>
 
-      {/* My Tasks preview */}
+      {/* Quick Actions */}
       <Card padding="none">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-          <h2 className="text-sm font-semibold text-primary">{t(locale, 'employee.home.myTasks')}</h2>
-          <Link href="/tasks" className="text-xs text-brand hover:text-brand-hover font-medium transition-colors">
-            {t(locale, 'employee.home.viewAll')}
-          </Link>
+        <div className="px-5 py-3.5 border-b border-[var(--border)]">
+          <h2 className="text-sm font-semibold text-primary">{t(locale, 'employee.home.quickActions')}</h2>
         </div>
-
-        {!supabaseReady && (
-          <p className="px-5 py-6 text-sm text-secondary text-center">{t(locale, 'employee.home.connectSupabase')}</p>
-        )}
-
-        {supabaseReady && tasks.length === 0 && (
-          <div className="px-5 py-8 text-center">
-            <div className="w-10 h-10 rounded-full bg-green/10 flex items-center justify-center mx-auto mb-2">
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-green">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <p className="text-sm text-secondary">{t(locale, 'employee.home.noOpenTasks')}</p>
-          </div>
-        )}
-
-        {tasks.length > 0 && (
-          <div className="divide-y divide-[var(--border)]">
-            {tasks.map(t => (
-              <Link key={t.id} href="/tasks" className="flex items-center gap-3 px-5 py-3.5 hover:bg-surface-elevated transition-colors">
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] ?? 'bg-secondary'}`} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-primary truncate">{t.title}</p>
-                  {t.project?.name && (
-                    <p className="text-xs text-secondary truncate">{t.project.name}{t.area ? ` · ${t.area}` : ''}</p>
-                  )}
-                </div>
-                <Badge variant={t.priority === 'urgent' ? 'red' : t.priority === 'high' ? 'red' : t.priority === 'medium' ? 'amber' : 'gray'}>
-                  {t.priority}
-                </Badge>
-              </Link>
-            ))}
-          </div>
-        )}
+        <div className={`grid gap-px bg-[var(--border)] ${quickActions.length === 4 ? 'grid-cols-2' : 'grid-cols-2'}`}>
+          {quickActions.map(action => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className="flex flex-col items-center justify-center gap-2 px-4 py-5 bg-[var(--surface)] hover:bg-surface-elevated transition-colors"
+            >
+              <span className="text-brand">{action.icon}</span>
+              <span className="text-xs font-medium text-primary text-center">{action.label}</span>
+            </Link>
+          ))}
+        </div>
       </Card>
     </div>
   )
