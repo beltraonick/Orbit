@@ -69,6 +69,15 @@ export default function EmployeesPage() {
   const [allProjects, setAllProjects] = useState<Project[]>([])
   const [memberProjectIds, setMemberProjectIds] = useState<string[]>([])
 
+  // Bulk pay state
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [bulkMode, setBulkMode] = useState<'hourly' | 'daily'>('daily')
+  const [bulkRate, setBulkRate] = useState('')
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkError, setBulkError] = useState('')
+  const [bulkSuccess, setBulkSuccess] = useState('')
+
   // Workers state
   const [workers, setWorkers] = useState<Worker[]>([])
   const [showWorkerModal, setShowWorkerModal] = useState(false)
@@ -107,10 +116,10 @@ export default function EmployeesPage() {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (!showModal) return
+    if (!showModal && !showBulkModal) return
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
-  }, [showModal])
+  }, [showModal, showBulkModal])
 
   function openAdd() {
     setEditing(null)
@@ -221,6 +230,16 @@ export default function EmployeesPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+
+    if (form.pay_mode === 'daily' && (form.daily_rate == null || Number(form.daily_rate) <= 0)) {
+      setError('Please enter a daily rate greater than 0.')
+      return
+    }
+    if (form.pay_mode === 'hourly' && Number(form.hourly_rate) <= 0 && form.role !== 'client') {
+      setError('Please enter an hourly rate greater than 0.')
+      return
+    }
+
     setSaving(true)
 
     if (editing) {
@@ -250,7 +269,8 @@ export default function EmployeesPage() {
         role: form.role,
         position: form.position || null,
         company_name: form.company_name || null,
-        hourly_rate: Number(form.hourly_rate),
+        hourly_rate: form.pay_mode === 'daily' ? 0 : Number(form.hourly_rate),
+        daily_rate: form.pay_mode === 'daily' ? (form.daily_rate != null ? Number(form.daily_rate) : null) : null,
         phone: form.phone || null,
         password: form.password,
         permissions: (form.permissions ?? {}) as EmployeePermissions,
@@ -270,6 +290,41 @@ export default function EmployeesPage() {
 
     setSaving(false)
     setShowModal(false)
+    load()
+  }
+
+  function openBulkModal() {
+    const activeEmps = employees.filter(e => e.status === 'active' && e.role !== 'client')
+    setBulkSelectedIds(new Set(activeEmps.map(e => e.id)))
+    setBulkMode('daily')
+    setBulkRate('')
+    setBulkError('')
+    setBulkSuccess('')
+    setShowBulkModal(true)
+  }
+
+  async function handleBulkSave(e: React.FormEvent) {
+    e.preventDefault()
+    setBulkError('')
+    const rate = Number(bulkRate)
+    if (!bulkRate || rate <= 0) {
+      setBulkError('Please enter a rate greater than 0.')
+      return
+    }
+    if (bulkSelectedIds.size === 0) {
+      setBulkError('Select at least one employee.')
+      return
+    }
+    setBulkSaving(true)
+    const supabase = createClient()
+    const ids = Array.from(bulkSelectedIds)
+    const update = bulkMode === 'daily'
+      ? { daily_rate: rate, hourly_rate: 0 }
+      : { hourly_rate: rate, daily_rate: null }
+    const { error } = await supabase.from('profiles').update(update).in('id', ids)
+    setBulkSaving(false)
+    if (error) { setBulkError(error.message); return }
+    setBulkSuccess(t('admin.employees.bulkPaySuccess').replace('{n}', String(ids.length)))
     load()
   }
 
@@ -298,7 +353,19 @@ export default function EmployeesPage() {
             {t('admin.employees.summary').replace('{n}', String(active)).replace('{m}', String(clockedIn))}
           </p>
         </div>
-        <Button onClick={openAdd}>{t('admin.employees.addEmployee')}</Button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={openBulkModal}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-button border border-[var(--border)] text-sm text-secondary hover:text-primary transition-colors bg-surface"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0">
+              <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z" />
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
+            </svg>
+            {t('admin.employees.bulkPayBtn')}
+          </button>
+          <Button onClick={openAdd}>{t('admin.employees.addEmployee')}</Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -417,6 +484,163 @@ export default function EmployeesPage() {
           )}
         </Card>
       </div>
+
+      {/* Bulk Pay Modal */}
+      {showBulkModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => { if (!bulkSaving) setShowBulkModal(false) }}
+        >
+          <div
+            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-lg max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-[var(--border)] flex-shrink-0">
+              <h2 className="text-base font-semibold text-primary">{t('admin.employees.bulkPayTitle')}</h2>
+              <p className="text-xs text-secondary mt-0.5">{t('admin.employees.bulkPaySubtitle')}</p>
+            </div>
+
+            <form onSubmit={handleBulkSave} className="flex flex-col flex-1 min-h-0">
+              {/* Rate controls */}
+              <div className="px-6 py-4 border-b border-[var(--border)] space-y-4 flex-shrink-0">
+                {/* Pay mode toggle */}
+                <div>
+                  <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
+                  <div className="flex rounded-button border border-[var(--border)] overflow-hidden bg-surface w-full">
+                    <button
+                      type="button"
+                      onClick={() => { setBulkMode('hourly'); setBulkRate('') }}
+                      className={`flex-1 px-3 py-2 text-sm transition-colors ${bulkMode === 'hourly' ? 'bg-brand text-white' : 'text-secondary hover:text-primary'}`}
+                    >
+                      {t('admin.employees.payTypeHourly')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setBulkMode('daily'); setBulkRate('') }}
+                      className={`flex-1 px-3 py-2 text-sm transition-colors ${bulkMode === 'daily' ? 'bg-brand text-white' : 'text-secondary hover:text-primary'}`}
+                    >
+                      {t('admin.employees.payTypeDaily')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rate input */}
+                <div>
+                  <label className="block text-xs font-medium text-secondary mb-1.5">
+                    {bulkMode === 'daily' ? t('admin.employees.dailyRateLabel') : t('admin.employees.hourlyRateLabel')}
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      value={bulkRate}
+                      onChange={e => setBulkRate(e.target.value)}
+                      placeholder={bulkMode === 'daily' ? t('admin.employees.dailyRatePlaceholder') : '0.00'}
+                      className="w-full pl-7 pr-4 py-2 text-sm rounded-input border border-[var(--border)] bg-surface text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Employee list */}
+              <div className="flex-1 overflow-y-auto">
+                <div className="flex items-center justify-between px-6 py-2.5 border-b border-[var(--border)] bg-[var(--color-surface-elevated)]">
+                  <p className="text-xs font-semibold text-secondary uppercase tracking-wide">
+                    {bulkSelectedIds.size} {t('common.selected', { defaultValue: 'selected' })}
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const activeEmps = employees.filter(e => e.status === 'active' && e.role !== 'client')
+                        setBulkSelectedIds(new Set(activeEmps.map(e => e.id)))
+                      }}
+                      className="text-xs text-brand hover:text-brand-hover font-medium transition-colors"
+                    >
+                      {t('admin.employees.bulkPaySelectAll')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkSelectedIds(new Set())}
+                      className="text-xs text-secondary hover:text-primary font-medium transition-colors"
+                    >
+                      {t('admin.employees.bulkPayDeselectAll')}
+                    </button>
+                  </div>
+                </div>
+                <div className="divide-y divide-[var(--border)]">
+                  {employees.filter(e => e.status === 'active' && e.role !== 'client').map(emp => {
+                    const hasDailyRate = emp.daily_rate != null && Number(emp.daily_rate) > 0
+                    const currentRateLabel = hasDailyRate
+                      ? `$${Number(emp.daily_rate).toFixed(0)}${t('admin.employees.perDay')}`
+                      : `$${Number(emp.hourly_rate).toFixed(0)}${t('admin.employees.perHour')}`
+                    const isSelected = bulkSelectedIds.has(emp.id)
+                    return (
+                      <label
+                        key={emp.id}
+                        className={`flex items-center gap-3 px-6 py-3 cursor-pointer transition-colors ${isSelected ? 'bg-brand/5' : 'hover:bg-[var(--color-surface-elevated)]'}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={e => {
+                            setBulkSelectedIds(prev => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.add(emp.id)
+                              else next.delete(emp.id)
+                              return next
+                            })
+                          }}
+                          className="w-4 h-4 rounded accent-brand flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-primary truncate">{emp.full_name}</p>
+                          <p className="text-xs text-secondary">{emp.position ?? t('admin.employees.noPosition')}</p>
+                        </div>
+                        <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded-full ${
+                          hasDailyRate ? 'bg-brand/10 text-brand' : 'bg-[var(--color-surface-elevated)] text-secondary border border-[var(--border)]'
+                        }`}>
+                          {currentRateLabel}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-[var(--border)] flex-shrink-0 space-y-3">
+                {bulkError && (
+                  <p className="text-sm text-danger bg-danger/10 border border-danger/20 rounded-input px-3 py-2">{bulkError}</p>
+                )}
+                {bulkSuccess && (
+                  <p className="text-sm text-green bg-green/10 border border-green/20 rounded-input px-3 py-2">✓ {bulkSuccess}</p>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkModal(false)}
+                    className="flex-1 px-4 py-2 rounded-button border border-[var(--border)] text-sm text-secondary hover:text-primary transition-colors"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={bulkSaving || bulkSelectedIds.size === 0}
+                    className="flex-1 px-4 py-2 rounded-button bg-brand text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {bulkSaving ? '…' : t('admin.employees.bulkPayApply')}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Worker Modal */}
       {showWorkerModal && (

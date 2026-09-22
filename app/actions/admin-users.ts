@@ -14,6 +14,7 @@ export async function createProfileWithPassword(data: {
   position: string | null
   company_name: string | null
   hourly_rate: number
+  daily_rate?: number | null
   phone: string | null
   password: string
   permissions?: EmployeePermissions
@@ -48,6 +49,7 @@ export async function createProfileWithPassword(data: {
       position: data.position || null,
       company_name: data.company_name || null,
       hourly_rate: data.hourly_rate,
+      daily_rate: data.daily_rate ?? null,
       phone: data.phone || null,
       status: 'active',
       auth_status: 'pending',
@@ -76,6 +78,7 @@ export async function createProfileWithPassword(data: {
     position: data.position || null,
     company_name: data.company_name || null,
     hourly_rate: data.hourly_rate,
+    daily_rate: data.daily_rate ?? null,
     phone: data.phone || null,
     status: 'active',
     auth_status: 'approved',
