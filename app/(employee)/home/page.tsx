@@ -161,42 +161,51 @@ export default async function EmployeeHomePage() {
   const daysLabel = periodDaysLabel(homePeriodType, locale)
   const earningsLabel = periodEarningsLabel(homePeriodType, locale)
 
-  // Quick actions config
-  type QA = { href: string; label: string; icon: ReactNode }
+  // Quick actions config — same card design as admin QuickActionsWidget
+  type QA = { href: string; label: string; iconBg: string; iconColor: string; icon: ReactNode }
   const supervisorActions: QA[] = [
     {
       href: '/team/checkin',
       label: t(locale, 'employee.home.actionTeamClock'),
+      iconBg: 'bg-blue/10',
+      iconColor: 'text-blue',
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+          <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
         </svg>
       ),
     },
     {
       href: '/mileage',
       label: t(locale, 'employee.home.actionMileage'),
+      iconBg: 'bg-blue/10',
+      iconColor: 'text-blue',
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-          <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+          <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+          <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1v-1h3.05a2.5 2.5 0 014.9 0H19a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0017 6h-3V5a1 1 0 00-1-1H3zm11 4h2.586L18 9.414V10h-4V8z" />
         </svg>
       ),
     },
     {
       href: '/expenses',
       label: t(locale, 'employee.home.actionExpenses'),
+      iconBg: 'bg-amber/10',
+      iconColor: 'text-amber',
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-          <rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" />
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+          <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
         </svg>
       ),
     },
     {
       href: '/pagamento',
       label: t(locale, 'employee.home.actionPay'),
+      iconBg: 'bg-green/10',
+      iconColor: 'text-green',
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-          <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
         </svg>
       ),
     },
@@ -206,18 +215,22 @@ export default async function EmployeeHomePage() {
     {
       href: '/pagamento',
       label: t(locale, 'employee.home.actionPay'),
+      iconBg: 'bg-green/10',
+      iconColor: 'text-green',
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-          <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
         </svg>
       ),
     },
     {
       href: '/ponto',
       label: t(locale, 'employee.home.actionTime'),
+      iconBg: 'bg-blue/10',
+      iconColor: 'text-blue',
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
         </svg>
       ),
     },
@@ -305,23 +318,25 @@ export default async function EmployeeHomePage() {
       </div>
 
       {/* Quick Actions */}
-      <Card padding="none">
-        <div className="px-5 py-3.5 border-b border-[var(--border)]">
-          <h2 className="text-sm font-semibold text-primary">{t(locale, 'employee.home.quickActions')}</h2>
-        </div>
-        <div className={`grid gap-px bg-[var(--border)] ${quickActions.length === 4 ? 'grid-cols-2' : 'grid-cols-2'}`}>
+      <div>
+        <p className="text-xs font-medium text-secondary uppercase tracking-wide mb-3">
+          {t(locale, 'employee.home.quickActions')}
+        </p>
+        <div className={`grid gap-3 ${quickActions.length <= 2 ? 'grid-cols-2' : 'grid-cols-2'}`}>
           {quickActions.map(action => (
             <Link
               key={action.href}
               href={action.href}
-              className="flex flex-col items-center justify-center gap-2 px-4 py-5 bg-[var(--surface)] hover:bg-surface-elevated transition-colors"
+              className="flex flex-col items-center gap-3 p-4 rounded-card bg-surface border border-[var(--border)] hover:border-brand/30 hover:bg-surface-elevated transition-colors"
             >
-              <span className="text-brand">{action.icon}</span>
-              <span className="text-xs font-medium text-primary text-center">{action.label}</span>
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${action.iconBg}`}>
+                <span className={action.iconColor}>{action.icon}</span>
+              </div>
+              <span className="text-sm font-medium text-primary text-center leading-tight">{action.label}</span>
             </Link>
           ))}
         </div>
-      </Card>
+      </div>
     </div>
   )
 }
