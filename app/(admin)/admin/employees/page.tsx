@@ -40,12 +40,13 @@ interface Project { id: string; name: string }
 interface Worker {
   id: string
   full_name: string
-  daily_rate: number
+  daily_rate: number | null
+  hourly_rate: number | null
   position: string | null
   status: string
 }
 
-const WORKER_BLANK = { full_name: '', daily_rate: 0, position: '', status: 'active' }
+const WORKER_BLANK = { full_name: '', pay_mode: 'daily' as 'daily' | 'hourly', daily_rate: 0, hourly_rate: 0, position: '', status: 'active' }
 
 export default function EmployeesPage() {
   const { t } = useTranslation()
@@ -190,7 +191,15 @@ export default function EmployeesPage() {
 
   async function openEditWorker(w: Worker) {
     setEditingWorker(w)
-    setWorkerForm({ full_name: w.full_name, daily_rate: w.daily_rate, position: w.position ?? '', status: w.status })
+    const isDailyWorker = w.daily_rate != null && Number(w.daily_rate) > 0
+    setWorkerForm({
+      full_name: w.full_name,
+      pay_mode: isDailyWorker ? 'daily' : 'hourly',
+      daily_rate: Number(w.daily_rate ?? 0),
+      hourly_rate: Number(w.hourly_rate ?? 0),
+      position: w.position ?? '',
+      status: w.status,
+    })
     setWorkerError('')
     const supabase = createClient()
     const { data: wp } = await supabase.from('worker_projects').select('project_id').eq('worker_id', w.id)
@@ -203,10 +212,19 @@ export default function EmployeesPage() {
     setWorkerError('')
     setWorkerSaving(true)
 
+    const workerRate = workerForm.pay_mode === 'daily' ? Number(workerForm.daily_rate) : Number(workerForm.hourly_rate)
+    if (!workerRate || workerRate <= 0) {
+      setWorkerError('Please enter a rate greater than 0.')
+      setWorkerSaving(false)
+      return
+    }
+
     if (editingWorker) {
       const res = await updateWorker(editingWorker.id, {
         full_name: workerForm.full_name,
-        daily_rate: Number(workerForm.daily_rate),
+        pay_mode: workerForm.pay_mode,
+        daily_rate: workerForm.pay_mode === 'daily' ? Number(workerForm.daily_rate) : null,
+        hourly_rate: workerForm.pay_mode === 'hourly' ? Number(workerForm.hourly_rate) : null,
         position: workerForm.position || undefined,
         status: workerForm.status,
         project_ids: workerProjectIds,
@@ -215,7 +233,9 @@ export default function EmployeesPage() {
     } else {
       const res = await createWorker({
         full_name: workerForm.full_name,
-        daily_rate: Number(workerForm.daily_rate),
+        pay_mode: workerForm.pay_mode,
+        daily_rate: workerForm.pay_mode === 'daily' ? Number(workerForm.daily_rate) : null,
+        hourly_rate: workerForm.pay_mode === 'hourly' ? Number(workerForm.hourly_rate) : null,
         position: workerForm.position || undefined,
         project_ids: workerProjectIds,
       })
@@ -467,7 +487,11 @@ export default function EmployeesPage() {
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0 mr-4">
-                    <p className="text-sm font-semibold text-primary">${Number(w.daily_rate).toFixed(2)}{t('admin.employees.perDay')}</p>
+                    <p className="text-sm font-semibold text-primary">
+                      {w.daily_rate != null && Number(w.daily_rate) > 0
+                        ? `$${Number(w.daily_rate).toFixed(2)}${t('admin.employees.perDay')}`
+                        : `$${Number(w.hourly_rate ?? 0).toFixed(2)}${t('admin.employees.perHour')}`}
+                    </p>
                   </div>
                   <button
                     onClick={() => openEditWorker(w)}
@@ -666,16 +690,57 @@ export default function EmployeesPage() {
                       onChange={e => setWorkerForm(f => ({ ...f, full_name: e.target.value }))}
                     />
                   </div>
-                  <Input
-                    label={t('admin.employees.workerDailyRate')}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    placeholder={t('admin.employees.dailyRatePlaceholder')}
-                    value={workerForm.daily_rate || ''}
-                    onChange={e => setWorkerForm(f => ({ ...f, daily_rate: Number(e.target.value) }))}
-                  />
+                  {/* Pay Type toggle */}
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
+                    <div className="flex rounded-button border border-[var(--border)] overflow-hidden w-full">
+                      <button
+                        type="button"
+                        onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'hourly', daily_rate: 0 }))}
+                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                          workerForm.pay_mode === 'hourly'
+                            ? 'bg-brand text-white'
+                            : 'text-secondary hover:text-primary bg-surface'
+                        }`}
+                      >
+                        {t('admin.employees.payTypeHourly')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'daily', hourly_rate: 0 }))}
+                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                          workerForm.pay_mode === 'daily'
+                            ? 'bg-brand text-white'
+                            : 'text-secondary hover:text-primary bg-surface'
+                        }`}
+                      >
+                        {t('admin.employees.payTypeDaily')}
+                      </button>
+                    </div>
+                  </div>
+                  {workerForm.pay_mode === 'daily' ? (
+                    <Input
+                      label={t('admin.employees.workerDailyRate')}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      placeholder={t('admin.employees.dailyRatePlaceholder')}
+                      value={workerForm.daily_rate || ''}
+                      onChange={e => setWorkerForm(f => ({ ...f, daily_rate: Number(e.target.value) }))}
+                    />
+                  ) : (
+                    <Input
+                      label={t('admin.employees.hourlyRateLabel')}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      required
+                      placeholder="0.00"
+                      value={workerForm.hourly_rate || ''}
+                      onChange={e => setWorkerForm(f => ({ ...f, hourly_rate: Number(e.target.value) }))}
+                    />
+                  )}
                   <Input
                     label={t('admin.employees.workerPosition')}
                     placeholder={t('admin.employees.positionPlaceholder')}

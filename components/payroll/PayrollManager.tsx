@@ -133,7 +133,7 @@ export function PayrollManager() {
         id, clock_in, clock_out, hours_worked, is_full_day, notes, employee_id, worker_id,
         project:project_id(name),
         profile:employee_id(full_name, daily_rate, hourly_rate),
-        worker:worker_id(full_name, daily_rate)
+        worker:worker_id(full_name, daily_rate, hourly_rate)
       `)
       .eq('company_id', companyId)
       .not('clock_out', 'is', null)
@@ -143,7 +143,7 @@ export function PayrollManager() {
 
     const built: DayRow[] = (entries ?? []).map((e: Record<string, unknown>) => {
       type Profile = { full_name: string; daily_rate: number | null; hourly_rate: number }
-      type Worker  = { full_name: string; daily_rate: number }
+      type Worker  = { full_name: string; daily_rate: number | null; hourly_rate: number | null }
       type Project = { name: string }
 
       const profile = e.profile as Profile | null
@@ -153,14 +153,22 @@ export function PayrollManager() {
       const personId   = (e.employee_id as string | null) ?? (e.worker_id as string)
       const personName = profile?.full_name ?? worker?.full_name ?? 'Unknown'
 
-      // Determine pay mode: daily if daily_rate > 0, else hourly
-      const profileDailyRate = profile?.daily_rate != null ? Number(profile.daily_rate) : null
-      const isDailyMode = worker != null || (profileDailyRate != null && profileDailyRate > 0)
+      // Determine pay mode
+      // For profiles: daily if daily_rate > 0, else hourly
+      // For workers: daily if daily_rate > 0, hourly if hourly_rate > 0
+      const profileDailyRate  = profile?.daily_rate  != null ? Number(profile.daily_rate)  : null
+      const workerDailyRate   = worker?.daily_rate   != null ? Number(worker.daily_rate)   : null
+      const workerHourlyRate  = worker?.hourly_rate  != null ? Number(worker.hourly_rate)  : null
+      const isDailyMode = worker != null
+        ? (workerDailyRate != null && workerDailyRate > 0)
+        : (profileDailyRate != null && profileDailyRate > 0)
 
       const dailyRateValue  = isDailyMode
-        ? (worker ? Number(worker.daily_rate) : (profileDailyRate ?? 0))
+        ? (worker ? (workerDailyRate ?? 0) : (profileDailyRate ?? 0))
         : 0
-      const hourlyRateValue = !isDailyMode && profile ? Number(profile.hourly_rate) : 0
+      const hourlyRateValue = !isDailyMode
+        ? (worker ? (workerHourlyRate ?? 0) : (profile ? Number(profile.hourly_rate) : 0))
+        : 0
 
       const hours     = e.hours_worked != null ? Number(e.hours_worked) : null
       const isFullDay = e.is_full_day as boolean | null

@@ -5,11 +5,15 @@ import { createClient } from '@/lib/supabase/server'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { revalidatePath } from 'next/cache'
 
+const STANDARD_DAY_HOURS = 8
+
 // ─── Worker CRUD (admin only) ─────────────────────────────────────────────────
 
 export async function createWorker(data: {
   full_name: string
-  daily_rate: number
+  pay_mode: 'daily' | 'hourly'
+  daily_rate?: number | null
+  hourly_rate?: number | null
   position?: string
   project_ids: string[]
 }) {
@@ -23,7 +27,8 @@ export async function createWorker(data: {
     .insert({
       company_id: user.company_id,
       full_name: data.full_name.trim(),
-      daily_rate: data.daily_rate,
+      daily_rate: data.pay_mode === 'daily' ? (data.daily_rate ?? 0) : null,
+      hourly_rate: data.pay_mode === 'hourly' ? (data.hourly_rate ?? 0) : null,
       position: data.position?.trim() || null,
     })
     .select('id')
@@ -50,7 +55,9 @@ export async function updateWorker(
   workerId: string,
   data: {
     full_name?: string
-    daily_rate?: number
+    pay_mode?: 'daily' | 'hourly'
+    daily_rate?: number | null
+    hourly_rate?: number | null
     position?: string
     status?: string
     project_ids?: string[]
@@ -63,7 +70,17 @@ export async function updateWorker(
 
   const payload: Record<string, unknown> = {}
   if (data.full_name !== undefined) payload.full_name = data.full_name.trim()
-  if (data.daily_rate !== undefined) payload.daily_rate = data.daily_rate
+  if (data.pay_mode === 'daily') {
+    payload.daily_rate = data.daily_rate ?? 0
+    payload.hourly_rate = null
+  } else if (data.pay_mode === 'hourly') {
+    payload.hourly_rate = data.hourly_rate ?? 0
+    payload.daily_rate = null
+  } else {
+    // Legacy path: only rate provided without mode
+    if (data.daily_rate !== undefined) payload.daily_rate = data.daily_rate
+    if (data.hourly_rate !== undefined) payload.hourly_rate = data.hourly_rate
+  }
   if (data.position !== undefined) payload.position = data.position?.trim() || null
   if (data.status !== undefined) payload.status = data.status
 
@@ -236,7 +253,7 @@ export async function getProjectTeamStatus(projectId?: string) {
         .eq('project_id', projectId),
       supabase
         .from('worker_projects')
-        .select('worker:worker_id(id, full_name, daily_rate)')
+        .select('worker:worker_id(id, full_name, daily_rate, hourly_rate)')
         .eq('project_id', projectId)
         .eq('company_id', user.company_id),
     ])
@@ -254,7 +271,7 @@ export async function getProjectTeamStatus(projectId?: string) {
         .eq('status', 'active'),
       supabase
         .from('workers')
-        .select('id, full_name, daily_rate')
+        .select('id, full_name, daily_rate, hourly_rate')
         .eq('company_id', user.company_id)
         .eq('status', 'active'),
     ])
@@ -278,7 +295,7 @@ export async function getProjectTeamStatus(projectId?: string) {
   const { data: openEntries } = await openEntriesQuery
 
   type ProfileMember = { id: string; full_name: string; daily_rate: number | null; hourly_rate: number }
-  type WorkerMember  = { id: string; full_name: string; daily_rate: number }
+  type WorkerMember  = { id: string; full_name: string; daily_rate: number | null; hourly_rate: number | null }
   type OpenEntry     = { id: string; employee_id: string | null; worker_id: string | null; clock_in: string; notes: string | null }
 
   const profileList: ProfileMember[] = (members ?? []).map((m: Record<string, unknown>) => m.profile as ProfileMember).filter(Boolean)
@@ -293,13 +310,16 @@ export async function getProjectTeamStatus(projectId?: string) {
       daily_rate: p.daily_rate ?? p.hourly_rate * 8,
       entry: entries.find(e => e.employee_id === p.id) ?? null,
     })),
-    ...workerList.map(w => ({
-      kind: 'worker' as const,
-      id: w.id,
-      full_name: w.full_name,
-      daily_rate: w.daily_rate,
-      entry: entries.find(e => e.worker_id === w.id) ?? null,
-    })),
+    ...workerList.map(w => {
+      const isDailyWorker = w.daily_rate != null && Number(w.daily_rate) > 0
+      return {
+        kind: 'worker' as const,
+        id: w.id,
+        full_name: w.full_name,
+        daily_rate: isDailyWorker ? Number(w.daily_rate) : (w.hourly_rate != null ? Number(w.hourly_rate) * STANDARD_DAY_HOURS : 0),
+        entry: entries.find(e => e.worker_id === w.id) ?? null,
+      }
+    }),
   ].sort((a, b) => a.full_name.localeCompare(b.full_name))
 
   return { ok: true, team }
