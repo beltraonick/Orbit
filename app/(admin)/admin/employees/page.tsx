@@ -221,6 +221,16 @@ export default function EmployeesPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+
+    if (form.pay_mode === 'daily' && (form.daily_rate == null || Number(form.daily_rate) <= 0)) {
+      setError('Please enter a daily rate greater than 0.')
+      return
+    }
+    if (form.pay_mode === 'hourly' && Number(form.hourly_rate) <= 0 && form.role !== 'client') {
+      setError('Please enter an hourly rate greater than 0.')
+      return
+    }
+
     setSaving(true)
 
     if (editing) {
@@ -250,7 +260,8 @@ export default function EmployeesPage() {
         role: form.role,
         position: form.position || null,
         company_name: form.company_name || null,
-        hourly_rate: Number(form.hourly_rate),
+        hourly_rate: form.pay_mode === 'daily' ? 0 : Number(form.hourly_rate),
+        daily_rate: form.pay_mode === 'daily' ? (form.daily_rate != null ? Number(form.daily_rate) : null) : null,
         phone: form.phone || null,
         password: form.password,
         permissions: (form.permissions ?? {}) as EmployeePermissions,
