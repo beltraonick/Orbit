@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { getCurrentUser } from '@/lib/auth/session'
 import { redirect } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
@@ -160,7 +161,7 @@ export default async function EmployeeHomePage() {
   const earningsLabel = periodEarningsLabel(homePeriodType, locale)
 
   // Quick actions config
-  type QA = { href: string; label: string; icon: React.ReactNode }
+  type QA = { href: string; label: string; icon: ReactNode }
   const supervisorActions: QA[] = [
     {
       href: '/team/checkin',
