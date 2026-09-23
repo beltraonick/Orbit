@@ -21,37 +21,48 @@
 --
 -- Run this AFTER 040 and 041 (harmless before them too, but there's no
 -- reason to run it earlier). Safe to run multiple times.
+--
+-- `DROP POLICY IF EXISTS x ON t` still errors if table `t` itself doesn't
+-- exist — production has already been found to be missing tables this
+-- migration history assumed existed (e.g. project_employees) — so every
+-- drop here is guarded by a table-existence check instead of assuming the
+-- full table list from the migration history is actually present.
 
-DROP POLICY IF EXISTS profiles_select ON profiles;
-DROP POLICY IF EXISTS profiles_insert ON profiles;
-DROP POLICY IF EXISTS profiles_update ON profiles;
-DROP POLICY IF EXISTS profiles_delete ON profiles;
-
-DROP POLICY IF EXISTS projects_select ON projects;
-DROP POLICY IF EXISTS projects_insert ON projects;
-DROP POLICY IF EXISTS projects_update ON projects;
-DROP POLICY IF EXISTS projects_delete ON projects;
-
-DROP POLICY IF EXISTS tasks_select ON tasks;
-DROP POLICY IF EXISTS tasks_mutate ON tasks;
-DROP POLICY IF EXISTS tasks_employee_update ON tasks;
-
-DROP POLICY IF EXISTS time_entries_select ON time_entries;
-DROP POLICY IF EXISTS time_entries_insert ON time_entries;
-DROP POLICY IF EXISTS time_entries_update ON time_entries;
-DROP POLICY IF EXISTS time_entries_delete ON time_entries;
-
-DROP POLICY IF EXISTS payroll_admin ON payroll_records;
-
-DROP POLICY IF EXISTS photos_select ON project_photos;
-DROP POLICY IF EXISTS photos_insert ON project_photos;
-DROP POLICY IF EXISTS photos_delete ON project_photos;
-
-DROP POLICY IF EXISTS reports_admin ON reports;
-DROP POLICY IF EXISTS company_members ON companies;
-
-DROP POLICY IF EXISTS project_employees_select ON project_employees;
-DROP POLICY IF EXISTS project_employees_mutate ON project_employees;
+DO $$
+DECLARE
+  pair text[];
+BEGIN
+  FOREACH pair SLICE 1 IN ARRAY ARRAY[
+    ARRAY['profiles_select', 'profiles'],
+    ARRAY['profiles_insert', 'profiles'],
+    ARRAY['profiles_update', 'profiles'],
+    ARRAY['profiles_delete', 'profiles'],
+    ARRAY['projects_select', 'projects'],
+    ARRAY['projects_insert', 'projects'],
+    ARRAY['projects_update', 'projects'],
+    ARRAY['projects_delete', 'projects'],
+    ARRAY['tasks_select', 'tasks'],
+    ARRAY['tasks_mutate', 'tasks'],
+    ARRAY['tasks_employee_update', 'tasks'],
+    ARRAY['time_entries_select', 'time_entries'],
+    ARRAY['time_entries_insert', 'time_entries'],
+    ARRAY['time_entries_update', 'time_entries'],
+    ARRAY['time_entries_delete', 'time_entries'],
+    ARRAY['payroll_admin', 'payroll_records'],
+    ARRAY['photos_select', 'project_photos'],
+    ARRAY['photos_insert', 'project_photos'],
+    ARRAY['photos_delete', 'project_photos'],
+    ARRAY['reports_admin', 'reports'],
+    ARRAY['company_members', 'companies'],
+    ARRAY['project_employees_select', 'project_employees'],
+    ARRAY['project_employees_mutate', 'project_employees']
+  ]
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = pair[2]) THEN
+      EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pair[1], pair[2]);
+    END IF;
+  END LOOP;
+END $$;
 
 -- These SECURITY DEFINER helpers were only ever called by the policies just
 -- dropped above — safe to drop once nothing references them.

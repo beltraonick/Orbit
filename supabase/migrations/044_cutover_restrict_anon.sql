@@ -40,45 +40,61 @@
 -- so it can never run by accident as part of a routine "apply all pending
 -- migrations" pass.
 
-DROP POLICY IF EXISTS anon_all ON ai_conversations;
-DROP POLICY IF EXISTS anon_all ON ai_messages;
-DROP POLICY IF EXISTS anon_all ON change_orders;
-DROP POLICY IF EXISTS anon_all ON client_activations;
-DROP POLICY IF EXISTS anon_all ON companies;
-DROP POLICY IF EXISTS anon_all ON company_document_settings;
-DROP POLICY IF EXISTS anon_all ON expense_categories;
-DROP POLICY IF EXISTS anon_all ON expenses;
-DROP POLICY IF EXISTS anon_all ON invite_codes;
-DROP POLICY IF EXISTS anon_all ON login_events;
-DROP POLICY IF EXISTS anon_all ON manual_compensations;
-DROP POLICY IF EXISTS anon_all ON membership_requests;
-DROP POLICY IF EXISTS anon_all ON mileage_trips;
-DROP POLICY IF EXISTS anon_all ON password_resets;
-DROP POLICY IF EXISTS anon_all ON payroll_period_entries;
-DROP POLICY IF EXISTS anon_all ON payroll_periods;
-DROP POLICY IF EXISTS anon_all ON payroll_records;
-DROP POLICY IF EXISTS anon_all ON plan_markers;
-DROP POLICY IF EXISTS anon_all ON plan_sheets;
-DROP POLICY IF EXISTS anon_all ON plans;
-DROP POLICY IF EXISTS anon_all ON profiles;
-DROP POLICY IF EXISTS anon_all ON project_feed;
-DROP POLICY IF EXISTS anon_all ON project_photos;
-DROP POLICY IF EXISTS anon_all ON project_plans;
-DROP POLICY IF EXISTS anon_all ON project_rooms;
-DROP POLICY IF EXISTS anon_all ON projects;
-DROP POLICY IF EXISTS anon_all ON qbo_connections;
-DROP POLICY IF EXISTS anon_all ON qbo_employee_map;
-DROP POLICY IF EXISTS anon_all ON qbo_sync_log;
-DROP POLICY IF EXISTS anon_all ON receipts;
-DROP POLICY IF EXISTS anon_all ON reports;
-DROP POLICY IF EXISTS anon_all ON task_assignments;
-DROP POLICY IF EXISTS anon_all ON task_media;
-DROP POLICY IF EXISTS anon_all ON tasks;
-DROP POLICY IF EXISTS anon_all ON time_entries;
-DROP POLICY IF EXISTS anon_all ON vehicles;
-DROP POLICY IF EXISTS anon_all ON worker_projects;
-DROP POLICY IF EXISTS anon_all ON workers;
-DROP POLICY IF EXISTS anon_all_task_columns ON task_columns;
+-- `DROP POLICY IF EXISTS x ON t` still errors if table `t` itself doesn't
+-- exist — production has already been found to be missing tables this
+-- migration history assumed existed (e.g. project_employees), so every drop
+-- below is guarded by a table-existence check.
+DO $$
+DECLARE
+  pair text[];
+BEGIN
+  FOREACH pair SLICE 1 IN ARRAY ARRAY[
+    ARRAY['anon_all', 'ai_conversations'],
+    ARRAY['anon_all', 'ai_messages'],
+    ARRAY['anon_all', 'change_orders'],
+    ARRAY['anon_all', 'client_activations'],
+    ARRAY['anon_all', 'companies'],
+    ARRAY['anon_all', 'company_document_settings'],
+    ARRAY['anon_all', 'expense_categories'],
+    ARRAY['anon_all', 'expenses'],
+    ARRAY['anon_all', 'invite_codes'],
+    ARRAY['anon_all', 'login_events'],
+    ARRAY['anon_all', 'manual_compensations'],
+    ARRAY['anon_all', 'membership_requests'],
+    ARRAY['anon_all', 'mileage_trips'],
+    ARRAY['anon_all', 'password_resets'],
+    ARRAY['anon_all', 'payroll_period_entries'],
+    ARRAY['anon_all', 'payroll_periods'],
+    ARRAY['anon_all', 'payroll_records'],
+    ARRAY['anon_all', 'plan_markers'],
+    ARRAY['anon_all', 'plan_sheets'],
+    ARRAY['anon_all', 'plans'],
+    ARRAY['anon_all', 'profiles'],
+    ARRAY['anon_all', 'project_feed'],
+    ARRAY['anon_all', 'project_photos'],
+    ARRAY['anon_all', 'project_plans'],
+    ARRAY['anon_all', 'project_rooms'],
+    ARRAY['anon_all', 'projects'],
+    ARRAY['anon_all', 'qbo_connections'],
+    ARRAY['anon_all', 'qbo_employee_map'],
+    ARRAY['anon_all', 'qbo_sync_log'],
+    ARRAY['anon_all', 'receipts'],
+    ARRAY['anon_all', 'reports'],
+    ARRAY['anon_all', 'task_assignments'],
+    ARRAY['anon_all', 'task_media'],
+    ARRAY['anon_all', 'tasks'],
+    ARRAY['anon_all', 'time_entries'],
+    ARRAY['anon_all', 'vehicles'],
+    ARRAY['anon_all', 'worker_projects'],
+    ARRAY['anon_all', 'workers'],
+    ARRAY['anon_all_task_columns', 'task_columns']
+  ]
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = pair[2]) THEN
+      EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pair[1], pair[2]);
+    END IF;
+  END LOOP;
+END $$;
 
 -- task_audit_log has no migration file in this repo (see 040's note) — its
 -- anon policy, if any, has whatever name was used when it was created
