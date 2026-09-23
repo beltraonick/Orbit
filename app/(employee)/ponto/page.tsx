@@ -73,7 +73,7 @@ export default async function PontoPage() {
         // shows — so Days can't disagree with either.
         const periodSettings = await loadCompanyPeriodSettings(supabase, user.company_id)
         homePeriodType = periodSettings.periodType
-        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, new Date(), periodSettings.anchor)
+        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, new Date(), periodSettings.anchor, periodSettings.lag)
         periodStartDate = periodStart
         periodEndDate = periodEnd
         for (const e of entries) {

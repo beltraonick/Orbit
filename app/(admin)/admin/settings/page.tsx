@@ -393,6 +393,7 @@ export default function SettingsPage() {
   const [homePeriodSaving, setHomePeriodSaving] = useState(false)
   const [homePeriodSaved, setHomePeriodSaved] = useState(false)
   const [periodAnchor, setPeriodAnchor] = useState('')
+  const [periodLag, setPeriodLag] = useState(0)
   const [homePeriodError, setHomePeriodError] = useState('')
 
   // Pay System state
@@ -479,7 +480,10 @@ export default function SettingsPage() {
         setHomePeriodLoading(false)
         setPaySystemLoading(false)
       })
-    loadCompanyPeriodSettings(supabase, companyId).then(p => setPeriodAnchor(p.anchor ?? ''))
+    loadCompanyPeriodSettings(supabase, companyId).then(p => {
+      setPeriodAnchor(p.anchor ?? '')
+      setPeriodLag(p.lag)
+    })
   }, [companyId])
 
   // Existing employees/workers keep whatever mode they were already saved
@@ -565,6 +569,7 @@ export default function SettingsPage() {
     const values = {
       home_period_type: homePeriodType,
       pay_period_anchor: homePeriodType === 'monthly' ? null : (periodAnchor || null),
+      pay_period_lag: periodLag,
     }
     const { data: existing } = await supabase
       .from('company_document_settings')
@@ -1093,13 +1098,39 @@ export default function SettingsPage() {
                 <p className="text-xs text-tertiary mt-1">
                   {periodAnchor
                     ? (() => {
-                        const r = getPeriodRange(homePeriodType, new Date(), periodAnchor)
+                        const r = getPeriodRange(homePeriodType, new Date(), periodAnchor, periodLag)
                         return `Current pay period: ${toDateStr(r.start)} → ${toDateStr(r.end)}`
                       })()
                     : 'Leave empty to use ' + (homePeriodType === 'weekly' ? 'Sunday – Saturday weeks.' : '1st–15th and 16th–end of month.')}
                 </p>
               </div>
             )}
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-1">
+                Payment delay
+              </label>
+              <div className="flex gap-2">
+                {[0, 1, 2].map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPeriodLag(n)}
+                    className={`flex-1 py-2 px-3 rounded-button border text-sm font-medium transition-colors ${
+                      periodLag === n
+                        ? 'bg-brand/10 border-brand text-brand'
+                        : 'border-[var(--border)] text-secondary hover:text-primary'
+                    }`}
+                  >
+                    {n === 0 ? 'None' : n === 1 ? '1 period behind' : `${n} periods behind`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-tertiary mt-1">
+                {periodLag === 0
+                  ? 'What employees see as their "Current Period" is the cycle happening right now.'
+                  : `What employees see as their "Current Period" is actually ${periodLag === 1 ? 'the previous cycle' : `${periodLag} cycles ago`} — set this if pay for the in-progress cycle isn't issued until later, so "Current Period" always matches what's actually being paid.`}
+              </p>
+            </div>
             {homePeriodError && <p className="text-xs text-danger">{homePeriodError}</p>}
             <div className="pt-1 flex items-center gap-3">
               <Button

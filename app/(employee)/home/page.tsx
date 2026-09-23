@@ -118,7 +118,7 @@ export default async function EmployeeHomePage() {
         // Same company pay period Admin Payroll uses (type + optional start date).
         const periodSettings = await loadCompanyPeriodSettings(supabase, user.company_id)
         homePeriodType = periodSettings.periodType
-        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, today, periodSettings.anchor)
+        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, today, periodSettings.anchor, periodSettings.lag)
         periodStartDate = periodStart
         periodEndDate = periodEnd
 

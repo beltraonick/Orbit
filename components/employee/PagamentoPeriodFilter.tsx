@@ -58,7 +58,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
     loadCompanyPeriodSettings(createClient(), companyId).then(setPeriodSettings)
   }, [companyId])
   const currentRange = periodSettings
-    ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
+    ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor, periodSettings.lag)
     : null
   const periodStart = preset === 'custom' ? customStart : (currentRange ? toDateStr(currentRange.start) : '')
   const periodEnd = preset === 'custom' ? customEnd : (currentRange ? toDateStr(currentRange.end) : '')
