@@ -1,5 +1,7 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
+import { actionFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -75,7 +77,7 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [projects, setProjects] = useState<Project[]>([])
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = usePersistentState<Filter>('expenses.filter', 'all', oneOf(['all', 'pending', 'approved', 'rejected'] as const))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -221,19 +223,19 @@ export default function ExpensesPage() {
   }
 
   async function handleSubmit(id: string) {
-    await submitExpense(id)
+    actionFailed(await submitExpense(id))
     load()
   }
 
   async function handleApprove(id: string) {
-    await approveExpense(id, reviewNotes || undefined)
+    actionFailed(await approveExpense(id, reviewNotes || undefined))
     setReviewingId(null)
     setReviewNotes('')
     load()
   }
 
   async function handleReject(id: string) {
-    await rejectExpense(id, reviewNotes || undefined)
+    actionFailed(await rejectExpense(id, reviewNotes || undefined))
     setReviewingId(null)
     setReviewNotes('')
     load()

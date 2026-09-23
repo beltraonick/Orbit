@@ -1,5 +1,6 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -58,7 +59,7 @@ export default function ApprovalsPage() {
 
   const [items, setItems] = useState<ApprovalItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const [typeFilter, setTypeFilter] = usePersistentState<TypeFilter>('approvals.type', 'all', oneOf(['all', 'expenses', 'mileage'] as const))
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())

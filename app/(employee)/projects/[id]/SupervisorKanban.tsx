@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
@@ -215,7 +216,7 @@ function SupervisorDrawer({ task, projectId, companyId, profileName, onClose, on
         const path = `${companyId}/${task.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const { error } = await supabase.storage.from('task-photos').upload(path, file, { contentType: file.type })
         if (!error) {
-          await supabase.from('task_media').insert({
+          writeFailed((await supabase.from('task_media').insert({
             task_id: task.id,
             project_id: projectId,
             company_id: companyId,
@@ -223,7 +224,7 @@ function SupervisorDrawer({ task, projectId, companyId, profileName, onClose, on
             storage_path: path,
             photo_category: 'progress',
             uploaded_by_name: profileName,
-          })
+          })).error, 'save your changes')
         }
       }
       const { data: updatedPhotos } = await supabase
@@ -560,7 +561,7 @@ export function SupervisorKanban({
 
   async function moveTask(taskId: string, colId: string) {
     const supabase = createClient()
-    await supabase.from('tasks').update({ column_id: colId }).eq('id', taskId)
+    writeFailed((await supabase.from('tasks').update({ column_id: colId }).eq('id', taskId)).error, 'save your changes')
     setTasks(prev => prev.map(tk => tk.id === taskId ? { ...tk, column_id: colId } : tk))
   }
 

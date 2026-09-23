@@ -99,10 +99,11 @@ export async function rejectMember(requestId: string): Promise<{ error?: string 
     .eq('id', req.profile_id)
 
   // Mark request as rejected.
-  await supabase
+  const { error: rejectErr } = await supabase
     .from('membership_requests')
     .update({ status: 'rejected', reviewed_by: UUID_RE.test(user.id) ? user.id : null, reviewed_at: new Date().toISOString() })
     .eq('id', requestId)
+  if (rejectErr) return { error: 'Could not reject this request. Please try again.' }
 
   return {}
 }

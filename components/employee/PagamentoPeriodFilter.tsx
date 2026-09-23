@@ -1,5 +1,6 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/Card'
@@ -39,9 +40,10 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   const { t } = useTranslation()
   const isDailyRate = dailyRate != null && dailyRate > 0
 
-  const [preset, setPreset] = useState<'current' | 'custom'>('current')
-  const [customStart, setCustomStart] = useState('')
-  const [customEnd, setCustomEnd] = useState('')
+  const [preset, setPreset] = usePersistentState<'current' | 'custom'>('pay.preset', 'current', oneOf(['current', 'custom'] as const))
+  const isDate = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+  const [customStart, setCustomStart] = usePersistentState<string>('pay.customStart', '', isDate)
+  const [customEnd, setCustomEnd] = usePersistentState<string>('pay.customEnd', '', isDate)
   const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
   // A finalized period's numbers are frozen (Payroll tab -> Finalize

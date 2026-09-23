@@ -1,5 +1,6 @@
 'use client'
 
+import { actionFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -132,7 +133,7 @@ export default function VehiclesPage() {
   }
 
   async function handleArchive(veh: Vehicle) {
-    await updateVehicle(veh.id, { status: veh.status === 'active' ? 'archived' : 'active' })
+    actionFailed(await updateVehicle(veh.id, { status: veh.status === 'active' ? 'archived' : 'active' }))
     load()
   }
 

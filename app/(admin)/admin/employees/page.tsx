@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createProfileWithPassword, adminSetPassword } from '@/app/actions/admin-users'
@@ -109,7 +110,7 @@ export default function EmployeesPage() {
     const supabase = createClient()
     const [{ data: emps }, { data: open }, { data: projs }, { data: wrks }, { data: settings }] = await Promise.all([
       supabase.from('profiles').select('*').eq('company_id', companyId).order('full_name'),
-      supabase.from('time_entries').select('employee_id').is('clock_out', null),
+      supabase.from('time_entries').select('employee_id').eq('company_id', companyId).is('clock_out', null),
       supabase.from('projects').select('id, name').eq('company_id', companyId).order('name'),
       supabase.from('workers').select('*').eq('company_id', companyId).order('full_name'),
       supabase.from('company_document_settings').select('pay_system').eq('company_id', companyId).maybeSingle(),
@@ -272,7 +273,7 @@ export default function EmployeesPage() {
 
     if (editing) {
       const supabase = createClient()
-      await supabase.from('profiles').update({
+      const { error: profileErr } = await supabase.from('profiles').update({
         full_name: form.full_name,
         email: form.email,
         role: form.role,
@@ -283,12 +284,25 @@ export default function EmployeesPage() {
         phone: form.phone || null,
         status: form.status,
         permissions: form.role === 'employee' ? (form.permissions ?? {}) : {},
-      }).eq('id', editing.id)
-      await supabase.from('project_members').delete().eq('profile_id', editing.id)
-      if (memberProjectIds.length > 0) {
-        await supabase.from('project_members').insert(
-          memberProjectIds.map(pid => ({ project_id: pid, profile_id: editing.id }))
-        )
+      }).eq('id', editing.id).eq('company_id', companyId)
+      if (profileErr) {
+        setError(profileErr.code === '23505'
+          ? 'Another account already uses this email.'
+          : 'Could not save this employee. Please try again.')
+        setSaving(false)
+        return
+      }
+      const { error: delErr } = await supabase.from('project_members').delete().eq('profile_id', editing.id)
+      const { error: insErr } = memberProjectIds.length > 0 && !delErr
+        ? await supabase.from('project_members').insert(
+            memberProjectIds.map(pid => ({ project_id: pid, profile_id: editing.id }))
+          )
+        : { error: null }
+      if (delErr || insErr) {
+        setError('Employee saved, but project access could not be updated. Please try again.')
+        setSaving(false)
+        load()
+        return
       }
     } else {
       const result = await createProfileWithPassword({
@@ -359,7 +373,8 @@ export default function EmployeesPage() {
   async function toggleStatus(emp: Employee) {
     const supabase = createClient()
     const next = emp.status === 'active' ? 'archived' : 'active'
-    await supabase.from('profiles').update({ status: next }).eq('id', emp.id)
+    const { error } = await supabase.from('profiles').update({ status: next }).eq('id', emp.id).eq('company_id', companyId)
+    writeFailed(error, next === 'archived' ? 'archive this person' : 'reactivate this person')
     load()
   }
 

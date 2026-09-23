@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -90,10 +91,11 @@ export default function PhotosPage() {
   async function deletePhoto(photo: PhotoRecord) {
     if (!window.confirm(t('admin.photos.deleteConfirm'))) return
     const supabase = createClient()
-    await Promise.all([
+    const [, { error }] = await Promise.all([
       supabase.storage.from(BUCKET).remove([photo.storage_path]),
-      supabase.from('project_photos').delete().eq('id', photo.id),
+      supabase.from('project_photos').delete().eq('id', photo.id).eq('company_id', companyId),
     ])
+    if (writeFailed(error, 'delete this photo')) return
     // Also close lightbox if the deleted photo was open
     setLightbox(null)
     load()

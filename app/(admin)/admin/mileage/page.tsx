@@ -1,5 +1,7 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
+import { actionFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -76,7 +78,7 @@ export default function MileagePage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [rate, setRate] = useState(0.67)
-  const [filter, setFilter] = useState<Filter>('all')
+  const [filter, setFilter] = usePersistentState<Filter>('mileage.filter', 'all', oneOf(['all', 'pending', 'approved'] as const))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
@@ -173,19 +175,19 @@ export default function MileagePage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this trip?')) return
-    await deleteMileageTrip(id)
+    actionFailed(await deleteMileageTrip(id))
     load()
   }
 
   async function handleApprove(id: string) {
-    await approveMileageTrip(id, reviewNotes || undefined)
+    actionFailed(await approveMileageTrip(id, reviewNotes || undefined))
     setReviewingId(null)
     setReviewNotes('')
     load()
   }
 
   async function handleReject(id: string) {
-    await rejectMileageTrip(id, reviewNotes || undefined)
+    actionFailed(await rejectMileageTrip(id, reviewNotes || undefined))
     setReviewingId(null)
     setReviewNotes('')
     load()

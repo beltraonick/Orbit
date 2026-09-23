@@ -1,5 +1,7 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -118,7 +120,7 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [activeTab, setActiveTab] = usePersistentState<Tab>('project.tab', 'overview', oneOf(['overview', 'plans', 'tasks', 'photos', 'team'] as const))
 
   // Overview edit
   const [editing, setEditing] = useState(false)
@@ -417,6 +419,16 @@ export default function ProjectDetailPage() {
     setUploadingPhoto(false)
   }
 
+  // Actually removes the photo (file + database row). The row delete must be
+  // awaited — an un-awaited Supabase query never runs, which left deleted
+  // photos coming back as broken images.
+  async function commitPhotoDelete(photo: Photo) {
+    const supabase = createClient()
+    await supabase.storage.from('project-photos').remove([photo.storage_path])
+    const { error } = await supabase.from('project_photos').delete().eq('id', photo.id).eq('company_id', companyId)
+    if (writeFailed(error, 'delete this photo')) fetchPhotos()
+  }
+
   function deletePhoto(photo: Photo) {
     if (!window.confirm(t('admin.photos.deleteConfirm'))) return
 
@@ -426,9 +438,7 @@ export default function ProjectDetailPage() {
       clearTimeout(prev.timer)
       pendingPhotoDeleteRef.current = null
       setPendingPhotoDelete(null)
-      const supabase = createClient()
-      supabase.storage.from('project-photos').remove([prev.photo.storage_path])
-      supabase.from('project_photos').delete().eq('id', prev.photo.id)
+      void commitPhotoDelete(prev.photo)
     }
 
     setPhotos(prev => prev.filter(p => p.id !== photo.id))
@@ -437,9 +447,7 @@ export default function ProjectDetailPage() {
     const timer = setTimeout(() => {
       pendingPhotoDeleteRef.current = null
       setPendingPhotoDelete(null)
-      const supabase = createClient()
-      supabase.storage.from('project-photos').remove([photo.storage_path])
-      supabase.from('project_photos').delete().eq('id', photo.id)
+      void commitPhotoDelete(photo)
     }, 5000)
 
     const pd = { photo, timer }
