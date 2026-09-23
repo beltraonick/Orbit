@@ -164,8 +164,37 @@ export function PayrollManager() {
       : getPreviousPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
     return { start: toDateStr(r.start), end: toDateStr(r.end) }
   })()
-  const periodStart = preset === 'custom' ? customStart : (presetRange?.start ?? '')
-  const periodEnd   = preset === 'custom' ? customEnd   : (presetRange?.end ?? '')
+  // Remember the last range the admin picked (Last / Current / Custom and the
+  // custom dates) so leaving Payroll and coming back keeps it, instead of
+  // snapping back to the default. Per browser, per company; best-effort.
+  const rangeKey = `orbit.payroll.range.${companyId}`
+  const [rangeRestored, setRangeRestored] = useState(false)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(rangeKey) ?? 'null')
+      if (saved && (saved.preset === 'current' || saved.preset === 'last' || saved.preset === 'custom')) {
+        if (saved.preset === 'custom' && saved.start && saved.end) {
+          setCustomStart(saved.start)
+          setCustomEnd(saved.end)
+          setPreset('custom')
+        } else if (saved.preset !== 'custom') {
+          setPreset(saved.preset)
+        }
+      }
+    } catch { /* storage unavailable — keep defaults */ }
+    setRangeRestored(true)
+  }, [rangeKey])
+  useEffect(() => {
+    if (!rangeRestored) return
+    try {
+      localStorage.setItem(rangeKey, JSON.stringify({ preset, start: customStart, end: customEnd }))
+    } catch { /* ignore */ }
+  }, [rangeRestored, rangeKey, preset, customStart, customEnd])
+
+  // Nothing loads until the remembered range is restored, so the screen
+  // doesn't flash the default period first.
+  const periodStart = !rangeRestored ? '' : preset === 'custom' ? customStart : (presetRange?.start ?? '')
+  const periodEnd   = !rangeRestored ? '' : preset === 'custom' ? customEnd   : (presetRange?.end ?? '')
 
   // Saves the custom range as the company's recurring pay period: a 7-day
   // range becomes Weekly and a 14-day range Bi-weekly, both starting on the
@@ -735,7 +764,13 @@ ${manualOnlySections}
           {PRESET_OPTIONS.map(opt => (
             <button
               key={opt.value}
-              onClick={() => setPreset(opt.value as typeof preset)}
+              onClick={() => {
+                if (opt.value === 'custom' && (!customStart || !customEnd) && periodStart && periodEnd) {
+                  setCustomStart(periodStart)
+                  setCustomEnd(periodEnd)
+                }
+                setPreset(opt.value as typeof preset)
+              }}
               className={`px-3 py-2 text-sm transition-colors ${
                 preset === opt.value
                   ? 'bg-brand text-white'
