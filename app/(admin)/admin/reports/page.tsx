@@ -145,9 +145,32 @@ function PayrollReport({ period }: { period: string }) {
     if (start) query = query.gte('clock_in', start.toISOString())
     if (end) query = query.lte('clock_in', end.toISOString())
 
-    const { data: ents } = await query
+    // A finalized (paid) period reports its frozen rate/hours/day-type, not
+    // today's live values, so this report can't drift from what was actually
+    // paid once rates or the company Pay System change later.
+    let frozenQuery = supabase
+      .from('payroll_period_entries')
+      .select('source_time_entry_id, daily_rate, hourly_rate, hours_worked, is_full_day')
+      .eq('company_id', companyId)
+    if (start) frozenQuery = frozenQuery.gte('entry_date', start.toISOString().slice(0, 10))
+    if (end) frozenQuery = frozenQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+    const [{ data: ents }, { data: frozenEntries }] = await Promise.all([query, frozenQuery])
     const fetchedEntries = (ents ?? []) as unknown as EntryRow[]
     setEntries(fetchedEntries)
+
+    type FrozenEntry = {
+      source_time_entry_id: string | null
+      daily_rate: number
+      hourly_rate: number
+      hours_worked: number | null
+      is_full_day: boolean | null
+    }
+    const frozenById = new Map(
+      ((frozenEntries ?? []) as unknown as FrozenEntry[])
+        .filter(f => f.source_time_entry_id)
+        .map(f => [f.source_time_entry_id as string, f]),
+    )
 
     // Same calcEntryPay() the Admin Payroll page and XLSX export use — this
     // report can't disagree with those on what a given entry is worth.
@@ -155,13 +178,14 @@ function PayrollReport({ period }: { period: string }) {
     for (const e of fetchedEntries) {
       const personId = e.employee_id ?? e.worker_id
       if (!personId) continue
+      const frozen = frozenById.get(e.id)
       const calc = calcEntryPay({
         clock_in: e.clock_in,
         clock_out: e.clock_out,
-        hours_worked: e.hours_worked,
-        is_full_day: e.is_full_day,
-        daily_rate: e.profile?.daily_rate ?? e.worker?.daily_rate ?? null,
-        hourly_rate: e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null,
+        hours_worked: frozen ? frozen.hours_worked : e.hours_worked,
+        is_full_day: frozen ? frozen.is_full_day : e.is_full_day,
+        daily_rate: frozen ? frozen.daily_rate : (e.profile?.daily_rate ?? e.worker?.daily_rate ?? null),
+        hourly_rate: frozen ? frozen.hourly_rate : (e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null),
       })
 
       if (!empMap.has(personId)) {

@@ -52,7 +52,7 @@ export async function GET(req: Request) {
   let teQuery = supabase
     .from('time_entries')
     .select(
-      'employee_id, worker_id, clock_in, clock_out, hours_worked, is_full_day, profile:employee_id(full_name, daily_rate, hourly_rate), worker:worker_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
+      'id, employee_id, worker_id, clock_in, clock_out, hours_worked, is_full_day, profile:employee_id(full_name, daily_rate, hourly_rate), worker:worker_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
     )
     .eq('company_id', cid)
     .not('clock_out', 'is', null)
@@ -60,6 +60,17 @@ export async function GET(req: Request) {
     .limit(2000)
   if (start) teQuery = teQuery.gte('clock_in', start.toISOString())
   if (end) teQuery = teQuery.lte('clock_in', end.toISOString())
+
+  // Any time entry that's part of a finalized (paid) payroll period must
+  // report its frozen rate/hours/day-type from that snapshot, never today's
+  // live values — otherwise editing a rate or the company Pay System after
+  // the fact would silently change an already-paid period's export.
+  let finalizedQuery = supabase
+    .from('payroll_period_entries')
+    .select('source_time_entry_id, daily_rate, hourly_rate, hours_worked, is_full_day, project_name')
+    .eq('company_id', cid)
+  if (start) finalizedQuery = finalizedQuery.gte('entry_date', start.toISOString().slice(0, 10))
+  if (end) finalizedQuery = finalizedQuery.lte('entry_date', end.toISOString().slice(0, 10))
 
   let expQuery = supabase
     .from('expenses')
@@ -83,15 +94,17 @@ export async function GET(req: Request) {
   if (start) milQuery = milQuery.gte('trip_date', start.toISOString().slice(0, 10))
   if (end) milQuery = milQuery.lte('trip_date', end.toISOString().slice(0, 10))
 
-  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }] =
+  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }, { data: frozenEntries }] =
     await Promise.all([
       supabase.from('companies').select('name').eq('id', cid).single(),
       teQuery,
       expQuery,
       milQuery,
+      finalizedQuery,
     ])
 
   type RawEntry = {
+    id: string
     employee_id: string | null
     worker_id: string | null
     clock_in: string
@@ -102,6 +115,19 @@ export async function GET(req: Request) {
     worker: { full_name: string; daily_rate: number | null; hourly_rate: number | null } | null
     project: { name: string } | null
   }
+  type FrozenEntry = {
+    source_time_entry_id: string | null
+    daily_rate: number
+    hourly_rate: number
+    hours_worked: number | null
+    is_full_day: boolean | null
+    project_name: string | null
+  }
+  const frozenById = new Map(
+    ((frozenEntries ?? []) as unknown as FrozenEntry[])
+      .filter(f => f.source_time_entry_id)
+      .map(f => [f.source_time_entry_id as string, f]),
+  )
   type RawExpense = {
     description: string
     amount: number
@@ -121,16 +147,24 @@ export async function GET(req: Request) {
   }
 
   const entries = ((rawEntries ?? []) as unknown as RawEntry[]).map(e => {
-    const hours = e.hours_worked != null
-      ? Number(e.hours_worked)
+    const frozen = frozenById.get(e.id)
+    // A finalized entry reports its snapshot's rate/hours/day-type, not
+    // today's live values — that's what makes a paid period permanent.
+    const hoursWorkedInput = frozen ? frozen.hours_worked : (e.hours_worked != null ? Number(e.hours_worked) : null)
+    const isFullDayInput = frozen ? frozen.is_full_day : e.is_full_day
+    const dailyRateInput = frozen ? frozen.daily_rate : (e.profile?.daily_rate ?? e.worker?.daily_rate ?? null)
+    const hourlyRateInput = frozen ? frozen.hourly_rate : (e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null)
+
+    const hours = hoursWorkedInput != null
+      ? hoursWorkedInput
       : (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
     const calc = calcEntryPay({
       clock_in: e.clock_in,
       clock_out: e.clock_out,
-      hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
-      is_full_day: e.is_full_day,
-      daily_rate: e.profile?.daily_rate ?? e.worker?.daily_rate ?? null,
-      hourly_rate: e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null,
+      hours_worked: hoursWorkedInput,
+      is_full_day: isFullDayInput,
+      daily_rate: dailyRateInput,
+      hourly_rate: hourlyRateInput,
     })
     return {
       full_name: e.profile?.full_name ?? e.worker?.full_name ?? '—',
@@ -138,8 +172,8 @@ export async function GET(req: Request) {
       hours: Math.round(hours * 100) / 100,
       daily_rate: calc.dailyRate,
       hourly_rate: calc.hourlyRate,
-      is_full_day: e.is_full_day,
-      project: e.project?.name ?? null,
+      is_full_day: isFullDayInput,
+      project: frozen ? (frozen.project_name ?? e.project?.name ?? null) : (e.project?.name ?? null),
     }
   })
 
