@@ -21,6 +21,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
 import { ReceiptScanner } from '@/components/ReceiptScanner'
+import { PhotoLightbox } from '@/components/ui/PhotoLightbox'
 
 const RECEIPT_BUCKET = 'receipts'
 
@@ -76,6 +77,7 @@ export default function EmployeeExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null)
   const [editing, setEditing] = useState<Expense | null>(null)
   const [form, setForm] = useState({ ...BLANK_FORM })
   const [err, setErr] = useState('')
@@ -283,14 +285,13 @@ export default function EmployeeExpensesPage() {
                       <p className="text-sm text-gray-500 mt-1">{exp.expense_date}{exp.category ? ` · ${exp.category.name}` : ''}</p>
                       {exp.reviewer_notes && <p className="text-xs text-gray-400 mt-1 italic">{exp.reviewer_notes}</p>}
                       {exp.receipt?.file_url && (
-                        <a
-                          href={exp.receipt.file_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => setViewingReceiptUrl(exp.receipt!.file_url)}
                           className="text-xs text-blue hover:opacity-80 mt-1 inline-block"
                         >
                           View receipt
-                        </a>
+                        </button>
                       )}
                     </div>
                     <div className="text-right shrink-0">
@@ -441,6 +442,13 @@ export default function EmployeeExpensesPage() {
         <ReceiptScanner
           onCapture={handleScanCapture}
           onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {viewingReceiptUrl && (
+        <PhotoLightbox
+          photos={[{ url: viewingReceiptUrl }]}
+          onClose={() => setViewingReceiptUrl(null)}
         />
       )}
     </div>
