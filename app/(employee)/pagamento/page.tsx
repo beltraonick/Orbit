@@ -23,7 +23,7 @@ export default async function PagamentoPage() {
   let profileId = ''
   let hourlyRate = 0
   let dailyRate: number | null = null
-  let paidPeriods: { periodStart: string; periodEnd: string; totalPay: number }[] = []
+  let paidPeriods: { periodStart: string; periodEnd: string; totalPay: number; finalizedAt: string }[] = []
 
   if (supabaseReady) {
     try {
@@ -45,14 +45,14 @@ export default async function PagamentoPage() {
         // here really was paid, never a guess or a live estimate.
         const { data: entries } = await supabase
           .from('payroll_period_entries')
-          .select('total_pay, overtime_pay, payroll_periods:payroll_period_id(period_start, period_end)')
+          .select('total_pay, overtime_pay, payroll_periods:payroll_period_id(period_start, period_end, finalized_at)')
           .eq('company_id', user.company_id)
           .eq('person_id', profile.id)
           .order('entry_date', { ascending: false })
           .limit(500)
 
-        type Row = { total_pay: number; overtime_pay: number; payroll_periods: { period_start: string; period_end: string } | null }
-        const byPeriod = new Map<string, { periodStart: string; periodEnd: string; totalPay: number }>()
+        type Row = { total_pay: number; overtime_pay: number; payroll_periods: { period_start: string; period_end: string; finalized_at: string } | null }
+        const byPeriod = new Map<string, { periodStart: string; periodEnd: string; totalPay: number; finalizedAt: string }>()
         for (const e of (entries ?? []) as unknown as Row[]) {
           const period = e.payroll_periods
           if (!period) continue
@@ -60,7 +60,7 @@ export default async function PagamentoPage() {
           const existing = byPeriod.get(key)
           const amount = Number(e.total_pay) + Number(e.overtime_pay)
           if (existing) existing.totalPay += amount
-          else byPeriod.set(key, { periodStart: period.period_start, periodEnd: period.period_end, totalPay: amount })
+          else byPeriod.set(key, { periodStart: period.period_start, periodEnd: period.period_end, totalPay: amount, finalizedAt: period.finalized_at })
         }
         paidPeriods = Array.from(byPeriod.values())
           .sort((a, b) => b.periodStart.localeCompare(a.periodStart))
@@ -113,11 +113,19 @@ export default async function PagamentoPage() {
           <div className="divide-y divide-[var(--border)]">
             {paidPeriods.map(p => (
               <div key={`${p.periodStart}_${p.periodEnd}`} className="px-5 py-4 flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-primary">
-                  {new Date(p.periodStart + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  {' – '}
-                  {new Date(p.periodEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-primary">
+                    {new Date(p.periodStart + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {' – '}
+                    {new Date(p.periodEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                  <p className="text-xs text-secondary mt-0.5">
+                    {t(locale, 'employee.pagamento.paidOn').replace(
+                      '{date}',
+                      new Date(p.finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                    )}
+                  </p>
+                </div>
                 <div className="text-right flex flex-col items-end gap-1.5">
                   <span className="text-base font-bold text-primary">{fmt(p.totalPay)}</span>
                   <Badge variant="green">{t(locale, 'employee.pagamento.paid')}</Badge>

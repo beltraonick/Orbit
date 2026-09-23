@@ -6,10 +6,12 @@ import { useCompanyId } from '@/lib/company-context'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
+import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { Input } from '@/components/ui/Input'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { createManualTimeEntry, supervisorClockOut } from '@/app/actions/workerActions'
 import { TeamClockIn } from '@/app/(employee)/projects/[id]/TeamClockIn'
+import { calcEntryPay } from '@/lib/payroll-calc'
 import type { Locale } from '@/lib/i18n/translate'
 
 interface TimeEntry {
@@ -23,23 +25,40 @@ interface TimeEntry {
   state: string | null
   notes: string | null
   is_full_day: boolean | null
+  hours_worked: number | null
   approval_status: string | null
   clocked_by_profile_id: string | null
   project: { name: string } | null
-  profile: { full_name: string; email: string } | null
-  worker: { full_name: string } | null
+  profile: { full_name: string; email: string; daily_rate: number | null; hourly_rate: number | null } | null
+  worker: { full_name: string; daily_rate: number | null; hourly_rate: number | null } | null
   clocked_by: { full_name: string } | null
 }
 
 const ENTRY_SELECT = `
   id, employee_id, worker_id, project_id, clock_in, clock_out,
-  city, state, notes, is_full_day, approval_status,
+  city, state, notes, is_full_day, hours_worked, approval_status,
   clocked_by_profile_id,
   project:project_id(name),
-  profile:employee_id(full_name, email),
-  worker:worker_id(full_name),
+  profile:employee_id(full_name, email, daily_rate, hourly_rate),
+  worker:worker_id(full_name, daily_rate, hourly_rate),
   clocked_by:clocked_by_profile_id(full_name)
 `
+
+// Pay mode (Daily vs Hourly) is per-person, same rule calcEntryPay() uses —
+// so this page never mislabels an hourly person's shift as a "Full Day".
+function entryCalc(e: TimeEntry) {
+  if (!e.clock_out) return null
+  const rates = e.profile ?? e.worker
+  if (!rates) return null
+  return calcEntryPay({
+    clock_in: e.clock_in,
+    clock_out: e.clock_out,
+    hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+    is_full_day: e.is_full_day,
+    daily_rate: rates.daily_rate,
+    hourly_rate: rates.hourly_rate,
+  })
+}
 
 function filterOptions(t: (key: string) => string) {
   return [
@@ -316,7 +335,17 @@ export default function TimePage() {
 
   const pendingEntries = closedEntries.filter(e => e.approval_status === 'pending')
   const historyEntries = closedEntries.filter(e => e.approval_status !== 'pending')
-  const totalHours = closedEntries.reduce((sum, e) => sum + (calcHours(e.clock_in, e.clock_out) ?? 0), 0)
+
+  // Days and hours are tracked separately (per-person pay mode, same rule as
+  // calcEntryPay) so a Daily-mode crew is summarized in days, not a raw hour
+  // count that has no meaning for their pay.
+  let totalDays = 0
+  let totalHours = 0
+  for (const e of closedEntries) {
+    const calc = entryCalc(e)
+    if (calc?.payMode === 'daily') totalDays += calc.fullDay ? 1 : 0.5
+    else totalHours += calcHours(e.clock_in, e.clock_out) ?? 0
+  }
 
   const personName = (e: TimeEntry) =>
     e.profile?.full_name ?? e.worker?.full_name ?? t('admin.time.unknownEmployee')
@@ -331,7 +360,13 @@ export default function TimePage() {
             {activeEntries.length > 0 && (
               <span>{t('admin.time.clockedInCount').replace('{n}', String(activeEntries.length))} · </span>
             )}
-            <span>{t('admin.time.hoursTotal').replace('{n}', totalHours.toFixed(1))}</span>
+            {totalDays > 0 && (
+              <span>{t('admin.time.daysTotal').replace('{n}', totalDays % 1 === 0 ? String(totalDays) : totalDays.toFixed(1))}</span>
+            )}
+            {totalDays > 0 && totalHours > 0 && <span> · </span>}
+            {totalHours > 0 && (
+              <span>{t('admin.time.hoursTotal').replace('{n}', totalHours.toFixed(1))}</span>
+            )}
             {pendingEntries.length > 0 && (
               <span className="text-amber"> · {t('admin.time.pendingApprovalCount').replace('{n}', String(pendingEntries.length))}</span>
             )}
@@ -513,6 +548,7 @@ export default function TimePage() {
               ) : (
                 <div className="divide-y divide-[var(--border)]">
                   {historyEntries.map(e => {
+                    const calc = entryCalc(e)
                     const hours = calcHours(e.clock_in, e.clock_out)
                     const status = e.approval_status ?? 'approved'
                     const clockedBySomeoneElse =
@@ -526,8 +562,6 @@ export default function TimePage() {
                             <p className="text-sm font-medium text-primary truncate max-w-[160px]">{personName(e)}</p>
                             {e.worker_id && <Badge variant="gray">Worker</Badge>}
                             {status === 'rejected' && <Badge variant="gray">{t('common.rejected')}</Badge>}
-                            {e.is_full_day === true && <Badge variant="green">{t('admin.time.fullDay')}</Badge>}
-                            {e.is_full_day === false && <Badge variant="amber">{t('admin.time.halfDay')}</Badge>}
                           </div>
                           <p className="text-xs text-secondary mt-0.5">
                             {fmtDate(e.clock_in, locale)} · {fmtTime(e.clock_in, locale)}
@@ -551,7 +585,12 @@ export default function TimePage() {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-2 shrink-0">
-                          {hours != null && (
+                          {calc?.payMode === 'daily' ? (
+                            <DayTypeBadge
+                              fullDay={calc.fullDay}
+                              label={calc.fullDay ? t('admin.time.fullDay') : t('admin.time.halfDay')}
+                            />
+                          ) : hours != null && (
                             <span className="text-sm font-semibold text-primary tabular-nums">
                               {hours.toFixed(2)}h
                             </span>

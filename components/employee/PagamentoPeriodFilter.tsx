@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay } from '@/lib/payroll-calc'
 import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
@@ -16,28 +15,18 @@ const fmtDate = (iso: string) =>
     weekday: 'short', month: 'short', day: 'numeric',
   })
 
-function getQuinzenaDates(which: 'current' | 'last'): { start: string; end: string } {
+function getCurrentQuinzenaDates(): { start: string; end: string } {
   const now = new Date()
   const day = now.getDate()
   const year = now.getFullYear()
   const month = now.getMonth()
   let start: Date, end: Date
-  if (which === 'current') {
-    if (day <= 15) {
-      start = new Date(year, month, 1)
-      end = new Date(year, month, 15)
-    } else {
-      start = new Date(year, month, 16)
-      end = new Date(year, month + 1, 0)
-    }
+  if (day <= 15) {
+    start = new Date(year, month, 1)
+    end = new Date(year, month, 15)
   } else {
-    if (day <= 15) {
-      start = new Date(year, month - 1, 16)
-      end = new Date(year, month, 0)
-    } else {
-      start = new Date(year, month, 1)
-      end = new Date(year, month, 15)
-    }
+    start = new Date(year, month, 16)
+    end = new Date(year, month + 1, 0)
   }
   return {
     start: start.toISOString().slice(0, 10),
@@ -67,7 +56,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   const { t } = useTranslation()
   const isDailyRate = dailyRate != null && dailyRate > 0
 
-  const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('current')
+  const [preset, setPreset] = useState<'current' | 'custom'>('current')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [entries, setEntries] = useState<DisplayEntry[]>([])
@@ -77,8 +66,8 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   // screen shows them as-is instead of recomputing from live rates.
   const [finalized, setFinalized] = useState(false)
 
-  const periodStart = preset === 'custom' ? customStart : getQuinzenaDates(preset as 'current' | 'last').start
-  const periodEnd = preset === 'custom' ? customEnd : getQuinzenaDates(preset as 'current' | 'last').end
+  const periodStart = preset === 'custom' ? customStart : getCurrentQuinzenaDates().start
+  const periodEnd = preset === 'custom' ? customEnd : getCurrentQuinzenaDates().end
 
   const load = useCallback(async () => {
     if (!periodStart || !periodEnd) return
@@ -145,11 +134,21 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
 
   const totalEarnings = entries.reduce((s, e) => s + e.amount, 0)
   const totalHours = entries.reduce((s, e) => s + (e.hours ?? 0), 0)
-  const totalDays = isDailyRate ? entries.reduce((s, e) => s + (e.fullDay ? 1 : 0.5), 0) : 0
+  const fullDaysCount = entries.reduce((s, e) => s + (e.fullDay === true ? 1 : 0), 0)
+  const halfDaysCount = entries.reduce((s, e) => s + (e.fullDay === false ? 1 : 0), 0)
+  const totalDays = isDailyRate ? fullDaysCount + halfDaysCount * 0.5 : 0
+
+  const earningsLabel = t(finalized ? 'employee.pagamento.paidEarnings' : 'employee.pagamento.estEarnings')
+  const daysHoursLabel = t(isDailyRate ? 'employee.pagamento.daysWorkedLabel' : 'employee.pagamento.hoursWorkedLabel')
+  const daysBreakdown = isDailyRate && (fullDaysCount > 0 || halfDaysCount > 0)
+    ? [
+        fullDaysCount > 0 ? t(fullDaysCount === 1 ? 'employee.pagamento.fullDaySingular' : 'employee.pagamento.fullDayPlural').replace('{n}', String(fullDaysCount)) : null,
+        halfDaysCount > 0 ? t(halfDaysCount === 1 ? 'employee.pagamento.halfDaySingular' : 'employee.pagamento.halfDayPlural').replace('{n}', String(halfDaysCount)) : null,
+      ].filter(Boolean).join(' • ')
+    : null
 
   const PRESET_OPTIONS = [
     { value: 'current', label: t('employee.pagamento.currentPeriod') },
-    { value: 'last',    label: t('employee.pagamento.lastPeriod') },
     { value: 'custom',  label: t('employee.pagamento.customPeriod') },
   ]
 
@@ -191,42 +190,36 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
         )}
       </div>
 
-      {!loading && entries.length > 0 && (
-        <div className="mb-3">
-          {finalized
-            ? <Badge variant="green">{t('employee.pagamento.paid')}</Badge>
-            : <Badge variant="amber">{t('employee.pagamento.estimated')}</Badge>}
-        </div>
-      )}
-
-      {/* Summary cards */}
+      {/* Summary cards — label itself carries the Estimated/Paid distinction,
+          so there's no need for a separate status badge above it. */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <Card>
           <p className="text-xs text-secondary uppercase tracking-wide mb-1">
-            {t('employee.pagamento.periodEarnings')}
+            {earningsLabel}
           </p>
           <p className="text-2xl font-bold text-primary">
             {loading ? '—' : totalEarnings > 0 ? fmt(totalEarnings) : '—'}
           </p>
-          <p className="text-xs text-secondary mt-1">
-            {!loading && (isDailyRate
-              ? t('employee.pagamento.daysWorked').replace('{n}', totalDays % 1 === 0 ? String(totalDays) : totalDays.toFixed(1))
-              : t('employee.pagamento.hoursWorked').replace('{n}', totalHours.toFixed(1)))}
-          </p>
+          {!loading && !isDailyRate && totalHours > 0 && (
+            <p className="text-xs text-secondary mt-1">
+              {t('employee.pagamento.hoursWorked').replace('{n}', totalHours.toFixed(1))}
+            </p>
+          )}
         </Card>
         <Card>
           <p className="text-xs text-secondary uppercase tracking-wide mb-1">
-            {t('employee.pagamento.entriesCount')}
+            {daysHoursLabel}
           </p>
           <p className="text-2xl font-bold text-primary">
-            {loading ? '—' : entries.length}
+            {loading
+              ? '—'
+              : isDailyRate
+                ? (totalDays > 0 ? (totalDays % 1 === 0 ? totalDays : totalDays.toFixed(1)) : '—')
+                : (totalHours > 0 ? totalHours.toFixed(1) : '—')}
           </p>
-          <p className="text-xs text-secondary mt-1">
-            {!loading && (isDailyRate
-              ? t('employee.pagamento.daysWorked').replace('{n}', '')
-              : t('employee.pagamento.hoursWorked').replace('{n}', ''))
-              .replace('{n}', '').trim()}
-          </p>
+          {!loading && daysBreakdown && (
+            <p className="text-xs text-secondary mt-1 leading-snug">{daysBreakdown}</p>
+          )}
         </Card>
       </div>
 
@@ -242,17 +235,28 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
                 ? (e.fullDay ? t('employee.pagamento.fullDay') : t('employee.pagamento.halfDay'))
                 : null
               return (
-                <div key={e.id} className="flex items-start gap-3 px-5 py-3">
+                <div key={e.id} className="flex items-center gap-3 px-5 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-primary">{fmtDate(e.date)}</p>
                     <p className="text-xs text-secondary mt-0.5 truncate">
                       {e.projectName ?? '—'}
-                      {dayLabel ? ` · ${dayLabel}` : ` · ${(e.hours ?? 0).toFixed(1)}h`}
+                      {dayLabel ? '' : ` · ${(e.hours ?? 0).toFixed(1)}h`}
                     </p>
                   </div>
-                  <span className="text-sm font-semibold text-primary tabular-nums flex-shrink-0">
-                    {fmt(e.amount)}
-                  </span>
+                  {dayLabel ? (
+                    <div className={`flex flex-col items-end px-2.5 py-1 rounded-lg flex-shrink-0 ${e.fullDay ? 'bg-green/10' : 'bg-purple/10'}`}>
+                      <span className={`text-sm font-semibold tabular-nums ${e.fullDay ? 'text-green' : 'text-purple'}`}>
+                        {fmt(e.amount)}
+                      </span>
+                      <span className={`text-[10px] font-medium ${e.fullDay ? 'text-green' : 'text-purple'}`}>
+                        {dayLabel}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-semibold text-primary tabular-nums flex-shrink-0">
+                      {fmt(e.amount)}
+                    </span>
+                  )}
                 </div>
               )
             })}
