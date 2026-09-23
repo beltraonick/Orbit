@@ -6,6 +6,7 @@ import { useCompanyId } from '@/lib/company-context'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
 import { finalizePayrollPeriod, getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
+import { createManualCompensation, deleteManualCompensation, listManualCompensations, type CompensationCategory } from '@/app/actions/manualCompensationActions'
 
 const fmt$ = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -46,7 +47,7 @@ interface DayRow {
   personName: string
   date: string
   projectName: string
-  payMode: 'daily' | 'hourly'
+  payMode: 'daily' | 'hourly' | 'manual'
   dailyRate: number
   hourlyRate: number
   hoursWorked: number | null
@@ -58,10 +59,36 @@ interface DayRow {
   overtimePay: number
 }
 
+interface ManualCompRow {
+  id: string
+  personType: 'employee' | 'worker'
+  personId: string
+  personName: string
+  amount: number
+  date: string
+  category: CompensationCategory
+  description: string
+  projectName: string | null
+  locked: boolean
+}
+
+interface Person {
+  id: string
+  type: 'employee' | 'worker'
+  name: string
+}
+
+const CATEGORY_LABELS: Record<CompensationCategory, string> = {
+  extra_work: 'Extra Work',
+  bonus: 'Bonus',
+  correction: 'Correction',
+  production: 'Production',
+}
+
 interface Summary {
   personId: string
   personName: string
-  payMode: 'daily' | 'hourly'
+  payMode: 'daily' | 'hourly' | 'manual'
   totalDays: number
   fullDays: number
   partialDays: number
@@ -112,12 +139,25 @@ export function PayrollManager() {
   const companyId = useCompanyId()
   const printRef = useRef<HTMLDivElement>(null)
 
-  const [tab, setTab] = useState<'detail' | 'summary' | 'overtime'>('detail')
+  const [tab, setTab] = useState<'detail' | 'summary' | 'overtime' | 'manual'>('detail')
   const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('last')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [rows, setRows] = useState<DayRow[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Manual Compensation — extra work, bonuses, corrections, and
+  // production-paid subcontractor pay. Kept in its own list, separate from
+  // and auditable against the calculated Daily/Hourly rows above.
+  const [manualRows, setManualRows] = useState<ManualCompRow[]>([])
+  const [people, setPeople] = useState<Person[]>([])
+  const [showAddManual, setShowAddManual] = useState(false)
+  const [manualForm, setManualForm] = useState({
+    personKey: '', amount: '', date: '', category: 'extra_work' as CompensationCategory, description: '', projectId: '',
+  })
+  const [manualSaving, setManualSaving] = useState(false)
+  const [manualError, setManualError] = useState('')
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
 
   // Finalized-period lock. Once a period is finalized, its numbers are read
   // from the permanent snapshot instead of recomputed live, so later rate or
@@ -141,7 +181,7 @@ export function PayrollManager() {
       setFinalized(true)
       setFinalizedAt(snapshot.finalizedAt)
       setFinalizedByName(snapshot.finalizedByName)
-      setRows(snapshot.entries.map((e): DayRow => ({
+      setRows(snapshot.entries.filter(e => e.pay_mode !== 'manual').map((e): DayRow => ({
         entryId: e.id,
         personId: e.person_id,
         personName: e.person_name,
@@ -158,12 +198,40 @@ export function PayrollManager() {
         overtimeHours: Number(e.overtime_hours),
         overtimePay: Number(e.overtime_pay),
       })))
+      setManualRows(snapshot.entries.filter(e => e.pay_mode === 'manual').map((e): ManualCompRow => ({
+        id: e.id,
+        personType: e.person_type,
+        personId: e.person_id,
+        personName: e.person_name,
+        amount: Number(e.total_pay),
+        date: e.entry_date,
+        category: (e.category ?? 'extra_work') as CompensationCategory,
+        description: e.notes ?? '',
+        projectName: e.project_name,
+        locked: true,
+      })))
       setLoading(false)
       return
     }
     setFinalized(false)
     setFinalizedAt(null)
     setFinalizedByName(null)
+
+    const manualResult = await listManualCompensations(periodStart, periodEnd)
+    if (manualResult.success) {
+      setManualRows(manualResult.entries.map((m): ManualCompRow => ({
+        id: m.id as string,
+        personType: m.person_type as 'employee' | 'worker',
+        personId: m.person_id as string,
+        personName: m.person_name as string,
+        amount: Number(m.amount),
+        date: m.compensation_date as string,
+        category: m.category as CompensationCategory,
+        description: m.description as string,
+        projectName: (m.project as unknown as { name: string } | null)?.name ?? null,
+        locked: m.payroll_period_id != null,
+      })))
+    }
 
     const supabase = createClient()
 
@@ -228,6 +296,63 @@ export function PayrollManager() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    if (!companyId) return
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('profiles').select('id, full_name').eq('company_id', companyId).eq('role', 'employee').eq('status', 'active').order('full_name'),
+      supabase.from('workers').select('id, full_name').eq('company_id', companyId).eq('status', 'active').order('full_name'),
+      supabase.from('projects').select('id, name').eq('company_id', companyId).order('name'),
+    ]).then(([{ data: emps }, { data: wrks }, { data: projs }]) => {
+      const combined: Person[] = [
+        ...((emps ?? []) as { id: string; full_name: string }[]).map(e => ({ id: e.id, type: 'employee' as const, name: e.full_name })),
+        ...((wrks ?? []) as { id: string; full_name: string }[]).map(w => ({ id: w.id, type: 'worker' as const, name: w.full_name })),
+      ]
+      setPeople(combined)
+      setProjects(projs ?? [])
+    })
+  }, [companyId])
+
+  function openAddManual() {
+    setManualForm({ personKey: '', amount: '', date: periodEnd || new Date().toISOString().slice(0, 10), category: 'extra_work', description: '', projectId: '' })
+    setManualError('')
+    setShowAddManual(true)
+  }
+
+  async function handleAddManual(e: React.FormEvent) {
+    e.preventDefault()
+    const person = people.find(p => `${p.type}:${p.id}` === manualForm.personKey)
+    if (!person) { setManualError('Select a person.'); return }
+    const amount = Number(manualForm.amount)
+    if (!amount || amount <= 0) { setManualError('Enter an amount greater than 0.'); return }
+    if (!manualForm.description.trim()) { setManualError('A description is required.'); return }
+    if (!manualForm.date) { setManualError('Select a date.'); return }
+
+    setManualSaving(true)
+    setManualError('')
+    const result = await createManualCompensation({
+      person_type: person.type,
+      person_id: person.id,
+      person_name: person.name,
+      amount,
+      compensation_date: manualForm.date,
+      category: manualForm.category,
+      description: manualForm.description.trim(),
+      project_id: manualForm.projectId || null,
+    })
+    setManualSaving(false)
+    if (result.error) { setManualError(result.error); return }
+    setShowAddManual(false)
+    await load()
+  }
+
+  async function handleDeleteManual(id: string) {
+    if (!window.confirm('Delete this manual compensation entry?')) return
+    const result = await deleteManualCompensation(id)
+    if (result.error) { window.alert(result.error); return }
+    await load()
+  }
+
   async function handleFinalize() {
     if (!periodStart || !periodEnd) return
     const label = `${fmtDateLong(periodStart)} – ${fmtDateLong(periodEnd)}`
@@ -273,8 +398,11 @@ export function PayrollManager() {
   ).sort((a, b) => a.personName.localeCompare(b.personName))
 
   const overtimeRows = rows.filter(r => r.overtimeHours > 0)
-  const grandTotal    = summaries.reduce((s, r) => s + r.totalPay, 0)
-  const overtimeTotal = summaries.reduce((s, r) => s + r.overtimePay, 0)
+  const calculatedTotal = summaries.reduce((s, r) => s + r.totalPay, 0)
+  const overtimeTotal   = summaries.reduce((s, r) => s + r.overtimePay, 0)
+  const manualCompTotal = manualRows.reduce((s, r) => s + r.amount, 0)
+  const grandTotal      = calculatedTotal + manualCompTotal
+  const hasAnyData      = rows.length > 0 || manualRows.length > 0
 
   function exportDetailCSV() {
     const header = ['EMPLOYEE NAME', 'PAY TYPE', 'WORKED?', 'DATE', 'PRICE $', 'FULL DAY?', 'HOURS', 'TOTAL $', 'NOTES', 'JOB NAME']
@@ -290,7 +418,19 @@ export function PayrollManager() {
       r.notes ?? '',
       r.projectName,
     ])
-    const csv = [header, ...dataRows].map(row => row.map(escapeCSV).join(',')).join('\n')
+    const manualDataRows = manualRows.map(m => [
+      m.personName,
+      'Manual',
+      '—',
+      fmtDate(m.date),
+      '—',
+      '—',
+      '—',
+      m.amount.toFixed(2),
+      `${CATEGORY_LABELS[m.category]}: ${m.description}`,
+      m.projectName ?? '',
+    ])
+    const csv = [header, ...dataRows, ...manualDataRows].map(row => row.map(escapeCSV).join(',')).join('\n')
     const label = periodStart && periodEnd ? `${periodStart}_to_${periodEnd}` : 'payroll'
     downloadCSV(`Payroll_${label}.csv`, csv)
   }
@@ -300,7 +440,9 @@ export function PayrollManager() {
 
     const perPerson = summaries.map(s => {
       const personRows = rows.filter(r => r.personId === s.personId)
+      const personManual = manualRows.filter(m => m.personId === s.personId)
       const hasOvertime = s.overtimePay > 0
+      const manualTotal = personManual.reduce((sum, m) => sum + m.amount, 0)
 
       const payrollRows = personRows.map(r =>
         `<tr>
@@ -322,6 +464,14 @@ export function PayrollManager() {
           </tr>`
         : ''
 
+      const manualCompRows = personManual.map(m =>
+        `<tr>
+          <td class="tag manual">MANUAL</td>
+          <td class="desc">${fmtDate(m.date)} · ${CATEGORY_LABELS[m.category]}${m.projectName ? ' · ' + m.projectName : ''} · ${m.description}</td>
+          <td class="amount">${fmt$(m.amount)}</td>
+        </tr>`
+      ).join('')
+
       return `
         <div class="section">
           <h2 class="name">${s.personName} <span class="pay-type">${s.payMode === 'daily' ? 'Daily Rate' : 'Hourly Rate'}</span></h2>
@@ -334,11 +484,49 @@ export function PayrollManager() {
             <tbody>
               ${payrollRows}
               ${overtimeRow}
+              ${manualCompRows}
             </tbody>
             <tfoot>
               <tr class="subtotal">
                 <td colspan="2">SUBTOTAL</td>
-                <td class="amount">${fmt$(s.totalPay + s.overtimePay)}</td>
+                <td class="amount">${fmt$(s.totalPay + s.overtimePay + manualTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`
+    }).join('')
+
+    // People who ONLY have manual compensation (e.g. a production-paid
+    // subcontractor with no clock-in at all) get their own section, since
+    // they never appear in `summaries`.
+    const manualOnlyPeople = Array.from(new Set(
+      manualRows.filter(m => !summaries.some(s => s.personId === m.personId)).map(m => m.personId)
+    ))
+    const manualOnlySections = manualOnlyPeople.map(personId => {
+      const personManual = manualRows.filter(m => m.personId === personId)
+      const personName = personManual[0]?.personName ?? 'Unknown'
+      const manualTotal = personManual.reduce((sum, m) => sum + m.amount, 0)
+      const manualCompRows = personManual.map(m =>
+        `<tr>
+          <td class="tag manual">MANUAL</td>
+          <td class="desc">${fmtDate(m.date)} · ${CATEGORY_LABELS[m.category]}${m.projectName ? ' · ' + m.projectName : ''} · ${m.description}</td>
+          <td class="amount">${fmt$(m.amount)}</td>
+        </tr>`
+      ).join('')
+      return `
+        <div class="section">
+          <h2 class="name">${personName} <span class="pay-type">Manual Compensation</span></h2>
+          <table>
+            <thead>
+              <tr class="th-row">
+                <th>TYPE</th><th>DESCRIPTION</th><th>AMOUNT</th>
+              </tr>
+            </thead>
+            <tbody>${manualCompRows}</tbody>
+            <tfoot>
+              <tr class="subtotal">
+                <td colspan="2">SUBTOTAL</td>
+                <td class="amount">${fmt$(manualTotal)}</td>
               </tr>
             </tfoot>
           </table>
@@ -371,6 +559,7 @@ export function PayrollManager() {
   .tag { font-size: 10px; font-weight: 600; text-transform: uppercase; white-space: nowrap; padding: 3px 8px !important; border-radius: 6px; }
   .tag.payroll { background: #e5f0ff; color: #0066cc; }
   .tag.overtime { background: #fff3e0; color: #e65100; }
+  .tag.manual { background: #f0e5ff; color: #6600cc; }
   .subtotal td { font-weight: 700; background: #f5f5f7; }
   .subtotal td:first-child { text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6e6e73; }
   .grand-total { margin-top: 20px; text-align: right; font-size: 18px; font-weight: 700; border-top: 2px solid #1c1c1e; padding-top: 12px; }
@@ -385,15 +574,19 @@ export function PayrollManager() {
 <div class="totals-bar">
   <div class="total-box">
     <div class="label">Total People</div>
-    <div class="value">${summaries.length}</div>
+    <div class="value">${new Set([...rows.map(r => r.personId), ...manualRows.map(r => r.personId)]).size}</div>
   </div>
   <div class="total-box">
     <div class="label">Payroll Total</div>
-    <div class="value">${fmt$(grandTotal)}</div>
+    <div class="value">${fmt$(calculatedTotal)}</div>
   </div>
   <div class="total-box">
     <div class="label">Overtime Total</div>
     <div class="value">${fmt$(overtimeTotal)}</div>
+  </div>
+  <div class="total-box">
+    <div class="label">Manual Comp Total</div>
+    <div class="value">${fmt$(manualCompTotal)}</div>
   </div>
   <div class="total-box">
     <div class="label">Invoice Total</div>
@@ -401,6 +594,7 @@ export function PayrollManager() {
   </div>
 </div>
 ${perPerson}
+${manualOnlySections}
 <div class="grand-total">TOTAL: ${fmt$(grandTotal + overtimeTotal)}</div>
 </body>
 </html>`
@@ -452,7 +646,7 @@ ${perPerson}
           )}
         </div>
         <div className="flex gap-2 print:hidden flex-wrap">
-          {rows.length > 0 && (
+          {hasAnyData && (
             <>
               <button
                 onClick={exportDetailCSV}
@@ -545,11 +739,11 @@ ${perPerson}
       </div>
 
       {/* Stats cards */}
-      {!loading && rows.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      {!loading && hasAnyData && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-surface border border-[var(--border)] rounded-card p-4">
             <p className="text-xs text-secondary uppercase tracking-wide mb-1.5">{t('admin.payroll.totalWorkers')}</p>
-            <p className="text-2xl font-bold text-primary">{summaries.length}</p>
+            <p className="text-2xl font-bold text-primary">{new Set([...rows.map(r => r.personId), ...manualRows.map(r => r.personId)]).size}</p>
           </div>
           <div className="bg-surface border border-[var(--border)] rounded-card p-4">
             <p className="text-xs text-secondary uppercase tracking-wide mb-1.5">{t('admin.payroll.totalDays')}</p>
@@ -565,12 +759,18 @@ ${perPerson}
               {fmt$(overtimeTotal)}
             </p>
           </div>
+          <div className="bg-surface border border-[var(--border)] rounded-card p-4">
+            <p className="text-xs text-secondary uppercase tracking-wide mb-1.5">Manual Comp</p>
+            <p className={`text-2xl font-bold ${manualCompTotal > 0 ? 'text-brand' : 'text-primary'}`}>
+              {fmt$(manualCompTotal)}
+            </p>
+          </div>
         </div>
       )}
 
       {/* Tabs */}
       <div className="flex border-b border-[var(--border)] mb-5 print:hidden">
-        {(['detail', 'summary', 'overtime'] as const).map(tabKey => (
+        {(['detail', 'summary', 'overtime', 'manual'] as const).map(tabKey => (
           <button
             key={tabKey}
             onClick={() => setTab(tabKey)}
@@ -580,10 +780,15 @@ ${perPerson}
                 : 'border-transparent text-secondary hover:text-primary'
             }`}
           >
-            {t(`admin.payroll.tab_${tabKey}`)}
+            {tabKey === 'manual' ? 'Manual Comp' : t(`admin.payroll.tab_${tabKey}`)}
             {tabKey === 'overtime' && overtimeRows.length > 0 && (
               <span className="ml-1.5 bg-amber/15 text-amber text-xs px-1.5 py-0.5 rounded-full font-semibold">
                 {overtimeRows.length}
+              </span>
+            )}
+            {tabKey === 'manual' && manualRows.length > 0 && (
+              <span className="ml-1.5 bg-brand/15 text-brand text-xs px-1.5 py-0.5 rounded-full font-semibold">
+                {manualRows.length}
               </span>
             )}
           </button>
@@ -596,7 +801,7 @@ ${perPerson}
         </div>
       )}
 
-      {!loading && rows.length === 0 && (
+      {!loading && rows.length === 0 && tab !== 'manual' && (
         <div className="text-center py-16 border-2 border-dashed border-[var(--border)] rounded-card">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8 mx-auto text-tertiary mb-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -666,7 +871,7 @@ ${perPerson}
                   <td colSpan={4} className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-secondary">
                     {t('admin.payroll.grandTotal')}
                   </td>
-                  <td className="px-3 py-2.5 text-right font-bold text-primary tabular-nums">{fmt$(grandTotal)}</td>
+                  <td className="px-3 py-2.5 text-right font-bold text-primary tabular-nums">{fmt$(calculatedTotal)}</td>
                   <td colSpan={2} />
                 </tr>
               </tfoot>
@@ -726,7 +931,7 @@ ${perPerson}
                   </td>
                   <td colSpan={3} />
                   <td className="px-3 py-2.5 text-right font-bold text-primary tabular-nums">
-                    {fmt$(grandTotal)}
+                    {fmt$(calculatedTotal)}
                   </td>
                 </tr>
               </tfoot>
@@ -793,6 +998,186 @@ ${perPerson}
             </div>
           </div>
         )
+      )}
+
+      {/* ─── Manual Compensation tab ─── */}
+      {!loading && tab === 'manual' && (
+        <div>
+          <div className="flex justify-end mb-3 print:hidden">
+            <button
+              onClick={openAddManual}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-button bg-brand text-white text-sm hover:opacity-90 transition-opacity"
+            >
+              + Add Manual Compensation
+            </button>
+          </div>
+          {manualRows.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-[var(--border)] rounded-card">
+              <p className="text-sm text-secondary">No manual compensation entries for this period — extra work, bonuses, corrections, or production-paid subcontractor pay.</p>
+            </div>
+          ) : (
+            <div className="border border-[var(--border)] rounded-card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-[var(--color-surface-elevated)] border-b border-[var(--border)]">
+                      <th className={TH}>{t('admin.payroll.col_employee')}</th>
+                      <th className={TH}>{t('admin.payroll.col_date')}</th>
+                      <th className={TH}>Category</th>
+                      <th className={TH}>Description</th>
+                      <th className={TH}>{t('admin.payroll.col_job')}</th>
+                      <th className={TH_R}>{t('admin.payroll.col_total')}</th>
+                      <th className={TH_R}> </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {manualRows.map(row => (
+                      <tr key={row.id} className="hover:bg-[var(--color-surface-elevated)] transition-colors">
+                        <td className="px-3 py-2.5 font-medium text-primary whitespace-nowrap">
+                          {row.personName}
+                          {row.locked && (
+                            <span className="ml-1.5 text-[10px] text-tertiary" title="Part of a finalized payroll period">🔒</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-secondary whitespace-nowrap">{fmtDate(row.date)}</td>
+                        <td className="px-3 py-2.5">
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand/10 text-brand">
+                            {CATEGORY_LABELS[row.category]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-secondary max-w-[240px] truncate text-xs">{row.description}</td>
+                        <td className="px-3 py-2.5 text-secondary whitespace-nowrap text-xs">{row.projectName ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-primary tabular-nums">{fmt$(row.amount)}</td>
+                        <td className="px-3 py-2.5 text-right print:hidden">
+                          {!row.locked && (
+                            <button
+                              onClick={() => handleDeleteManual(row.id)}
+                              className="text-tertiary hover:text-danger transition-colors text-xs"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-[var(--color-surface-elevated)] border-t border-[var(--border)]">
+                      <td colSpan={5} className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-secondary">
+                        {t('admin.payroll.grandTotal')}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold text-primary tabular-nums">{fmt$(manualCompTotal)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Add Manual Compensation modal ─── */}
+      {showAddManual && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowAddManual(false)}>
+          <div className="bg-surface rounded-card max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-semibold text-primary mb-4">Add Manual Compensation</h2>
+            <form onSubmit={handleAddManual} className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-secondary mb-1 block">Person</label>
+                <select
+                  value={manualForm.personKey}
+                  onChange={e => setManualForm(f => ({ ...f, personKey: e.target.value }))}
+                  className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                  required
+                >
+                  <option value="">Select person…</option>
+                  <optgroup label="Employees">
+                    {people.filter(p => p.type === 'employee').map(p => (
+                      <option key={`employee:${p.id}`} value={`employee:${p.id}`}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Workers (no login)">
+                    {people.filter(p => p.type === 'worker').map(p => (
+                      <option key={`worker:${p.id}`} value={`worker:${p.id}`}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-secondary mb-1 block">Amount ($)</label>
+                  <input
+                    type="number" min="0.01" step="0.01" required
+                    value={manualForm.amount}
+                    onChange={e => setManualForm(f => ({ ...f, amount: e.target.value }))}
+                    className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-secondary mb-1 block">Date</label>
+                  <input
+                    type="date" required
+                    value={manualForm.date}
+                    onChange={e => setManualForm(f => ({ ...f, date: e.target.value }))}
+                    className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-secondary mb-1 block">Category</label>
+                <select
+                  value={manualForm.category}
+                  onChange={e => setManualForm(f => ({ ...f, category: e.target.value as CompensationCategory }))}
+                  className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                >
+                  {(Object.keys(CATEGORY_LABELS) as CompensationCategory[]).map(cat => (
+                    <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-secondary mb-1 block">Project (optional)</label>
+                <select
+                  value={manualForm.projectId}
+                  onChange={e => setManualForm(f => ({ ...f, projectId: e.target.value }))}
+                  className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                >
+                  <option value="">—</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-secondary mb-1 block">Description</label>
+                <textarea
+                  required
+                  value={manualForm.description}
+                  onChange={e => setManualForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="e.g. Rooms completed / production work — Hampton Inn Beckley"
+                  className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary resize-none"
+                  rows={2}
+                />
+              </div>
+              {manualError && <p className="text-xs text-danger">{manualError}</p>}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowAddManual(false)}
+                  className="flex-1 px-3 py-2 rounded-button border border-[var(--border)] text-sm text-secondary hover:text-primary transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={manualSaving}
+                  className="flex-1 px-3 py-2 rounded-button bg-brand text-white text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  {manualSaving ? 'Saving…' : 'Add'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

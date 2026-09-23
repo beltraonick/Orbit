@@ -94,13 +94,35 @@ export async function GET(req: Request) {
   if (start) milQuery = milQuery.gte('trip_date', start.toISOString().slice(0, 10))
   if (end) milQuery = milQuery.lte('trip_date', end.toISOString().slice(0, 10))
 
-  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }, { data: frozenEntries }] =
+  // Manual Compensation — extra work, bonuses, corrections, and
+  // production-paid subcontractor pay (no time_entries row at all). A
+  // period that's already been finalized reports the frozen snapshot copy
+  // instead of the live table, same reasoning as time entries above.
+  let liveManualQuery = supabase
+    .from('manual_compensations')
+    .select('person_name, amount, compensation_date, category, description, project:project_id(name)')
+    .eq('company_id', cid)
+    .is('payroll_period_id', null)
+  if (start) liveManualQuery = liveManualQuery.gte('compensation_date', start.toISOString().slice(0, 10))
+  if (end) liveManualQuery = liveManualQuery.lte('compensation_date', end.toISOString().slice(0, 10))
+
+  let frozenManualQuery = supabase
+    .from('payroll_period_entries')
+    .select('person_name, total_pay, entry_date, category, notes, project_name')
+    .eq('company_id', cid)
+    .eq('source_type', 'manual_compensation')
+  if (start) frozenManualQuery = frozenManualQuery.gte('entry_date', start.toISOString().slice(0, 10))
+  if (end) frozenManualQuery = frozenManualQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }] =
     await Promise.all([
       supabase.from('companies').select('name').eq('id', cid).single(),
       teQuery,
       expQuery,
       milQuery,
       finalizedQuery,
+      liveManualQuery,
+      frozenManualQuery,
     ])
 
   type RawEntry = {
@@ -196,6 +218,41 @@ export async function GET(req: Request) {
     approval_status: m.approval_status,
   }))
 
+  type LiveManual = {
+    person_name: string
+    amount: number
+    compensation_date: string
+    category: string
+    description: string
+    project: { name: string } | null
+  }
+  type FrozenManual = {
+    person_name: string
+    total_pay: number
+    entry_date: string
+    category: string | null
+    notes: string | null
+    project_name: string | null
+  }
+  const manualCompensations = [
+    ...((liveManual ?? []) as unknown as LiveManual[]).map(m => ({
+      full_name: m.person_name,
+      date: m.compensation_date,
+      category: m.category,
+      description: m.description,
+      project: m.project?.name ?? null,
+      amount: Number(m.amount),
+    })),
+    ...((frozenManual ?? []) as unknown as FrozenManual[]).map(m => ({
+      full_name: m.person_name,
+      date: m.entry_date,
+      category: m.category ?? 'extra_work',
+      description: m.notes ?? '',
+      project: m.project_name,
+      amount: Number(m.total_pay),
+    })),
+  ]
+
   return Response.json({
     company_name: (company as { name: string } | null)?.name ?? 'Company',
     period_label: buildPeriodLabel(period, start, end),
@@ -204,5 +261,6 @@ export async function GET(req: Request) {
     entries,
     expenses,
     mileage,
+    manualCompensations,
   })
 }
