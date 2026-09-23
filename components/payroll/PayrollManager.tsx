@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-
-const STANDARD_DAY_HOURS = 8
+import { calcEntryPay, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
 
 const fmt$ = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -152,49 +151,16 @@ export function PayrollManager() {
 
       const personId   = (e.employee_id as string | null) ?? (e.worker_id as string)
       const personName = profile?.full_name ?? worker?.full_name ?? 'Unknown'
+      const date       = (e.clock_in as string).slice(0, 10)
 
-      // Determine pay mode
-      // For profiles: daily if daily_rate > 0, else hourly
-      // For workers: daily if daily_rate > 0, hourly if hourly_rate > 0
-      const profileDailyRate  = profile?.daily_rate  != null ? Number(profile.daily_rate)  : null
-      const workerDailyRate   = worker?.daily_rate   != null ? Number(worker.daily_rate)   : null
-      const workerHourlyRate  = worker?.hourly_rate  != null ? Number(worker.hourly_rate)  : null
-      const isDailyMode = worker != null
-        ? (workerDailyRate != null && workerDailyRate > 0)
-        : (profileDailyRate != null && profileDailyRate > 0)
-
-      const dailyRateValue  = isDailyMode
-        ? (worker ? (workerDailyRate ?? 0) : (profileDailyRate ?? 0))
-        : 0
-      const hourlyRateValue = !isDailyMode
-        ? (worker ? (workerHourlyRate ?? 0) : (profile ? Number(profile.hourly_rate) : 0))
-        : 0
-
-      const hours     = e.hours_worked != null ? Number(e.hours_worked) : null
-      const isFullDay = e.is_full_day as boolean | null
-      const date      = (e.clock_in as string).slice(0, 10)
-
-      const fullDay = isDailyMode
-        ? (isFullDay === true || (isFullDay === null && (hours == null || hours >= STANDARD_DAY_HOURS)))
-        : false
-
-      let totalPay: number
-      if (isDailyMode) {
-        totalPay = fullDay ? dailyRateValue : dailyRateValue * 0.5
-      } else {
-        // Hourly: calculate from actual clock_in/clock_out if hours_worked not set
-        const actualHours = hours != null
-          ? hours
-          : (new Date(e.clock_out as string).getTime() - new Date(e.clock_in as string).getTime()) / 3600000
-        totalPay = actualHours * hourlyRateValue
-      }
-
-      // Overtime only applies to daily mode (hours beyond standard day)
-      const overtimeHours = isDailyMode && hours != null && hours > STANDARD_DAY_HOURS
-        ? hours - STANDARD_DAY_HOURS
-        : 0
-      const hourlyEquiv = dailyRateValue / STANDARD_DAY_HOURS
-      const overtimePay = overtimeHours * hourlyEquiv * 1.5
+      const calc = calcEntryPay({
+        clock_in: e.clock_in as string,
+        clock_out: e.clock_out as string | null,
+        hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+        is_full_day: e.is_full_day as boolean | null,
+        daily_rate: profile?.daily_rate ?? worker?.daily_rate ?? null,
+        hourly_rate: profile?.hourly_rate ?? worker?.hourly_rate ?? null,
+      })
 
       return {
         entryId: e.id as string,
@@ -202,16 +168,16 @@ export function PayrollManager() {
         personName,
         date,
         projectName: project?.name ?? '—',
-        payMode: isDailyMode ? 'daily' : 'hourly',
-        dailyRate: dailyRateValue,
-        hourlyRate: hourlyRateValue,
-        hoursWorked: hours,
-        isFullDay,
+        payMode: calc.payMode,
+        dailyRate: calc.dailyRate,
+        hourlyRate: calc.hourlyRate,
+        hoursWorked: calc.hoursWorked,
+        isFullDay: e.is_full_day as boolean | null,
         notes: e.notes as string | null,
-        fullDay,
-        totalPay,
-        overtimeHours,
-        overtimePay,
+        fullDay: calc.fullDay,
+        totalPay: calc.totalPay,
+        overtimeHours: calc.overtimeHours,
+        overtimePay: calc.overtimePay,
       }
     })
 

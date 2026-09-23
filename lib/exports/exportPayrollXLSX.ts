@@ -1,9 +1,12 @@
+import { calcEntryPay } from '@/lib/payroll-calc'
+
 export interface ExportEntry {
   full_name: string
   date: string
-  hours: number
+  hours: number | null
   daily_rate: number
   hourly_rate: number
+  is_full_day: boolean | null
   project: string | null
 }
 
@@ -36,12 +39,17 @@ export interface ExportData {
   mileage: ExportMileage[]
 }
 
-function entryPay(e: ExportEntry): { isFullDay: boolean; total: number } {
-  const isFullDay = e.hours >= 7
-  const total = isFullDay
-    ? e.daily_rate
-    : Math.round((e.hours / 8) * e.daily_rate * 100) / 100
-  return { isFullDay, total }
+// Delegates to the same calcEntryPay() the Admin Payroll page uses, so this
+// export can never disagree with what the app shows on screen.
+function entryPay(e: ExportEntry) {
+  return calcEntryPay({
+    clock_in: e.date,
+    clock_out: null,
+    hours_worked: e.hours,
+    is_full_day: e.is_full_day,
+    daily_rate: e.daily_rate,
+    hourly_rate: e.hourly_rate,
+  })
 }
 
 export async function exportPayrollXLSX(data: ExportData): Promise<void> {
@@ -54,28 +62,30 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
     : data.period_label.slice(0, 31)
 
   const attendanceRows = data.entries.map(e => {
-    const { isFullDay, total } = entryPay(e)
+    const calc = entryPay(e)
     return {
       'EMPLOYEE NAME': e.full_name,
       'WORKED?': 'Yes',
       'DATE': e.date,
-      'PRICE $': e.daily_rate,
-      'FULL DAY?': isFullDay ? 'Yes' : 'No',
-      'TOTAL $': total,
+      'PAY TYPE': calc.payMode === 'daily' ? 'Daily' : 'Hourly',
+      'PRICE $': calc.payMode === 'daily' ? calc.dailyRate : calc.hourlyRate,
+      'FULL DAY?': calc.payMode === 'daily' ? (calc.fullDay ? 'Yes' : 'No') : '—',
+      'HOURS': e.hours != null ? Math.round(e.hours * 100) / 100 : '',
+      'TOTAL $': Math.round(calc.totalPay * 100) / 100,
       'NOTES': e.project ?? '',
     }
   })
 
   const ws1 = XLSX.utils.json_to_sheet(attendanceRows.length ? attendanceRows : [
-    { 'EMPLOYEE NAME': '', 'WORKED?': '', 'DATE': '', 'PRICE $': '', 'FULL DAY?': '', 'TOTAL $': '', 'NOTES': '' },
+    { 'EMPLOYEE NAME': '', 'WORKED?': '', 'DATE': '', 'PAY TYPE': '', 'PRICE $': '', 'FULL DAY?': '', 'HOURS': '', 'TOTAL $': '', 'NOTES': '' },
   ])
   XLSX.utils.book_append_sheet(wb, ws1, tab1Name.slice(0, 31))
 
   // ── Tab 2: Payroll Summary ───────────────────────────────────────────────────
   const empPayMap = new Map<string, number>()
   for (const e of data.entries) {
-    const { total } = entryPay(e)
-    empPayMap.set(e.full_name, (empPayMap.get(e.full_name) ?? 0) + total)
+    const calc = entryPay(e)
+    empPayMap.set(e.full_name, (empPayMap.get(e.full_name) ?? 0) + calc.totalPay)
   }
 
   const payDate = data.period_end
@@ -117,25 +127,21 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
   XLSX.utils.book_append_sheet(wb, ws3, '$')
 
   // ── Tab 4: Overtime ──────────────────────────────────────────────────────────
+  // Overtime only applies to daily-rate people (hours beyond a standard 8h
+  // day), same rule as the Admin Payroll page — calcEntryPay() is what
+  // decides this, not a separate check here.
   const overtimeRows = data.entries
-    .filter(e => e.hours > 8)
-    .map(e => {
-      const otHours = Math.round((e.hours - 8) * 100) / 100
-      const pricePerHr =
-        e.daily_rate > 0
-          ? Math.round((e.daily_rate / 8) * 100) / 100
-          : e.hourly_rate
-      const otTotal = Math.round(otHours * pricePerHr * 1.5 * 100) / 100
-      return {
-        'EMPLOYEE NAME': e.full_name,
-        'DATE': e.date,
-        'PRICE $': e.daily_rate,
-        'PRICE PER HR': pricePerHr,
-        'OVERTIME (HR)': otHours,
-        'OVERTIME TOTAL $': otTotal,
-        'JOB': e.project ?? '',
-      }
-    })
+    .map(e => ({ e, calc: entryPay(e) }))
+    .filter(({ calc }) => calc.overtimeHours > 0)
+    .map(({ e, calc }) => ({
+      'EMPLOYEE NAME': e.full_name,
+      'DATE': e.date,
+      'PRICE $': calc.dailyRate,
+      'PRICE PER HR': Math.round((calc.dailyRate / 8) * 100) / 100,
+      'OVERTIME (HR)': Math.round(calc.overtimeHours * 100) / 100,
+      'OVERTIME TOTAL $': Math.round(calc.overtimePay * 100) / 100,
+      'JOB': e.project ?? '',
+    }))
 
   const otPivotMap = new Map<string, number>()
   for (const row of overtimeRows) {
