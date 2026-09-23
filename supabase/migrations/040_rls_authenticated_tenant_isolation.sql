@@ -76,9 +76,7 @@ BEGIN
     'payroll_records',
     'plan_markers',
     'plan_sheets',
-    'plans',
     'profiles',
-    'project_employees',
     'project_feed',
     'project_photos',
     'project_plans',
@@ -97,7 +95,12 @@ BEGIN
     'workers'
   ]
   LOOP
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl) THEN
+    -- Requires the table to actually have a company_id column, not just to
+    -- exist — a table listed here without one (caught once already: `plans`,
+    -- a global catalog with no company_id at all) would otherwise abort the
+    -- whole loop with "column company_id does not exist" partway through.
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl)
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = tbl AND column_name = 'company_id') THEN
       EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO authenticated', tbl);
       EXECUTE format(
         'DROP POLICY IF EXISTS authenticated_tenant_isolation ON %I', tbl
@@ -109,6 +112,16 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
+
+-- ── plans: the subscription-plan catalog (Starter/Growth) is global, shared
+-- reference data — it has no company_id column at all (verified against its
+-- actual CREATE TABLE) and was never meant to be tenant-scoped. Every
+-- authenticated user can read it; nothing in the app lets a regular
+-- authenticated user write to it (owner/company-signup flows use the
+-- service role), so no write grant here.
+GRANT SELECT ON plans TO authenticated;
+DROP POLICY IF EXISTS authenticated_read_plans ON plans;
+CREATE POLICY authenticated_read_plans ON plans FOR SELECT TO authenticated USING (true);
 
 -- ── companies: the tenant row itself uses `id`, not `company_id` ───────────
 GRANT SELECT, INSERT, UPDATE, DELETE ON companies TO authenticated;
