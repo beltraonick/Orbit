@@ -1,7 +1,13 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient as createClient } from '@/lib/supabase/service-role'
 import { generateSecureToken, hashToken, hashPassword } from '@/lib/auth/crypto'
+
+// Both flows here run before any session exists — a not-yet-logged-in
+// person requesting or redeeming a reset link. Authorization comes entirely
+// from possessing the one-time token (verified in code below), not from
+// row-level security, so this uses the service role rather than the
+// anon/authenticated bridge.
 
 const TOKEN_TTL_HOURS = 1
 

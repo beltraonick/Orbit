@@ -7,6 +7,7 @@ import { UserProvider } from '@/lib/user-context'
 import { LocaleProvider } from '@/lib/i18n/LocaleContext'
 import { OfflineBanner } from '@/components/OfflineBanner'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
+import { SupabaseAuthBridge } from '@/components/SupabaseAuthBridge'
 import { getPendingRequests } from '@/app/actions/membership'
 import { createClient } from '@/lib/supabase/server'
 
@@ -46,6 +47,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <CompanyProvider companyId={user.company_id as string}>
         <UserProvider user={{ id: user.id, name: user.full_name }}>
           <div className="flex h-screen bg-background overflow-hidden">
+            <SupabaseAuthBridge />
             <OfflineBanner />
             <Sidebar user={user} pendingCount={pendingCount} auditCount={auditCount} />
             {/* mobile top = 3.5rem + safe-area-top via .pt-safe-header; resets at md */}

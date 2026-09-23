@@ -1,6 +1,10 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+// Every function here is gated by requireOwner() before touching Supabase,
+// and is legitimately cross-company by design (the platform owner manages
+// any company/profile) — so it uses the service role rather than the
+// company-scoped anon/authenticated bridge.
+import { createServiceRoleClient as createClient } from '@/lib/supabase/service-role'
 import { hashPassword } from '@/lib/auth/crypto'
 import {
   getCurrentUser,

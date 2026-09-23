@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient as createClient } from '@/lib/supabase/service-role'
 import { hashPassword, generateInviteCode } from '@/lib/auth/crypto'
 import { setSessionCookie } from '@/lib/auth/session'
 import { toSessionUser } from '@/lib/auth/store'

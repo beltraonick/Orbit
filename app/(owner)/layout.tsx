@@ -5,6 +5,7 @@ import { LogoutForm } from '@/components/LogoutForm'
 import { LocaleProvider } from '@/lib/i18n/LocaleContext'
 import { t } from '@/lib/i18n/translate'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { SupabaseAuthBridge } from '@/components/SupabaseAuthBridge'
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
   const user = getCurrentUser()
@@ -19,6 +20,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
 
   return (
     <LocaleProvider locale={user.language}>
+    <SupabaseAuthBridge />
     <div className="min-h-screen bg-background">
       <header className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)] flex items-center justify-between px-4 md:px-8 h-14">
         <div className="flex items-center gap-2.5">
