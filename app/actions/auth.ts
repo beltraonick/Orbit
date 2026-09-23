@@ -5,6 +5,12 @@ import { findUserByEmail, createEmployeeWithInvite, findActiveInviteCode, toSess
 import { verifyPassword, hashPassword } from '@/lib/auth/crypto'
 import { setSessionCookie, clearSessionCookie, createToken, verifyToken } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import {
+  AuthInfrastructureError,
+  LOGIN_UNAVAILABLE_MESSAGE,
+  REQUEST_UNAVAILABLE_MESSAGE,
+  logAuthInfraFailure,
+} from '@/lib/auth/infra-error'
 import type { Language, SessionUser, UserRole, UserStatus } from '@/lib/auth/types'
 
 // Best-effort — lets the owner panel show when each account last got in,
@@ -34,7 +40,16 @@ export async function login(
     return { error: 'Email and password are required.' }
   }
 
-  const user = await findUserByEmail(email.trim())
+  // A lookup that FAILED (database down, SUPABASE_SERVICE_ROLE_KEY missing
+  // or wrong, ...) must never be reported as bad credentials — that's what
+  // made a config problem look like "wrong password" for every user.
+  let user
+  try {
+    user = await findUserByEmail(email.trim())
+  } catch (err) {
+    if (!(err instanceof AuthInfrastructureError)) logAuthInfraFailure('login.lookup', err)
+    return { error: LOGIN_UNAVAILABLE_MESSAGE }
+  }
 
   if (!user) {
     return { error: 'Invalid email or password.' }
@@ -124,28 +139,34 @@ export async function register(data: {
     return { error: 'Password must be at least 8 characters.' }
   }
 
-  // Validate invite code
-  const invite = await findActiveInviteCode(data.invite_code.trim())
-  if (!invite) {
-    return { error: 'Invalid or expired invite code. Please ask your administrator for a valid code.' }
-  }
+  // Infrastructure failures below are reported as a temporary system error,
+  // never as an invalid invite code or a duplicate email.
+  try {
+    const invite = await findActiveInviteCode(data.invite_code.trim())
+    if (!invite) {
+      return { error: 'Invalid or expired invite code. Please ask your administrator for a valid code.' }
+    }
 
-  const existing = await findUserByEmail(data.email.trim())
-  if (existing) {
-    return { error: 'An account with this email already exists.' }
-  }
+    const existing = await findUserByEmail(data.email.trim())
+    if (existing) {
+      return { error: 'An account with this email already exists.' }
+    }
 
-  await createEmployeeWithInvite(
-    {
-      email: data.email.trim(),
-      full_name: data.full_name.trim(),
-      phone: data.phone?.trim() || null,
-      password_hash: hashPassword(data.password),
-      language: data.language,
-    },
-    invite.company_id,
-    invite.id
-  )
+    await createEmployeeWithInvite(
+      {
+        email: data.email.trim(),
+        full_name: data.full_name.trim(),
+        phone: data.phone?.trim() || null,
+        password_hash: hashPassword(data.password),
+        language: data.language,
+      },
+      invite.company_id,
+      invite.id
+    )
+  } catch (err) {
+    if (!(err instanceof AuthInfrastructureError)) logAuthInfraFailure('register', err)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
 
   return { success: true }
 }

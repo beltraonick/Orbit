@@ -16,6 +16,7 @@ import {
   verifyToken,
 } from '@/lib/auth/session'
 import type { SessionUser, UserRole, UserStatus } from '@/lib/auth/types'
+import { REQUEST_UNAVAILABLE_MESSAGE, logAuthInfraFailure } from '@/lib/auth/infra-error'
 
 function requireOwner(): SessionUser | null {
   const user = getCurrentUser()
@@ -99,12 +100,23 @@ export async function startImpersonation(
   const owner = requireOwner()
   if (!owner) return { error: 'Not authorized.' }
 
-  const supabase = createClient()
-  const { data: profile } = await supabase
+  // A failed lookup is a system error, not "User not found."
+  let supabase
+  try {
+    supabase = createClient()
+  } catch (err) {
+    logAuthInfraFailure('owner.impersonate', err)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
+  const { data: profile, error: lookupErr } = await supabase
     .from('profiles')
     .select('id, email, full_name, role, auth_status, language, company_id')
     .eq('id', profileId)
     .maybeSingle()
+  if (lookupErr) {
+    logAuthInfraFailure('owner.impersonate.lookup_profile', lookupErr)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
   if (!profile) return { error: 'User not found.' }
 
   const ownerToken = getSessionCookieValue()
