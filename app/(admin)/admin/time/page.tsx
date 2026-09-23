@@ -12,6 +12,7 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { createManualTimeEntry, supervisorClockOut } from '@/app/actions/workerActions'
 import { TeamClockIn } from '@/app/(employee)/projects/[id]/TeamClockIn'
 import { calcEntryPay } from '@/lib/payroll-calc'
+import { getPeriodRange, getPreviousPeriodRange, loadCompanyPeriodSettings, type CompanyPeriodSettings } from '@/lib/employee-period'
 import type { Locale } from '@/lib/i18n/translate'
 
 interface TimeEntry {
@@ -62,10 +63,12 @@ function entryCalc(e: TimeEntry) {
 
 function filterOptions(t: (key: string) => string) {
   return [
+    { value: 'all', label: t('admin.time.allTime') },
+    { value: 'current_period', label: 'Current pay period' },
+    { value: 'last_period', label: 'Last pay period' },
     { value: 'today', label: t('common.today') },
     { value: 'week', label: t('common.thisWeek') },
     { value: 'month', label: t('common.thisMonth') },
-    { value: 'all', label: t('admin.time.allTime') },
   ]
 }
 
@@ -99,16 +102,22 @@ function toLocalDatetimeValue(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function getRange(filter: string): Date | null {
+function getRange(filter: string, period: CompanyPeriodSettings | null): { start: Date; end: Date | null } | null {
   const now = new Date()
   if (filter === 'today') {
-    const d = new Date(now); d.setHours(0, 0, 0, 0); return d
+    const d = new Date(now); d.setHours(0, 0, 0, 0); return { start: d, end: null }
   }
   if (filter === 'week') {
-    const d = new Date(now); d.setDate(now.getDate() - now.getDay()); d.setHours(0, 0, 0, 0); return d
+    const d = new Date(now); d.setDate(now.getDate() - now.getDay()); d.setHours(0, 0, 0, 0); return { start: d, end: null }
   }
   if (filter === 'month') {
-    const d = new Date(now); d.setDate(1); d.setHours(0, 0, 0, 0); return d
+    const d = new Date(now); d.setDate(1); d.setHours(0, 0, 0, 0); return { start: d, end: null }
+  }
+  // Same company pay period as Payroll and the employee screens.
+  if ((filter === 'current_period' || filter === 'last_period') && period) {
+    return filter === 'current_period'
+      ? getPeriodRange(period.periodType, now, period.anchor)
+      : getPreviousPeriodRange(period.periodType, now, period.anchor)
   }
   return null
 }
@@ -122,7 +131,8 @@ export default function TimePage() {
   const [closedEntries, setClosedEntries] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [actionId, setActionId] = useState<string | null>(null)
-  const [filter, setFilter] = useState('week')
+  const [filter, setFilter] = useState('all')
+  const [periodSettings, setPeriodSettings] = useState<CompanyPeriodSettings | null>(null)
   const [empFilter, setEmpFilter] = useState('')
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
   const [workers, setWorkers] = useState<{ id: string; full_name: string }[]>([])
@@ -167,10 +177,17 @@ export default function TimePage() {
     return () => clearInterval(id)
   }, [])
 
+  useEffect(() => {
+    if (!companyId) return
+    loadCompanyPeriodSettings(createClient(), companyId).then(setPeriodSettings)
+  }, [companyId])
+
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
-    const rangeStart = getRange(filter)
+    const needsPeriod = filter === 'current_period' || filter === 'last_period'
+    if (needsPeriod && !periodSettings) return // loads as soon as the company's pay period arrives
+    const range = getRange(filter, periodSettings)
 
     let closedQuery = supabase
       .from('time_entries')
@@ -180,7 +197,8 @@ export default function TimePage() {
       .order('clock_in', { ascending: false })
       .limit(200)
 
-    if (rangeStart) closedQuery = closedQuery.gte('clock_in', rangeStart.toISOString())
+    if (range) closedQuery = closedQuery.gte('clock_in', range.start.toISOString())
+    if (range?.end) closedQuery = closedQuery.lte('clock_in', range.end.toISOString())
     if (empFilter) closedQuery = closedQuery.eq('employee_id', empFilter)
 
     const [activeRes, closedRes, empsRes, wkrsRes, projsRes] = await Promise.all([
@@ -202,7 +220,7 @@ export default function TimePage() {
     setWorkers(wkrsRes.data ?? [])
     setProjects(projsRes.data ?? [])
     setLoading(false)
-  }, [filter, empFilter, companyId])
+  }, [filter, empFilter, companyId, periodSettings])
 
   useEffect(() => { load() }, [load])
 
