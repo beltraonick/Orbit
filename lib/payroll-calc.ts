@@ -54,15 +54,20 @@ export function calcEntryPay(entry: PayEntryInput): PayEntryResult {
     ? (entry.is_full_day === true || (entry.is_full_day === null && (hours == null || hours >= STANDARD_DAY_HOURS)))
     : false
 
+  // Production time_entries has no hours_worked column, so hours usually
+  // come from clock_in/clock_out. Daily-rate pay deliberately ignores that
+  // span (a manual Full Day is stored as 08:00-17:00 and must not become
+  // overtime); hourly pay uses it.
+  const actualHours = hours != null
+    ? hours
+    : entry.clock_out
+      ? (new Date(entry.clock_out).getTime() - new Date(entry.clock_in).getTime()) / 3600000
+      : 0
+
   let totalPay: number
   if (isDailyMode) {
     totalPay = fullDay ? dailyRate : dailyRate * 0.5
   } else {
-    const actualHours = hours != null
-      ? hours
-      : entry.clock_out
-        ? (new Date(entry.clock_out).getTime() - new Date(entry.clock_in).getTime()) / 3600000
-        : 0
     totalPay = actualHours * hourlyRate
   }
 
@@ -77,7 +82,7 @@ export function calcEntryPay(entry: PayEntryInput): PayEntryResult {
     payMode: isDailyMode ? 'daily' : 'hourly',
     dailyRate,
     hourlyRate,
-    hoursWorked: hours,
+    hoursWorked: isDailyMode ? hours : (entry.clock_out ? Math.round(actualHours * 100) / 100 : hours),
     fullDay,
     totalPay,
     overtimeHours,

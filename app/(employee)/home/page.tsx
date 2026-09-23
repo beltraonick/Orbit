@@ -121,7 +121,7 @@ export default async function EmployeeHomePage() {
 
         const { data: periodEntries } = await supabase
           .from('time_entries')
-          .select('clock_in, clock_out, hours_worked, is_full_day')
+          .select('clock_in, clock_out, is_full_day')
           .eq('employee_id', profile.id)
           .gte('clock_in', periodStart.toISOString())
           .not('clock_out', 'is', null)
@@ -137,7 +137,7 @@ export default async function EmployeeHomePage() {
           const calc = calcEntryPay({
             clock_in: e.clock_in,
             clock_out: e.clock_out,
-            hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+            hours_worked: null, // not a column in production; derived from clock_in/clock_out
             is_full_day: e.is_full_day,
             daily_rate: profile.daily_rate,
             hourly_rate: profile.hourly_rate,

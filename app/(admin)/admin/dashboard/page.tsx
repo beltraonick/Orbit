@@ -47,9 +47,9 @@ async function fetchStats(companyId: string) {
     ] = await Promise.all([
       supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('role', 'employee').eq('status', 'active'),
       supabase.from('projects').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'active'),
-      supabase.from('time_entries').select('id, employee_id, profiles(full_name, avatar_url, position)').eq('company_id', companyId).is('clock_out', null),
+      supabase.from('time_entries').select('id, employee_id, profiles:employee_id(full_name, avatar_url, position)').eq('company_id', companyId).is('clock_out', null),
       supabase.from('projects').select('id, name, client_name, progress, status').eq('company_id', companyId).eq('status', 'active').order('updated_at', { ascending: false }).limit(5),
-      supabase.from('time_entries').select('id, hours_worked, clock_in, profiles(full_name, avatar_url)').eq('company_id', companyId).gte('clock_in', weekStart.toISOString()).order('clock_in', { ascending: false }).limit(6),
+      supabase.from('time_entries').select('id, clock_in, clock_out, profiles:employee_id(full_name, avatar_url)').eq('company_id', companyId).gte('clock_in', weekStart.toISOString()).order('clock_in', { ascending: false }).limit(6),
       supabase.from('payroll_records').select('total_amount').eq('company_id', companyId).eq('status', 'pending'),
       supabase.from('membership_requests').select('*', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'pending'),
     ])
@@ -220,7 +220,7 @@ export default async function AdminDashboardPage() {
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-primary">
-                    {e.hours_worked != null ? `${Number(e.hours_worked).toFixed(1)}h` : '—'}
+                    {e.clock_out ? `${((new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000).toFixed(1)}h` : '—'}
                   </span>
                 </div>
               ))}
