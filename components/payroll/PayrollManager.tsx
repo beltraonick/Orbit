@@ -1,5 +1,6 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -116,7 +117,7 @@ export function PayrollManager() {
   const companyId = useCompanyId()
   const printRef = useRef<HTMLDivElement>(null)
 
-  const [tab, setTab] = useState<'detail' | 'summary' | 'overtime' | 'manual'>('detail')
+  const [tab, setTab] = usePersistentState<'detail' | 'summary' | 'overtime' | 'manual'>('payroll.tab', 'detail', oneOf(['detail', 'summary', 'overtime', 'manual'] as const))
   const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('last')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')

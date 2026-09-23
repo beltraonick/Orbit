@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -308,11 +309,11 @@ export default function TasksPage() {
 
     // Sync task_assignments join table — preserves all selected assignees
     if (savedTaskId) {
-      await supabase.from('task_assignments').delete().eq('task_id', savedTaskId)
+      writeFailed((await supabase.from('task_assignments').delete().eq('task_id', savedTaskId)).error, 'save your changes')
       if (editAssignees.length > 0) {
-        await supabase.from('task_assignments').insert(
+        writeFailed((await supabase.from('task_assignments').insert(
           editAssignees.map(a => ({ task_id: savedTaskId, profile_id: a.id }))
-        )
+        )).error, 'save your changes')
       }
     }
 
@@ -364,11 +365,11 @@ export default function TasksPage() {
 
   async function quickStatus(id: string, status: string) {
     const supabase = createClient()
-    await supabase.from('tasks').update({
+    writeFailed((await supabase.from('tasks').update({
       status,
       completed_at: status === 'completed' ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
-    }).eq('id', id)
+    }).eq('id', id)).error, 'save your changes')
     // Recalculate progress for the task's project
     const task = tasks.find(t => t.id === id)
     if (task?.project_id) {
@@ -387,7 +388,7 @@ export default function TasksPage() {
     if (!data || data.length === 0) return
     const completed = data.filter(t => t.status === 'completed').length
     const progress = Math.round((completed / data.length) * 100)
-    await supabase.from('projects').update({ progress }).eq('id', projectId)
+    writeFailed((await supabase.from('projects').update({ progress }).eq('id', projectId)).error, 'save your changes')
   }
 
   async function handleBulkAssign() {
@@ -396,10 +397,10 @@ export default function TasksPage() {
     const supabase = createClient()
     const projectTaskIds = tasks.filter(t => t.project_id === bulkAssignProject.id).map(t => t.id)
     if (projectTaskIds.length > 0 && bulkAssignEmpId) {
-      await supabase.from('task_assignments').upsert(
+      writeFailed((await supabase.from('task_assignments').upsert(
         projectTaskIds.map(tid => ({ task_id: tid, profile_id: bulkAssignEmpId })),
         { onConflict: 'task_id,profile_id' }
-      )
+      )).error, 'save your changes')
     }
     setBulkAssigning(false)
     setBulkAssignProject(null)
@@ -411,7 +412,7 @@ export default function TasksPage() {
     if (!confirm(t('admin.tasks.confirmDelete'))) return
     const projectId = tasks.find(t => t.id === id)?.project_id ?? null
     const supabase = createClient()
-    await supabase.from('tasks').delete().eq('id', id)
+    writeFailed((await supabase.from('tasks').delete().eq('id', id)).error, 'delete this item')
     if (projectId) await recalcProjectProgress(projectId)
     load()
   }
@@ -432,7 +433,7 @@ export default function TasksPage() {
     setBulkOperating(true)
     const supabase = createClient()
     const affectedPids = Array.from(new Set(ids.map(id => tasks.find(t => t.id === id)?.project_id).filter(Boolean) as string[]))
-    await supabase.from('tasks').delete().in('id', ids)
+    writeFailed((await supabase.from('tasks').delete().in('id', ids)).error, 'delete this item')
     for (const pid of affectedPids) await recalcProjectProgress(pid)
     setBulkOperating(false)
     setSelectMode(false)
@@ -446,7 +447,7 @@ export default function TasksPage() {
     setBulkOperating(true)
     const supabase = createClient()
     const oldPids = Array.from(new Set(ids.map(id => tasks.find(t => t.id === id)?.project_id).filter(Boolean) as string[]))
-    await supabase.from('tasks').update({ project_id: bulkTargetProjectId, updated_at: new Date().toISOString() }).in('id', ids)
+    writeFailed((await supabase.from('tasks').update({ project_id: bulkTargetProjectId, updated_at: new Date().toISOString() }).in('id', ids)).error, 'save your changes')
     await recalcProjectProgress(bulkTargetProjectId)
     for (const pid of oldPids) { if (pid !== bulkTargetProjectId) await recalcProjectProgress(pid) }
     setBulkOperating(false)
@@ -462,10 +463,10 @@ export default function TasksPage() {
     setBulkOperating(true)
     const supabase = createClient()
     if (bulkTargetEmpId) {
-      await supabase.from('task_assignments').upsert(
+      writeFailed((await supabase.from('task_assignments').upsert(
         ids.map(id => ({ task_id: id, profile_id: bulkTargetEmpId })),
         { onConflict: 'task_id,profile_id' }
-      )
+      )).error, 'save your changes')
     }
     setBulkOperating(false)
     setBulkAction(null)

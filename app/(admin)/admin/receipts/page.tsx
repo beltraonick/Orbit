@@ -1,5 +1,7 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
+import { actionFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -41,7 +43,7 @@ function statusBadge(status: string) {
 }
 
 export default function AdminReceiptsPage() {
-  const [tab, setTab] = useState<Tab>('pending')
+  const [tab, setTab] = usePersistentState<Tab>('receipts.tab', 'pending', oneOf(['pending', 'approved', 'paid', 'all'] as const))
   const [search, setSearch] = useState('')
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,21 +79,21 @@ export default function AdminReceiptsPage() {
   })
 
   async function handleApprove(id: string) {
-    await approveExpense(id, reviewNotes || undefined)
+    actionFailed(await approveExpense(id, reviewNotes || undefined))
     setReviewingId(null)
     setReviewNotes('')
     load()
   }
 
   async function handleReject(id: string) {
-    await rejectExpense(id, reviewNotes || undefined)
+    actionFailed(await rejectExpense(id, reviewNotes || undefined))
     setReviewingId(null)
     setReviewNotes('')
     load()
   }
 
   async function handleMarkPaid(id: string) {
-    await markExpensePaid(id)
+    actionFailed(await markExpensePaid(id))
     load()
   }
 

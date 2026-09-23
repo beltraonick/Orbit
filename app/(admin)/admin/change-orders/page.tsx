@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -88,7 +89,7 @@ export default function ChangeOrdersPage() {
     if (!form.project_id) return
     setSaving(true)
     const supabase = createClient()
-    await supabase.from('change_orders').insert({
+    const { error } = await supabase.from('change_orders').insert({
       company_id: companyId,
       project_id: form.project_id,
       title: form.title,
@@ -97,6 +98,7 @@ export default function ChangeOrdersPage() {
       status: 'pending',
     })
     setSaving(false)
+    if (writeFailed(error, 'save this change order')) return
     setShowModal(false)
     load()
   }
@@ -104,7 +106,8 @@ export default function ChangeOrdersPage() {
   async function deleteOrder(id: string) {
     if (!window.confirm(t('admin.changeOrders.confirmDeleteOrder'))) return
     const supabase = createClient()
-    await supabase.from('change_orders').delete().eq('id', id)
+    const { error } = await supabase.from('change_orders').delete().eq('id', id).eq('company_id', companyId)
+    writeFailed(error, 'delete this change order')
     load()
   }
 

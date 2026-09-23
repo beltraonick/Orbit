@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -259,10 +260,11 @@ export function TaskList({
   // Execute the actual DB/storage delete (used after undo window expires)
   const execDelete = useCallback(async (storagePath: string, taskId: string) => {
     const supabase = createClient()
-    await Promise.all([
+    const [, { error }] = await Promise.all([
       supabase.storage.from('task-photos').remove([storagePath]),
       supabase.from('task_media').delete().eq('task_id', taskId).eq('storage_path', storagePath),
     ])
+    writeFailed(error, 'delete this photo')
   }, [])
 
   // Delete with confirmation → undo toast (5s window before actual DB delete)
@@ -422,7 +424,7 @@ export function TaskList({
           if (allTasks && allTasks.length > 0) {
             const completed = allTasks.filter(t => t.status === 'completed').length
             const progress = Math.round((completed / allTasks.length) * 100)
-            await supabase.from('projects').update({ progress }).eq('id', projectId)
+            writeFailed((await supabase.from('projects').update({ progress }).eq('id', projectId)).error, 'save your changes')
           }
         }
       } catch (err) {

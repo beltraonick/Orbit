@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
@@ -211,15 +212,15 @@ function TaskDrawer({
     const toAdd = form.assignedIds.filter(id => !currentAssignmentIds.includes(id))
 
     if (toRemove.length > 0) {
-      await supabase.from('task_assignments').delete()
+      writeFailed((await supabase.from('task_assignments').delete()
         .eq('task_id', taskId)
-        .in('profile_id', toRemove)
+        .in('profile_id', toRemove)).error, 'save your changes')
     }
     for (const profileId of toAdd) {
-      await supabase.from('task_assignments').upsert(
+      writeFailed((await supabase.from('task_assignments').upsert(
         { task_id: taskId, profile_id: profileId },
         { onConflict: 'task_id,profile_id' }
-      )
+      )).error, 'save your changes')
     }
     setCurrentAssignmentIds(form.assignedIds)
 
@@ -245,7 +246,7 @@ function TaskDrawer({
         } else {
           const { error } = await supabase.storage.from('task-photos').upload(path, file, { contentType: file.type })
           if (!error) {
-            await supabase.from('task_media').insert({
+            writeFailed((await supabase.from('task_media').insert({
               task_id: savedTask.id,
               project_id: projectId,
               company_id: companyId,
@@ -253,7 +254,7 @@ function TaskDrawer({
               storage_path: path,
               photo_category: 'progress',
               uploaded_by_name: currentUser.name,
-            })
+            })).error, 'save your changes')
           }
         }
       }
@@ -279,10 +280,11 @@ function TaskDrawer({
 
   async function deletePhoto(photo: TaskPhoto) {
     const supabase = createClient()
-    await Promise.all([
+    const [, { error }] = await Promise.all([
       supabase.storage.from('task-photos').remove([photo.storage_path]),
       supabase.from('task_media').delete().eq('id', photo.id),
     ])
+    if (writeFailed(error, 'delete this photo')) return
     setPhotos(prev => prev.filter(p => p.id !== photo.id))
   }
 
@@ -290,16 +292,16 @@ function TaskDrawer({
     if (!task?.id) return
     if (!window.confirm(t('admin.projectDetail.kanbanDeleteTaskConfirm'))) return
     const supabase = createClient()
-    await supabase.from('tasks').delete().eq('id', task.id)
+    writeFailed((await supabase.from('tasks').delete().eq('id', task.id)).error, 'delete this item')
     onDeleted(task.id)
     // Recalculate project progress
     const { data: allTasks } = await supabase.from('tasks').select('status').eq('project_id', projectId).eq('company_id', companyId)
     if (allTasks && allTasks.length > 0) {
       const completed = allTasks.filter(t => t.status === 'completed').length
       const progress = Math.round((completed / allTasks.length) * 100)
-      await supabase.from('projects').update({ progress }).eq('id', projectId)
+      writeFailed((await supabase.from('projects').update({ progress }).eq('id', projectId)).error, 'save your changes')
     } else if (allTasks?.length === 0) {
-      await supabase.from('projects').update({ progress: 0 }).eq('id', projectId)
+      writeFailed((await supabase.from('projects').update({ progress: 0 }).eq('id', projectId)).error, 'save your changes')
     }
   }
 
@@ -1008,14 +1010,14 @@ export function KanbanBoard({
     const trimmed = name.trim()
     if (!trimmed || trimmed === col.name) return
     const supabase = createClient()
-    await supabase.from('task_columns').update({ name: trimmed }).eq('id', col.id)
+    writeFailed((await supabase.from('task_columns').update({ name: trimmed }).eq('id', col.id)).error, 'save your changes')
     setColumns(prev => prev.map(c => c.id === col.id ? { ...c, name: trimmed } : c))
   }
 
   async function deleteColumn(col: KanbanColumn) {
     if (!window.confirm(t('admin.projectDetail.kanbanDeleteColumnConfirm'))) return
     const supabase = createClient()
-    await supabase.from('task_columns').delete().eq('id', col.id)
+    writeFailed((await supabase.from('task_columns').delete().eq('id', col.id)).error, 'delete this item')
     setColumns(prev => prev.filter(c => c.id !== col.id))
     setTasks(prev => prev.map(tk => tk.column_id === col.id ? { ...tk, column_id: null } : tk))
   }
@@ -1023,7 +1025,7 @@ export function KanbanBoard({
   async function moveTask(taskId: string, colId: string) {
     if (!taskId) return
     const supabase = createClient()
-    await supabase.from('tasks').update({ column_id: colId }).eq('id', taskId)
+    writeFailed((await supabase.from('tasks').update({ column_id: colId }).eq('id', taskId)).error, 'save your changes')
     setTasks(prev => prev.map(tk => tk.id === taskId ? { ...tk, column_id: colId } : tk))
   }
 

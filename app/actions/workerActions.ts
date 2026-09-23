@@ -38,13 +38,17 @@ export async function createWorker(data: {
   if (!worker) return { error: 'Failed to create worker' }
 
   if (data.project_ids.length > 0) {
-    await supabase.from('worker_projects').insert(
+    const { error: wpErr } = await supabase.from('worker_projects').insert(
       data.project_ids.map(pid => ({
         worker_id: worker.id,
         project_id: pid,
         company_id: user.company_id,
       }))
     )
+    if (wpErr) {
+      revalidatePath('/admin/employees')
+      return { error: 'Worker saved, but project access could not be saved. Please edit the worker and try again.' }
+    }
   }
 
   revalidatePath('/admin/employees')
@@ -94,15 +98,19 @@ export async function updateWorker(
   }
 
   if (data.project_ids !== undefined) {
-    await supabase.from('worker_projects').delete().eq('worker_id', workerId).eq('company_id', user.company_id)
-    if (data.project_ids.length > 0) {
-      await supabase.from('worker_projects').insert(
-        data.project_ids.map(pid => ({
-          worker_id: workerId,
-          project_id: pid,
-          company_id: user.company_id,
-        }))
-      )
+    const { error: delErr } = await supabase.from('worker_projects').delete().eq('worker_id', workerId).eq('company_id', user.company_id)
+    const { error: insErr } = !delErr && data.project_ids.length > 0
+      ? await supabase.from('worker_projects').insert(
+          data.project_ids.map(pid => ({
+            worker_id: workerId,
+            project_id: pid,
+            company_id: user.company_id,
+          }))
+        )
+      : { error: null }
+    if (delErr || insErr) {
+      revalidatePath('/admin/employees')
+      return { error: 'Worker saved, but project access could not be updated. Please try again.' }
     }
   }
 

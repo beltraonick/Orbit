@@ -3,6 +3,7 @@ import Script from 'next/script'
 import './globals.css'
 import { ThemeProvider } from '@/lib/theme-context'
 import { SplashScreen } from '@/components/SplashScreen'
+import { AppUpdater } from '@/components/AppUpdater'
 
 export const metadata: Metadata = {
   title: 'OrbitOps',
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="antialiased">
         <SplashScreen />
+        <AppUpdater />
         <ThemeProvider>
           {children}
         </ThemeProvider>

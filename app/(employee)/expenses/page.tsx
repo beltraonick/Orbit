@@ -1,5 +1,6 @@
 'use client'
 
+import { actionFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -165,7 +166,7 @@ export default function EmployeeExpensesPage() {
   }
 
   async function handleSubmit(id: string) {
-    await submitExpense(id)
+    actionFailed(await submitExpense(id))
     load()
   }
 
@@ -226,7 +227,7 @@ export default function EmployeeExpensesPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this expense?')) return
-    await deleteExpense(id)
+    actionFailed(await deleteExpense(id))
     load()
   }
 

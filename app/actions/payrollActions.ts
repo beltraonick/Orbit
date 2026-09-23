@@ -174,10 +174,16 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
   }
 
   if (rawManualComps.length > 0) {
-    await supabase
+    const { error: lockErr } = await supabase
       .from('manual_compensations')
       .update({ payroll_period_id: period.id })
       .in('id', rawManualComps.map(m => m.id))
+      .eq('company_id', companyId)
+    if (lockErr) {
+      // The period and its snapshot are saved; only the lock on the live
+      // manual-compensation rows failed. Surface it instead of claiming success.
+      return { error: 'Payroll was finalized, but manual compensation entries could not be locked. Please contact support.' }
+    }
   }
 
   return { success: true, finalizedAt: period.finalized_at as string, entryCount: snapshotRows.length, grandTotal }

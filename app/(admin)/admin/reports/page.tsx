@@ -1,5 +1,6 @@
 'use client'
 
+import { usePersistentState, oneOf } from '@/lib/use-persistent-state'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -125,7 +126,7 @@ function PayrollReport({ period }: { period: string }) {
   const [rows, setRows] = useState<ReportRow[]>([])
   const [entries, setEntries] = useState<EntryRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'summary' | 'detail'>('summary')
+  const [view, setView] = usePersistentState<'summary' | 'detail'>('reports.view', 'summary', oneOf(['summary', 'detail'] as const))
   const [homePeriodType, setHomePeriodType] = useState<PeriodType>('biweekly')
 
   const load = useCallback(async () => {
@@ -685,8 +686,8 @@ type ReportTab = 'payroll' | 'expenses' | 'mileage'
 export default function ReportsPage() {
   const { t } = useTranslation()
   const PERIOD_OPTIONS = usePeriodOptions()
-  const [period, setPeriod] = useState('month')
-  const [tab, setTab] = useState<ReportTab>('payroll')
+  const [period, setPeriod] = usePersistentState<string>('reports.period', 'month', oneOf(['week', 'last_week', 'month', 'last_month', 'all'] as const))
+  const [tab, setTab] = usePersistentState<ReportTab>('reports.tab', 'payroll', oneOf(['payroll', 'expenses', 'mileage'] as const))
   const [exportingXLSX, setExportingXLSX] = useState(false)
 
   function printPage() { window.print() }

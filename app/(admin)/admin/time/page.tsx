@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -227,7 +228,8 @@ export default function TimePage() {
   async function approve(id: string) {
     setActionId(id)
     const supabase = createClient()
-    await supabase.from('time_entries').update({ approval_status: 'approved' }).eq('id', id).eq('company_id', companyId)
+    const { error } = await supabase.from('time_entries').update({ approval_status: 'approved' }).eq('id', id).eq('company_id', companyId)
+    writeFailed(error, 'approve this entry')
     load()
     setActionId(null)
   }
@@ -235,7 +237,8 @@ export default function TimePage() {
   async function reject(id: string) {
     setActionId(id)
     const supabase = createClient()
-    await supabase.from('time_entries').update({ approval_status: 'rejected' }).eq('id', id).eq('company_id', companyId)
+    const { error } = await supabase.from('time_entries').update({ approval_status: 'rejected' }).eq('id', id).eq('company_id', companyId)
+    writeFailed(error, 'reject this entry')
     load()
     setActionId(null)
   }
@@ -340,7 +343,8 @@ export default function TimePage() {
     if (!deleteId) return
     setDeleting(true)
     const supabase = createClient()
-    await supabase.from('time_entries').delete().eq('id', deleteId).eq('company_id', companyId)
+    const { error } = await supabase.from('time_entries').delete().eq('id', deleteId).eq('company_id', companyId)
+    writeFailed(error, 'delete this entry')
     setDeleteId(null)
     setDeleting(false)
     load()

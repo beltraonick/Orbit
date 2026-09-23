@@ -506,28 +506,39 @@ export default function SettingsPage() {
     })
   }, [companyId, paySystem])
 
-  async function handleSaveMileageRate(e: React.FormEvent) {
-    e.preventDefault()
-    if (!companyId) return
-    setMileageRateSaving(true)
+  // One place that writes company_document_settings and REPORTS failures, so
+  // no section can show "Saved" when nothing was saved (which made settings
+  // look like they "reverted" after leaving the page).
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({})
+  async function saveDocSettings(section: string, values: Record<string, unknown>): Promise<boolean> {
+    setSaveErrors(prev => ({ ...prev, [section]: '' }))
+    if (!companyId) return false
     const supabase = createClient()
-    const rate = parseFloat(mileageRate) || 0.67
-    const { data: existing } = await supabase
+    const { data: existing, error: readErr } = await supabase
       .from('company_document_settings')
       .select('id')
       .eq('company_id', companyId)
       .maybeSingle()
-    if (existing) {
-      await supabase
-        .from('company_document_settings')
-        .update({ mileage_rate_per_mile: rate })
-        .eq('company_id', companyId)
-    } else {
-      await supabase
-        .from('company_document_settings')
-        .insert({ company_id: companyId, mileage_rate_per_mile: rate })
+    const { error } = readErr
+      ? { error: readErr }
+      : existing
+        ? await supabase.from('company_document_settings').update(values).eq('company_id', companyId)
+        : await supabase.from('company_document_settings').insert({ company_id: companyId, ...values })
+    if (error) {
+      setSaveErrors(prev => ({ ...prev, [section]: 'Could not save. Please try again.' }))
+      return false
     }
+    return true
+  }
+
+  async function handleSaveMileageRate(e: React.FormEvent) {
+    e.preventDefault()
+    if (!companyId) return
+    setMileageRateSaving(true)
+    const rate = parseFloat(mileageRate) || 0.67
+    const ok = await saveDocSettings('mileage', { mileage_rate_per_mile: rate })
     setMileageRateSaving(false)
+    if (!ok) return
     setMileageRateSaved(true)
     setTimeout(() => setMileageRateSaved(false), 2500)
   }
@@ -536,23 +547,9 @@ export default function SettingsPage() {
     e.preventDefault()
     if (!companyId) return
     setClockWindowSaving(true)
-    const supabase = createClient()
-    const { data: existing } = await supabase
-      .from('company_document_settings')
-      .select('id')
-      .eq('company_id', companyId)
-      .maybeSingle()
-    if (existing) {
-      await supabase
-        .from('company_document_settings')
-        .update(clockWindow)
-        .eq('company_id', companyId)
-    } else {
-      await supabase
-        .from('company_document_settings')
-        .insert({ company_id: companyId, ...clockWindow })
-    }
+    const ok = await saveDocSettings('clockWindow', { ...clockWindow })
     setClockWindowSaving(false)
+    if (!ok) return
     setClockWindowSaved(true)
     setTimeout(() => setClockWindowSaved(false), 2500)
   }
@@ -595,22 +592,8 @@ export default function SettingsPage() {
     if (!window.confirm(message)) return
 
     setPaySystemSaving(true)
-    const supabase = createClient()
-    const { data: existing } = await supabase
-      .from('company_document_settings')
-      .select('id')
-      .eq('company_id', companyId)
-      .maybeSingle()
-    if (existing) {
-      await supabase
-        .from('company_document_settings')
-        .update({ pay_system: next })
-        .eq('company_id', companyId)
-    } else {
-      await supabase
-        .from('company_document_settings')
-        .insert({ company_id: companyId, pay_system: next })
-    }
+    const ok = await saveDocSettings('paySystem', { pay_system: next })
+    if (!ok) { setPaySystemSaving(false); return }
     setPaySystem(next)
     setPaySystemSaving(false)
     setPaySystemSaved(true)
@@ -621,7 +604,7 @@ export default function SettingsPage() {
     e.preventDefault()
     setCompanySaving(true)
     const supabase = createClient()
-    await supabase
+    const { error: companyErr } = await supabase
       .from('companies')
       .update({
         name: companyName,
@@ -629,6 +612,11 @@ export default function SettingsPage() {
       })
       .eq('id', companyId)
     setCompanySaving(false)
+    if (companyErr) {
+      setSaveErrors(prev => ({ ...prev, company: 'Could not save. Please try again.' }))
+      return
+    }
+    setSaveErrors(prev => ({ ...prev, company: '' }))
     setCompanySaved(true)
     setTimeout(() => setCompanySaved(false), 2500)
   }
@@ -892,6 +880,7 @@ export default function SettingsPage() {
               >
                 {t('common.saveChanges')}
               </Button>
+              {saveErrors.mileage && <span className="text-xs text-danger">{saveErrors.mileage}</span>}
               {mileageRateSaved && (
                 <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
               )}
@@ -977,6 +966,7 @@ export default function SettingsPage() {
               >
                 {t('common.saveChanges')}
               </Button>
+              {saveErrors.clockWindow && <span className="text-xs text-danger">{saveErrors.clockWindow}</span>}
               {clockWindowSaved && (
                 <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
               )}
@@ -1027,7 +1017,8 @@ export default function SettingsPage() {
             {paySystem == null && !paySystemLoading && (
               <p className="text-xs text-amber">No Pay System selected yet — employee/worker forms will keep showing a per-person Daily/Hourly choice until you set one.</p>
             )}
-            {paySystemSaved && (
+            {saveErrors.paySystem && <span className="text-xs text-danger">{saveErrors.paySystem}</span>}
+              {paySystemSaved && (
               <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
             )}
             {paySystem && !conflictsLoading && paySystemConflicts.length > 0 && (
@@ -1162,6 +1153,7 @@ export default function SettingsPage() {
               >
                 {t('admin.settings.saveChanges')}
               </Button>
+              {saveErrors.company && <span className="text-xs text-danger">{saveErrors.company}</span>}
               {companySaved && (
                 <span className="text-xs text-green">{t('admin.settings.settingsSaved')}</span>
               )}
