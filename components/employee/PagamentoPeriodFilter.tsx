@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay } from '@/lib/payroll-calc'
+import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -43,14 +45,16 @@ function getQuinzenaDates(which: 'current' | 'last'): { start: string; end: stri
   }
 }
 
-interface TimeEntry {
+// Normalized shape both the live (time_entries) and finalized
+// (payroll_period_entries) sources map into, so the render logic below
+// never needs to know which source a row came from.
+interface DisplayEntry {
   id: string
-  clock_in: string
-  clock_out: string
-  hours_worked: number | null
-  is_full_day: boolean | null
-  notes: string | null
-  project: { name: string } | null
+  date: string
+  projectName: string | null
+  hours: number | null
+  fullDay: boolean | null
+  amount: number
 }
 
 interface Props {
@@ -66,8 +70,12 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('current')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
-  const [entries, setEntries] = useState<TimeEntry[]>([])
+  const [entries, setEntries] = useState<DisplayEntry[]>([])
   const [loading, setLoading] = useState(true)
+  // A finalized period's numbers are frozen (Payroll tab -> Finalize
+  // Payroll) — they can never disagree with what was actually paid, so this
+  // screen shows them as-is instead of recomputing from live rates.
+  const [finalized, setFinalized] = useState(false)
 
   const periodStart = preset === 'custom' ? customStart : getQuinzenaDates(preset as 'current' | 'last').start
   const periodEnd = preset === 'custom' ? customEnd : getQuinzenaDates(preset as 'current' | 'last').end
@@ -75,6 +83,27 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   const load = useCallback(async () => {
     if (!periodStart || !periodEnd) return
     setLoading(true)
+
+    const snapshot = await getFinalizedPayrollPeriod(periodStart, periodEnd)
+    if (snapshot.finalized) {
+      setFinalized(true)
+      setEntries(
+        snapshot.entries
+          .filter(e => e.person_id === profileId)
+          .map((e): DisplayEntry => ({
+            id: e.id,
+            date: e.entry_date,
+            projectName: e.project_name,
+            hours: e.hours_worked != null ? Number(e.hours_worked) : null,
+            fullDay: e.pay_mode === 'daily' ? e.full_day : null,
+            amount: Number(e.total_pay) + Number(e.overtime_pay),
+          }))
+      )
+      setLoading(false)
+      return
+    }
+    setFinalized(false)
+
     const supabase = createClient()
     const { data } = await supabase
       .from('time_entries')
@@ -84,32 +113,39 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
       .gte('clock_in', new Date(periodStart + 'T00:00:00').toISOString())
       .lte('clock_in', new Date(periodEnd + 'T23:59:59').toISOString())
       .order('clock_in', { ascending: false })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setEntries((data ?? []) as unknown as TimeEntry[])
+
+    type RawEntry = {
+      id: string; clock_in: string; clock_out: string
+      hours_worked: number | null; is_full_day: boolean | null
+      project: { name: string } | null
+    }
+    const built = ((data ?? []) as unknown as RawEntry[]).map((e): DisplayEntry => {
+      const calc = calcEntryPay({
+        clock_in: e.clock_in,
+        clock_out: e.clock_out,
+        hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+        is_full_day: e.is_full_day,
+        daily_rate: dailyRate,
+        hourly_rate: hourlyRate,
+      })
+      return {
+        id: e.id,
+        date: e.clock_in.slice(0, 10),
+        projectName: e.project?.name ?? null,
+        hours: calc.hoursWorked,
+        fullDay: isDailyRate ? calc.fullDay : null,
+        amount: calc.totalPay,
+      }
+    })
+    setEntries(built)
     setLoading(false)
-  }, [profileId, periodStart, periodEnd])
+  }, [profileId, periodStart, periodEnd, dailyRate, hourlyRate, isDailyRate])
 
   useEffect(() => { load() }, [load])
 
-  let totalEarnings = 0
-  let totalHours = 0
-  let totalDays = 0
-
-  // Same calcEntryPay() Home and the Admin Payroll page use, so this screen
-  // can't show a different total for the same period.
-  for (const e of entries) {
-    const calc = calcEntryPay({
-      clock_in: e.clock_in,
-      clock_out: e.clock_out,
-      hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
-      is_full_day: e.is_full_day,
-      daily_rate: dailyRate,
-      hourly_rate: hourlyRate,
-    })
-    totalHours += calc.hoursWorked ?? 0
-    totalEarnings += calc.totalPay
-    if (isDailyRate) totalDays += calc.fullDay ? 1 : 0.5
-  }
+  const totalEarnings = entries.reduce((s, e) => s + e.amount, 0)
+  const totalHours = entries.reduce((s, e) => s + (e.hours ?? 0), 0)
+  const totalDays = isDailyRate ? entries.reduce((s, e) => s + (e.fullDay ? 1 : 0.5), 0) : 0
 
   const PRESET_OPTIONS = [
     { value: 'current', label: t('employee.pagamento.currentPeriod') },
@@ -155,6 +191,14 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
         )}
       </div>
 
+      {!loading && entries.length > 0 && (
+        <div className="mb-3">
+          {finalized
+            ? <Badge variant="green">{t('employee.pagamento.paid')}</Badge>
+            : <Badge variant="amber">{t('employee.pagamento.estimated')}</Badge>}
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 mb-6">
         <Card>
@@ -194,31 +238,20 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
           </div>
           <div className="divide-y divide-[var(--border)]">
             {entries.map(e => {
-              const calc = calcEntryPay({
-                clock_in: e.clock_in,
-                clock_out: e.clock_out,
-                hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
-                is_full_day: e.is_full_day,
-                daily_rate: dailyRate,
-                hourly_rate: hourlyRate,
-              })
-              const entryPay = calc.totalPay
-              const dayLabel = isDailyRate
-                ? (calc.fullDay ? t('employee.pagamento.fullDay') : t('employee.pagamento.halfDay'))
+              const dayLabel = e.fullDay != null
+                ? (e.fullDay ? t('employee.pagamento.fullDay') : t('employee.pagamento.halfDay'))
                 : null
-              const h = calc.hoursWorked ?? 0
-              const proj = e.project as { name: string } | null
               return (
                 <div key={e.id} className="flex items-start gap-3 px-5 py-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-primary">{fmtDate(e.clock_in.slice(0, 10))}</p>
+                    <p className="text-sm font-medium text-primary">{fmtDate(e.date)}</p>
                     <p className="text-xs text-secondary mt-0.5 truncate">
-                      {proj?.name ?? '—'}
-                      {dayLabel ? ` · ${dayLabel}` : ` · ${h.toFixed(1)}h`}
+                      {e.projectName ?? '—'}
+                      {dayLabel ? ` · ${dayLabel}` : ` · ${(e.hours ?? 0).toFixed(1)}h`}
                     </p>
                   </div>
                   <span className="text-sm font-semibold text-primary tabular-nums flex-shrink-0">
-                    {fmt(entryPay)}
+                    {fmt(e.amount)}
                   </span>
                 </div>
               )
