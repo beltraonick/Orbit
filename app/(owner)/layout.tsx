@@ -22,7 +22,10 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     <LocaleProvider locale={user.language}>
     <SupabaseAuthBridge />
     <div className="min-h-screen bg-background">
-      <header className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)] flex items-center justify-between px-4 md:px-8 h-14">
+      <header
+        className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)] flex items-center justify-between px-4 md:px-8 h-14"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icon.png" alt="OrbitOps" className="w-7 h-7 rounded-lg object-cover" />
@@ -47,7 +50,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           </LogoutForm>
         </div>
       </header>
-      <main className="pt-14">{children}</main>
+      <main style={{ paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>{children}</main>
     </div>
     </LocaleProvider>
   )
