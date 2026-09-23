@@ -127,8 +127,8 @@ function getRange(filter: string, period: CompanyPeriodSettings | null): { start
   // Same company pay period as Payroll and the employee screens.
   if ((filter === 'current_period' || filter === 'last_period') && period) {
     return filter === 'current_period'
-      ? getPeriodRange(period.periodType, now, period.anchor)
-      : getPreviousPeriodRange(period.periodType, now, period.anchor)
+      ? getPeriodRange(period.periodType, now, period.anchor, period.lag)
+      : getPreviousPeriodRange(period.periodType, now, period.anchor, period.lag)
   }
   return null
 }

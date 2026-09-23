@@ -161,8 +161,8 @@ export function PayrollManager() {
   const presetRange = (() => {
     if (!periodSettings || preset === 'custom') return null
     const r = preset === 'current'
-      ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
-      : getPreviousPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
+      ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor, periodSettings.lag)
+      : getPreviousPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor, periodSettings.lag)
     return { start: toDateStr(r.start), end: toDateStr(r.end) }
   })()
   // Remember the last range the admin picked (Last / Current / Custom and the
@@ -224,7 +224,7 @@ export function PayrollManager() {
       setPeriodSaveMsg({ ok: false, text: 'Could not save the pay period. Please try again.' })
       return
     }
-    setPeriodSettings({ periodType, anchor: customStart })
+    setPeriodSettings(prev => ({ periodType, anchor: customStart, lag: prev?.lag ?? 0 }))
     setPreset('current')
     setPeriodSaveMsg({ ok: true, text: `Saved: ${periodType === 'weekly' ? 'weekly' : 'every 2 weeks'}, starting ${fmtDateLong(customStart)}.` })
   }
