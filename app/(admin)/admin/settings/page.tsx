@@ -396,6 +396,8 @@ export default function SettingsPage() {
   const [paySystemLoading, setPaySystemLoading] = useState(true)
   const [paySystemSaving, setPaySystemSaving] = useState(false)
   const [paySystemSaved, setPaySystemSaved] = useState(false)
+  const [paySystemConflicts, setPaySystemConflicts] = useState<{ name: string; mode: 'daily' | 'hourly' }[]>([])
+  const [conflictsLoading, setConflictsLoading] = useState(false)
 
   useEffect(() => {
     getCompanyInviteCode().then(res => {
@@ -474,6 +476,31 @@ export default function SettingsPage() {
         setPaySystemLoading(false)
       })
   }, [companyId])
+
+  // Existing employees/workers keep whatever mode they were already saved
+  // with (never silently reinterpreted) — this just reports who doesn't
+  // match the company's Pay System, so the admin can review and manually
+  // fix each one in Employees if they want everyone aligned.
+  useEffect(() => {
+    if (!companyId || !paySystem) { setPaySystemConflicts([]); return }
+    setConflictsLoading(true)
+    const supabase = createClient()
+    Promise.all([
+      supabase.from('profiles').select('full_name, daily_rate, hourly_rate').eq('company_id', companyId).eq('role', 'employee').eq('status', 'active'),
+      supabase.from('workers').select('full_name, daily_rate, hourly_rate').eq('company_id', companyId).eq('status', 'active'),
+    ]).then(([{ data: emps }, { data: wrks }]) => {
+      const people = [...(emps ?? []), ...(wrks ?? [])]
+      const conflicts = people
+        .map(p => {
+          const isDaily = p.daily_rate != null && Number(p.daily_rate) > 0
+          const mode: 'daily' | 'hourly' = isDaily ? 'daily' : 'hourly'
+          return { name: p.full_name as string, mode }
+        })
+        .filter(p => p.mode !== paySystem)
+      setPaySystemConflicts(conflicts)
+      setConflictsLoading(false)
+    })
+  }, [companyId, paySystem])
 
   async function handleSaveMileageRate(e: React.FormEvent) {
     e.preventDefault()
@@ -995,6 +1022,25 @@ export default function SettingsPage() {
             )}
             {paySystemSaved && (
               <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
+            )}
+            {paySystem && !conflictsLoading && paySystemConflicts.length > 0 && (
+              <div className="px-3 py-2.5 rounded-button bg-amber/10 border border-amber/20">
+                <p className="text-xs font-medium text-amber mb-1">
+                  {paySystemConflicts.length} active {paySystemConflicts.length === 1 ? 'person doesn\'t' : 'people don\'t'} match your {paySystem === 'daily' ? 'Daily' : 'Hourly'} Pay System
+                </p>
+                <p className="text-xs text-secondary mb-1.5">
+                  Their rate is unchanged and their pay still calculates correctly — this is just a heads-up in case you want everyone aligned with the company setting. Nothing here was changed automatically.
+                </p>
+                <ul className="text-xs text-secondary list-disc list-inside space-y-0.5">
+                  {paySystemConflicts.slice(0, 8).map((c, i) => (
+                    <li key={i}>{c.name} — currently {c.mode === 'daily' ? 'Daily' : 'Hourly'}</li>
+                  ))}
+                  {paySystemConflicts.length > 8 && <li>+ {paySystemConflicts.length - 8} more</li>}
+                </ul>
+                <a href="/admin/employees" className="text-xs font-medium text-brand hover:underline mt-1.5 inline-block">
+                  Review in Employees →
+                </a>
+              </div>
             )}
           </div>
         </Card>
