@@ -96,7 +96,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
     const supabase = createClient()
     const { data } = await supabase
       .from('time_entries')
-      .select('id, clock_in, clock_out, hours_worked, is_full_day, notes, project:project_id(name)')
+      .select('id, clock_in, clock_out, is_full_day, notes, project:project_id(name)')
       .eq('employee_id', profileId)
       .not('clock_out', 'is', null)
       .gte('clock_in', new Date(periodStart + 'T00:00:00').toISOString())

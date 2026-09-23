@@ -65,7 +65,7 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
     supabase
       .from('time_entries')
       .select(`
-        id, clock_in, clock_out, hours_worked, is_full_day, notes, employee_id, worker_id,
+        id, clock_in, clock_out, is_full_day, notes, employee_id, worker_id,
         project:project_id(name),
         profile:employee_id(full_name, daily_rate, hourly_rate),
         worker:worker_id(full_name, daily_rate, hourly_rate)

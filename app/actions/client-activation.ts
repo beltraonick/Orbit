@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { getCurrentUser } from '@/lib/auth/session'
 import { generateSecureToken, hashToken, hashPassword } from '@/lib/auth/crypto'
+import { REQUEST_UNAVAILABLE_MESSAGE, logAuthInfraFailure } from '@/lib/auth/infra-error'
 
 const TOKEN_TTL_HOURS = 72
 
@@ -62,14 +63,27 @@ export async function activateClientAccount(
 
   // Runs before any session exists — authorization comes from possessing
   // the one-time token, verified below, not from row-level security.
-  const supabase = createServiceRoleClient()
+  // Database/configuration failures return a generic temporary error rather
+  // than "invalid activation link".
+  let supabase
+  try {
+    supabase = createServiceRoleClient()
+  } catch (err) {
+    logAuthInfraFailure('client_activation.redeem', err)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
   const tokenHash = hashToken(token.trim())
 
-  const { data: activation } = await supabase
+  const { data: activation, error: lookupErr } = await supabase
     .from('client_activations')
     .select('id, profile_id, expires_at, used_at')
     .eq('token_hash', tokenHash)
     .maybeSingle()
+
+  if (lookupErr) {
+    logAuthInfraFailure('client_activation.lookup_token', lookupErr)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
 
   if (!activation) return { error: 'Invalid or expired activation link.' }
   if (activation.used_at) return { error: 'This activation link has already been used.' }
@@ -82,12 +96,16 @@ export async function activateClientAccount(
     .update({ password_hash: hashPassword(password), auth_status: 'approved' })
     .eq('id', activation.profile_id)
 
-  if (updateErr) return { error: updateErr.message }
+  if (updateErr) {
+    logAuthInfraFailure('client_activation.update_password', updateErr)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
 
-  await supabase
+  const { error: markErr } = await supabase
     .from('client_activations')
     .update({ used_at: new Date().toISOString() })
     .eq('id', activation.id)
+  if (markErr) logAuthInfraFailure('client_activation.mark_used', markErr)
 
   return { success: true }
 }

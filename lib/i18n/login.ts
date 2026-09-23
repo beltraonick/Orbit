@@ -168,6 +168,16 @@ const errorTranslations: Record<string, Record<Locale, string>> = {
     pt: 'E-mail ou senha inválidos.',
     es: 'Correo electrónico o contraseña inválidos.',
   },
+  "We couldn't complete the login right now. Please try again.": {
+    en: "We couldn't complete the login right now. Please try again.",
+    pt: 'Não foi possível concluir o login agora. Tente novamente.',
+    es: 'No fue posible completar el inicio de sesión ahora. Inténtelo de nuevo.',
+  },
+  "We couldn't complete this request right now. Please try again.": {
+    en: "We couldn't complete this request right now. Please try again.",
+    pt: 'Não foi possível concluir esta solicitação agora. Tente novamente.',
+    es: 'No fue posible completar esta solicitud ahora. Inténtelo de nuevo.',
+  },
   'Your account has not been activated yet. Use the activation link sent by your administrator.': {
     en: 'Your account has no password set yet. Ask your administrator to set one from the Employees screen.',
     pt: 'Sua conta ainda não tem uma senha definida. Peça para o seu administrador definir uma na tela de Funcionários.',

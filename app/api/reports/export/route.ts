@@ -52,7 +52,7 @@ export async function GET(req: Request) {
   let teQuery = supabase
     .from('time_entries')
     .select(
-      'id, employee_id, worker_id, clock_in, clock_out, hours_worked, is_full_day, profile:employee_id(full_name, daily_rate, hourly_rate), worker:worker_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
+      'id, employee_id, worker_id, clock_in, clock_out, is_full_day, profile:employee_id(full_name, daily_rate, hourly_rate), worker:worker_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
     )
     .eq('company_id', cid)
     .not('clock_out', 'is', null)

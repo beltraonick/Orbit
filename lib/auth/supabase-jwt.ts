@@ -1,3 +1,4 @@
+import 'server-only'
 /**
  * Bridges this app's own custom session (lib/auth/session.ts — an
  * HMAC-signed token, not a real JWT, verified against AUTH_SECRET) to a

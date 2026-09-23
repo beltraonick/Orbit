@@ -144,7 +144,7 @@ function PayrollReport({ period }: { period: string }) {
     let query = supabase
       .from('time_entries')
       .select(`
-        id, employee_id, worker_id, clock_in, clock_out, hours_worked, is_full_day,
+        id, employee_id, worker_id, clock_in, clock_out, is_full_day,
         city, state, approval_status,
         project:project_id(name),
         profile:employee_id(full_name, email, daily_rate, hourly_rate),

@@ -36,7 +36,7 @@ interface TimeEntry {
 
 const ENTRY_SELECT = `
   id, employee_id, worker_id, project_id, clock_in, clock_out,
-  city, state, notes, is_full_day, hours_worked, approval_status,
+  city, state, notes, is_full_day, approval_status,
   clocked_by_profile_id,
   project:project_id(name),
   profile:employee_id(full_name, email, daily_rate, hourly_rate),

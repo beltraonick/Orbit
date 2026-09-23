@@ -1,6 +1,7 @@
 import type { AuthUser, Language, SessionUser, UserRole, UserStatus } from './types'
 import { hashPassword, generateId } from './crypto'
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
+import { authInfraFailure, logAuthInfraFailure } from './infra-error'
 
 // These lookups run before any session/identity exists (login, invite-code
 // registration) — by definition they can't be scoped to a company via RLS,
@@ -120,23 +121,27 @@ function rowToAuthUser(row: ProfileAuthRow): AuthUser {
   }
 }
 
+// Returns null only when the lookup SUCCEEDED and found no such account.
+// Any database/configuration failure throws AuthInfrastructureError instead,
+// so callers can never mistake an outage for "Invalid email or password."
 export async function findUserByEmail(email: string): Promise<AuthUser | null> {
   const normalized = email.trim().toLowerCase()
 
   if (supabaseReady) {
+    let result
     try {
       const supabase = createClient()
-      const { data } = await supabase
+      result = await supabase
         .from('profiles')
         .select(PROFILE_AUTH_COLUMNS)
         .eq('email', normalized)
         .maybeSingle()
-      if (data?.password_hash) return rowToAuthUser(data as ProfileAuthRow)
-      // Return user without password_hash so login can give a targeted error.
-      if (data) return rowToAuthUser(data as ProfileAuthRow)
-    } catch {
-      // Supabase unreachable/misconfigured — fall through to seed accounts
+    } catch (err) {
+      throw authInfraFailure('profiles.lookup_by_email', err)
     }
+    if (result.error) throw authInfraFailure('profiles.lookup_by_email', result.error)
+    // Returned even without password_hash so login can give a targeted error.
+    if (result.data) return rowToAuthUser(result.data as ProfileAuthRow)
   }
 
   return findSeedByEmail(normalized)
@@ -201,20 +206,25 @@ export interface InviteCodeRow {
   is_active: boolean
 }
 
+// Returns null only when the code genuinely doesn't exist / isn't active.
+// Database/configuration failures throw AuthInfrastructureError, so they
+// aren't reported to the user as "Invalid or expired invite code".
 export async function findActiveInviteCode(code: string): Promise<InviteCodeRow | null> {
   if (!supabaseReady) return null
+  let result
   try {
     const supabase = createClient()
-    const { data } = await supabase
+    result = await supabase
       .from('invite_codes')
       .select('id, company_id, code, is_active')
       .eq('code', code.toUpperCase().trim())
       .eq('is_active', true)
       .maybeSingle()
-    return data ?? null
-  } catch {
-    return null
+  } catch (err) {
+    throw authInfraFailure('invite_codes.lookup', err)
   }
+  if (result.error) throw authInfraFailure('invite_codes.lookup', result.error)
+  return result.data ?? null
 }
 
 export async function createEmployeeWithInvite(
@@ -231,9 +241,14 @@ export async function createEmployeeWithInvite(
   const email = data.email.trim().toLowerCase()
 
   if (supabaseReady) {
+    // A failed insert must surface as a failure — previously it fell through
+    // to the in-memory fallback below and reported a registration that was
+    // never actually saved.
+    let supabase
+    let result
     try {
-      const supabase = createClient()
-      const { data: row, error } = await supabase
+      supabase = createClient()
+      result = await supabase
         .from('profiles')
         .insert({
           company_id,
@@ -248,26 +263,27 @@ export async function createEmployeeWithInvite(
         })
         .select(PROFILE_AUTH_COLUMNS)
         .single()
-
-      if (!error && row) {
-        const authUser = rowToAuthUser(row as ProfileAuthRow)
-        // Separate try so a missing membership_requests table doesn't
-        // swallow the successful profile insert and fall to in-memory.
-        try {
-          await supabase.from('membership_requests').insert({
-            profile_id: authUser.id,
-            company_id,
-            invite_code_id,
-            status: 'pending',
-          })
-        } catch (mrErr) {
-          console.error('[register] membership_requests insert failed:', mrErr)
-        }
-        return authUser
-      }
-    } catch {
-      // fall through to in-memory
+    } catch (err) {
+      throw authInfraFailure('profiles.insert_invited_employee', err)
     }
+    if (result.error || !result.data) {
+      throw authInfraFailure('profiles.insert_invited_employee', result.error)
+    }
+
+    const authUser = rowToAuthUser(result.data as ProfileAuthRow)
+    // Best-effort, as before: the profile is already saved.
+    try {
+      const { error: mrErr } = await supabase.from('membership_requests').insert({
+        profile_id: authUser.id,
+        company_id,
+        invite_code_id,
+        status: 'pending',
+      })
+      if (mrErr) logAuthInfraFailure('membership_requests.insert', mrErr)
+    } catch (mrErr) {
+      logAuthInfraFailure('membership_requests.insert', mrErr)
+    }
+    return authUser
   }
 
   // In-memory fallback (no actual membership_request stored)

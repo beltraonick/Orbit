@@ -62,7 +62,7 @@ export default async function PontoPage() {
 
         const { data } = await supabase
           .from('time_entries')
-          .select('id, clock_in, clock_out, hours_worked, is_full_day, city, state, approval_status, project:project_id(name)')
+          .select('id, clock_in, clock_out, is_full_day, city, state, approval_status, project:project_id(name)')
           .eq('employee_id', profile.id)
           .order('clock_in', { ascending: false })
           .limit(90)

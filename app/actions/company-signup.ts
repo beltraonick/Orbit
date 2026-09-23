@@ -5,6 +5,7 @@ import { hashPassword, generateInviteCode } from '@/lib/auth/crypto'
 import { setSessionCookie } from '@/lib/auth/session'
 import { toSessionUser } from '@/lib/auth/store'
 import type { AuthUser, Language } from '@/lib/auth/types'
+import { REQUEST_UNAVAILABLE_MESSAGE, logAuthInfraFailure } from '@/lib/auth/infra-error'
 
 export async function signupCompany(data: {
   company_name: string
@@ -25,15 +26,31 @@ export async function signupCompany(data: {
     return { error: 'Password must be at least 8 characters.' }
   }
 
-  const supabase = createClient()
+  // Database/configuration failures return a generic temporary error (logged
+  // server-side) instead of proceeding on a lookup that never actually ran.
+  let supabase
+  try {
+    supabase = createClient()
+  } catch (err) {
+    logAuthInfraFailure('company_signup', err)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
   const email = data.email.trim().toLowerCase()
 
-  const { data: existing } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle()
+  const { data: existing, error: existingErr } = await supabase.from('profiles').select('id').eq('email', email).maybeSingle()
+  if (existingErr) {
+    logAuthInfraFailure('company_signup.lookup_email', existingErr)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
   if (existing) {
     return { error: 'An account with this email already exists.' }
   }
 
-  const { data: plan } = await supabase.from('plans').select('id').eq('key', data.plan_key).maybeSingle()
+  const { data: plan, error: planErr } = await supabase.from('plans').select('id').eq('key', data.plan_key).maybeSingle()
+  if (planErr) {
+    logAuthInfraFailure('company_signup.lookup_plan', planErr)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
 
   // Free needs no payment, so there's nothing to "trial" — it's active
   // from day one. Paid plans start a real 14-day trial with a real end
@@ -56,6 +73,7 @@ export async function signupCompany(data: {
     .single()
 
   if (companyErr || !company) {
+    logAuthInfraFailure('company_signup.insert_company', companyErr)
     return { error: 'Could not create your company. Please try again.' }
   }
 
@@ -75,6 +93,7 @@ export async function signupCompany(data: {
     .single()
 
   if (profileErr || !profile) {
+    logAuthInfraFailure('company_signup.insert_profile', profileErr)
     // Roll back the orphaned company so a retry doesn't pile up dead rows.
     await supabase.from('companies').delete().eq('id', company.id)
     return { error: 'Could not create your account. Please try again.' }
