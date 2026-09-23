@@ -94,7 +94,7 @@ export async function updateWorker(
   }
 
   if (data.project_ids !== undefined) {
-    await supabase.from('worker_projects').delete().eq('worker_id', workerId)
+    await supabase.from('worker_projects').delete().eq('worker_id', workerId).eq('company_id', user.company_id)
     if (data.project_ids.length > 0) {
       await supabase.from('worker_projects').insert(
         data.project_ids.map(pid => ({

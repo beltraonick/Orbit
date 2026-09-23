@@ -22,6 +22,20 @@ export async function createManualCompensation(data: {
   if (!data.description.trim()) return { error: 'A description is required for audit purposes.' }
 
   const supabase = createClient()
+
+  // Confirm the person actually belongs to this admin's company before
+  // attributing pay to them — person_id has no DB-level FK/tenant check
+  // (it's polymorphic across profiles/workers), so this must be verified
+  // in code, not assumed from the request.
+  const personTable = data.person_type === 'employee' ? 'profiles' : 'workers'
+  const { data: person } = await supabase
+    .from(personTable)
+    .select('id')
+    .eq('id', data.person_id)
+    .eq('company_id', user.company_id)
+    .maybeSingle()
+  if (!person) return { error: 'That person does not belong to your company.' }
+
   const { data: row, error } = await supabase
     .from('manual_compensations')
     .insert({
@@ -63,7 +77,7 @@ export async function deleteManualCompensation(id: string) {
     return { error: 'This entry is part of a finalized payroll period and cannot be deleted.' }
   }
 
-  const { error } = await supabase.from('manual_compensations').delete().eq('id', id)
+  const { error } = await supabase.from('manual_compensations').delete().eq('id', id).eq('company_id', user.company_id)
   if (error) return { error: error.message }
   revalidatePath('/admin/payroll')
   return { success: true }
