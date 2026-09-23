@@ -6,9 +6,11 @@ import { useCompanyId } from '@/lib/company-context'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
+import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import type { ExportData } from '@/lib/exports/exportPayrollXLSX'
 import { calcEntryPay } from '@/lib/payroll-calc'
+import type { PeriodType } from '@/lib/employee-period'
 
 interface ReportRow {
   personId: string
@@ -19,6 +21,7 @@ interface ReportRow {
   totalHours: number
   regularHours: number
   overtimeHours: number
+  totalDays: number
   totalPay: number
   overtimePay: number
 }
@@ -121,12 +124,22 @@ function PayrollReport({ period }: { period: string }) {
   const [entries, setEntries] = useState<EntryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'summary' | 'detail'>('summary')
+  const [homePeriodType, setHomePeriodType] = useState<PeriodType>('biweekly')
 
   const load = useCallback(async () => {
     setLoading(true)
     const supabase = createClient()
     const start = getPeriodStart(period)
     const end = getPeriodEnd(period)
+
+    supabase
+      .from('company_document_settings')
+      .select('home_period_type')
+      .eq('company_id', companyId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.home_period_type) setHomePeriodType(data.home_period_type as PeriodType)
+      })
 
     let query = supabase
       .from('time_entries')
@@ -195,7 +208,7 @@ function PayrollReport({ period }: { period: string }) {
           email: e.profile?.email ?? '',
           payMode: calc.payMode,
           totalEntries: 0, totalHours: 0, regularHours: 0,
-          overtimeHours: 0, totalPay: 0, overtimePay: 0,
+          overtimeHours: 0, totalDays: 0, totalPay: 0, overtimePay: 0,
         })
       }
       const row = empMap.get(personId)!
@@ -204,6 +217,7 @@ function PayrollReport({ period }: { period: string }) {
       row.totalHours += hours
       row.overtimeHours += calc.overtimeHours
       row.regularHours += Math.max(hours - calc.overtimeHours, 0)
+      row.totalDays += calc.payMode === 'daily' ? (calc.fullDay ? 1 : 0.5) : 0
       row.totalPay += calc.totalPay + calc.overtimePay
       row.overtimePay += calc.overtimePay
     }
@@ -214,21 +228,45 @@ function PayrollReport({ period }: { period: string }) {
 
   useEffect(() => { load() }, [load])
 
-  const grandHours = rows.reduce((s, r) => s + r.totalHours, 0)
+  // Days and hours are kept separate (per-person pay mode) instead of a
+  // single "Total Hours" figure that has no meaning for a Daily-mode crew —
+  // same rule admin/time and calcEntryPay() use.
+  const grandDays = rows.reduce((s, r) => s + r.totalDays, 0)
+  const grandHours = rows.reduce((s, r) => s + (r.payMode === 'hourly' ? r.totalHours : 0), 0)
   const grandPay = rows.reduce((s, r) => s + r.totalPay, 0)
+  const allDaily = rows.length > 0 && rows.every(r => r.payMode === 'daily')
 
   return (
     <>
       {!loading && rows.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Card className="mb-6 bg-brand/5 border-brand/20">
+          <p className="text-sm font-semibold text-primary">
+            {t(`admin.reports.periodLabel_${homePeriodType}`)}
+          </p>
+          <p className="text-xs text-secondary mt-1">
+            {t('admin.reports.periodExplainer')}
+          </p>
+        </Card>
+      )}
+
+      {!loading && rows.length > 0 && (
+        <div className={`grid grid-cols-2 gap-3 mb-6 ${grandDays > 0 && grandHours > 0 ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}>
           <Card>
             <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t('admin.reports.employees')}</p>
             <p className="text-2xl font-bold text-primary">{rows.length}</p>
           </Card>
-          <Card>
-            <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t('admin.reports.totalHours')}</p>
-            <p className="text-2xl font-bold text-primary">{grandHours.toFixed(1)}h</p>
-          </Card>
+          {grandDays > 0 && (
+            <Card>
+              <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t('admin.reports.totalDays')}</p>
+              <p className="text-2xl font-bold text-primary">{grandDays % 1 === 0 ? grandDays : grandDays.toFixed(1)}</p>
+            </Card>
+          )}
+          {grandHours > 0 && (
+            <Card>
+              <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t('admin.reports.totalHours')}</p>
+              <p className="text-2xl font-bold text-primary">{grandHours.toFixed(1)}h</p>
+            </Card>
+          )}
           <Card>
             <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t('admin.reports.estPayroll')}</p>
             <p className="text-2xl font-bold text-primary">{fmt(grandPay)}</p>
@@ -267,7 +305,9 @@ function PayrollReport({ period }: { period: string }) {
                   <tr className="border-b border-[var(--border)]">
                     <th className="text-left px-5 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.tableEmployee')}</th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.entries')}</th>
-                    <th className="text-right px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.regular')}</th>
+                    <th className="text-right px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">
+                      {allDaily ? t('admin.reports.days') : t('admin.reports.regular')}
+                    </th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.overtime')}</th>
                     <th className="text-right px-5 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.estPay')}</th>
                   </tr>
@@ -280,7 +320,11 @@ function PayrollReport({ period }: { period: string }) {
                         <p className="text-xs text-tertiary">{r.email}</p>
                       </td>
                       <td className="text-right px-4 py-3 text-secondary tabular-nums">{r.totalEntries}</td>
-                      <td className="text-right px-4 py-3 text-secondary tabular-nums">{r.regularHours.toFixed(1)}h</td>
+                      <td className="text-right px-4 py-3 text-secondary tabular-nums">
+                        {r.payMode === 'daily'
+                          ? (r.totalDays % 1 === 0 ? r.totalDays : r.totalDays.toFixed(1))
+                          : `${r.regularHours.toFixed(1)}h`}
+                      </td>
                       <td className="text-right px-4 py-3 tabular-nums">
                         {r.overtimeHours > 0
                           ? <span className="text-amber">{r.overtimeHours.toFixed(1)}h</span>
@@ -312,6 +356,7 @@ function PayrollReport({ period }: { period: string }) {
                     <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.date')}</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.time')}</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.location')}</th>
+                    <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.dayType')}</th>
                     <th className="text-right px-5 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.hours')}</th>
                   </tr>
                 </thead>
@@ -322,6 +367,17 @@ function PayrollReport({ period }: { period: string }) {
                       : e.clock_out
                         ? (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
                         : null
+                    const rates = e.profile ?? e.worker
+                    const calc = rates && e.clock_out
+                      ? calcEntryPay({
+                          clock_in: e.clock_in,
+                          clock_out: e.clock_out,
+                          hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+                          is_full_day: e.is_full_day,
+                          daily_rate: rates.daily_rate,
+                          hourly_rate: rates.hourly_rate,
+                        })
+                      : null
                     return (
                       <tr key={e.id} className="hover:bg-surface-elevated/40 transition-colors">
                         <td className="px-5 py-3 font-medium text-primary whitespace-nowrap">
@@ -336,6 +392,16 @@ function PayrollReport({ period }: { period: string }) {
                         </td>
                         <td className="px-4 py-3 text-secondary text-xs">
                           {[e.city, e.state].filter(Boolean).join(', ') || '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          {calc?.payMode === 'daily' ? (
+                            <DayTypeBadge
+                              fullDay={calc.fullDay}
+                              label={calc.fullDay ? t('admin.time.fullDay') : t('admin.time.halfDay')}
+                            />
+                          ) : (
+                            <span className="text-tertiary text-xs">—</span>
+                          )}
                         </td>
                         <td className="text-right px-5 py-3 tabular-nums">
                           {hours != null

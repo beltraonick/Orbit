@@ -24,6 +24,7 @@ const config: Config = {
         amber: 'rgb(var(--color-amber) / <alpha-value>)',
         blue: 'rgb(var(--color-blue) / <alpha-value>)',
         danger: 'rgb(var(--color-danger) / <alpha-value>)',
+        purple: 'rgb(var(--color-purple) / <alpha-value>)',
       },
       borderRadius: {
         card: '16px',

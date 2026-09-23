@@ -34,6 +34,7 @@
   --color-amber:      160 90 0;
   --color-blue:       0 113 227;
   --color-danger:     214 0 20;
+  --color-purple:     124 58 168;
 
   /* ── Shape ── */
   --radius-card: 16px;
@@ -64,6 +65,7 @@ html.dark {
   --color-amber:  255 179 64;   /* #FFB340 — Apple system yellow dark */
   --color-blue:   10 132 255;   /* #0A84FF — Apple system blue dark */
   --color-danger: 255 69 58;    /* #FF453A — Apple system red dark */
+  --color-purple: 191 90 242;   /* #BF5AF2 — Apple system purple dark */
   /* brand stays the same red across both modes */
 }
 

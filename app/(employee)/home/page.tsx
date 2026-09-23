@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react'
-import type { Language } from '@/lib/auth/types'
 import { getCurrentUser } from '@/lib/auth/session'
 import { redirect } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
@@ -19,25 +18,6 @@ const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
   !process.env.NEXT_PUBLIC_SUPABASE_URL.startsWith('your_')
 
-// Daily-pay employees see a "days worked" tile (Full Day = 1, Half Day = 0.5);
-// hourly-pay employees see "hours worked" instead — same period, same
-// calcEntryPay() math as Days and Pay, so the three screens can't disagree.
-function periodDaysLabel(periodType: PeriodType, locale: Language, isDailyMode: boolean) {
-  if (isDailyMode) {
-    if (periodType === 'weekly') return t(locale, 'employee.home.daysThisWeek')
-    if (periodType === 'monthly') return t(locale, 'employee.home.daysThisMonth')
-    return t(locale, 'employee.home.daysThisPeriod')
-  }
-  if (periodType === 'weekly') return t(locale, 'employee.home.hoursThisWeek')
-  if (periodType === 'monthly') return t(locale, 'employee.home.hoursThisMonth')
-  return t(locale, 'employee.home.hoursThisPeriod')
-}
-
-function periodEarningsLabel(periodType: PeriodType, locale: Language) {
-  if (periodType === 'weekly') return t(locale, 'employee.home.earningsThisWeek')
-  if (periodType === 'monthly') return t(locale, 'employee.home.earningsThisMonth')
-  return t(locale, 'employee.home.earningsThisPeriod')
-}
 
 export default async function EmployeeHomePage() {
   const user = getCurrentUser()
@@ -59,10 +39,16 @@ export default async function EmployeeHomePage() {
   let canSelfClock = true
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let periodDays = 0
+  let fullDaysCount = 0
+  let halfDaysCount = 0
   let periodHours = 0
   let periodEarnings = 0
   let isDailyMode = false
+  let dailyRate = 0
+  let hourlyRate = 0
   let homePeriodType: PeriodType = 'biweekly'
+  let periodStartDate: Date | null = null
+  let periodEndDate: Date | null = null
 
   if (supabaseReady) {
     try {
@@ -129,7 +115,9 @@ export default async function EmployeeHomePage() {
           clockInTime = openEntry.clock_in
         }
 
-        const { start: periodStart } = getPeriodRange(homePeriodType, today)
+        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, today)
+        periodStartDate = periodStart
+        periodEndDate = periodEnd
 
         const { data: periodEntries } = await supabase
           .from('time_entries')
@@ -140,6 +128,8 @@ export default async function EmployeeHomePage() {
 
         const closed = periodEntries ?? []
         isDailyMode = isDailyPayMode({ daily_rate: profile.daily_rate, hourly_rate: profile.hourly_rate })
+        dailyRate = Number(profile.daily_rate) || 0
+        hourlyRate = Number(profile.hourly_rate) || 0
 
         // Same calcEntryPay() Days and Pay use, so Home can't show a
         // different "days worked" or earnings figure for the same period.
@@ -152,6 +142,8 @@ export default async function EmployeeHomePage() {
             daily_rate: profile.daily_rate,
             hourly_rate: profile.hourly_rate,
           })
+          if (calc.fullDay) fullDaysCount += 1
+          else if (isDailyMode) halfDaysCount += 1
           periodDays += calc.fullDay ? 1 : 0.5
           periodHours += calc.hoursWorked ?? 0
           periodEarnings += calc.totalPay
@@ -162,9 +154,28 @@ export default async function EmployeeHomePage() {
     }
   }
 
-  const daysLabel = periodDaysLabel(homePeriodType, locale, isDailyMode)
-  const earningsLabel = periodEarningsLabel(homePeriodType, locale)
+  // Plain "Days Worked"/"Hours Worked"/"Est. Earnings" — the adjacent Pay
+  // Period card already shows which period, so these don't need to repeat
+  // "This Week"/"This Month" themselves.
+  const daysLabel = t(locale, isDailyMode ? 'employee.home.daysWorkedLabel' : 'employee.home.hoursWorkedLabel')
+  const earningsLabel = t(locale, 'employee.home.estEarnings')
   const periodStatValue = isDailyMode ? periodDays : periodHours
+
+  const dateFmtLocale = locale === 'pt' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US'
+  const payPeriodLabel = periodStartDate && periodEndDate
+    ? `${periodStartDate.toLocaleDateString(dateFmtLocale, { month: 'short', day: 'numeric' })} – ${periodEndDate.toLocaleDateString(dateFmtLocale, { month: 'short', day: 'numeric' })}`
+    : null
+
+  const daysBreakdown = isDailyMode && (fullDaysCount > 0 || halfDaysCount > 0)
+    ? [
+        fullDaysCount > 0 ? t(locale, fullDaysCount === 1 ? 'employee.home.fullDaySingular' : 'employee.home.fullDayPlural').replace('{n}', String(fullDaysCount)) : null,
+        halfDaysCount > 0 ? t(locale, halfDaysCount === 1 ? 'employee.home.halfDaySingular' : 'employee.home.halfDayPlural').replace('{n}', String(halfDaysCount)) : null,
+      ].filter(Boolean).join(' • ')
+    : null
+
+  const rateCaption = isDailyMode
+    ? t(locale, 'employee.home.dailyRateCaption').replace('{rate}', dailyRate.toFixed(0)).replace('{half}', (dailyRate / 2).toFixed(0))
+    : t(locale, 'employee.home.hourlyRateCaption').replace('{rate}', hourlyRate.toFixed(0))
 
   // Quick actions config — same card design as admin QuickActionsWidget
   type QA = { href: string; label: string; iconBg: string; iconColor: string; icon: ReactNode }
@@ -302,24 +313,34 @@ export default async function EmployeeHomePage() {
       </Card>
 
       {/* Period Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{daysLabel}</p>
-          <p className="text-2xl font-bold text-primary tabular-nums">
+      <div className="grid grid-cols-3 gap-2.5 mb-5">
+        <Card padding="sm">
+          <p className="text-[10px] text-secondary uppercase tracking-wide mb-1">{t(locale, 'employee.home.payPeriod')}</p>
+          <p className="text-base font-bold text-primary leading-snug">
+            {payPeriodLabel ?? '—'}
+          </p>
+          <p className="text-[11px] text-secondary mt-0.5">{t(locale, 'employee.home.currentPeriod')}</p>
+        </Card>
+        <Card padding="sm">
+          <p className="text-[10px] text-secondary uppercase tracking-wide mb-1">{daysLabel}</p>
+          <p className="text-xl font-bold text-primary tabular-nums">
             {supabaseReady && profileId
               ? (periodStatValue % 1 === 0 ? periodStatValue : periodStatValue.toFixed(1))
               : '—'}
           </p>
+          {daysBreakdown && (
+            <p className="text-[11px] text-secondary mt-0.5 leading-snug">{daysBreakdown}</p>
+          )}
         </Card>
-        <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{earningsLabel}</p>
-          <p className="text-2xl font-bold text-primary tabular-nums">
+        <Card padding="sm">
+          <p className="text-[10px] text-secondary uppercase tracking-wide mb-1">{earningsLabel}</p>
+          <p className="text-xl font-bold text-primary tabular-nums">
             {supabaseReady && profileId && periodEarnings > 0
               ? `$${periodEarnings.toFixed(0)}`
               : '—'}
           </p>
           {periodEarnings > 0 && (
-            <p className="text-xs text-secondary mt-0.5">{t(locale, 'employee.home.projected')}</p>
+            <p className="text-[11px] text-secondary mt-0.5 leading-snug">{rateCaption}</p>
           )}
         </Card>
       </div>

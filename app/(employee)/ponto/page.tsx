@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { redirect } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { createClient } from '@/lib/supabase/server'
 import { t } from '@/lib/i18n/translate'
 import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
@@ -27,11 +28,12 @@ export default async function PontoPage() {
   let entries: any[] = []
   let periodDays = 0
   let periodHours = 0
-  let periodEntryCount = 0
   let isDailyMode = false
   let profileDailyRate: number | null = null
   let profileHourlyRate: number | null = null
   let homePeriodType: PeriodType = 'biweekly'
+  let periodStartDate: Date | null = null
+  let periodEndDate: Date | null = null
 
   if (supabaseReady) {
     try {
@@ -69,7 +71,9 @@ export default async function PontoPage() {
 
         // Same calcEntryPay() Home and Pay use, over the same period Home
         // shows — so Days can't disagree with either.
-        const { start: periodStart } = getPeriodRange(homePeriodType, new Date())
+        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, new Date())
+        periodStartDate = periodStart
+        periodEndDate = periodEnd
         for (const e of entries) {
           if (!e.clock_out || new Date(e.clock_in) < periodStart) continue
           const calc = calcEntryPay({
@@ -82,7 +86,6 @@ export default async function PontoPage() {
           })
           periodDays += calc.fullDay ? 1 : 0.5
           periodHours += calc.hoursWorked ?? 0
-          periodEntryCount += 1
         }
       }
     } catch {
@@ -91,6 +94,10 @@ export default async function PontoPage() {
   }
 
   const periodStatValue = isDailyMode ? periodDays : periodHours
+  const dateFmtLocale = locale === 'pt' ? 'pt-BR' : locale === 'es' ? 'es-ES' : 'en-US'
+  const payPeriodLabel = periodStartDate && periodEndDate
+    ? `${periodStartDate.toLocaleDateString(dateFmtLocale, { month: 'short', day: 'numeric' })} – ${periodEndDate.toLocaleDateString(dateFmtLocale, { month: 'short', day: 'numeric' })}`
+    : null
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
@@ -99,8 +106,12 @@ export default async function PontoPage() {
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         <Card>
+          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'employee.home.payPeriod')}</p>
+          <p className="text-xl font-bold text-primary leading-snug">{payPeriodLabel ?? '—'}</p>
+        </Card>
+        <Card>
           <p className="text-xs text-secondary uppercase tracking-wide mb-1">
-            {isDailyMode ? t(locale, 'employee.home.daysThisPeriod') : t(locale, 'employee.home.hoursThisPeriod')}
+            {isDailyMode ? t(locale, 'employee.home.daysWorkedLabel') : t(locale, 'employee.home.hoursWorkedLabel')}
           </p>
           <p className="text-2xl font-bold text-primary">
             {periodStatValue > 0
@@ -109,10 +120,6 @@ export default async function PontoPage() {
                   : `${periodStatValue.toFixed(1)}h`)
               : '—'}
           </p>
-        </Card>
-        <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'employee.ponto.entriesThisPeriod')}</p>
-          <p className="text-2xl font-bold text-primary">{periodEntryCount > 0 ? periodEntryCount : '—'}</p>
         </Card>
       </div>
 
@@ -165,9 +172,10 @@ export default async function PontoPage() {
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                     {fullDay != null ? (
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
-                        {fullDay ? t(locale, 'employee.pagamento.fullDay') : t(locale, 'employee.pagamento.halfDay')}
-                      </span>
+                      <DayTypeBadge
+                        fullDay={fullDay}
+                        label={fullDay ? t(locale, 'employee.pagamento.fullDay') : t(locale, 'employee.pagamento.halfDay')}
+                      />
                     ) : hours != null && (
                       <span className="text-sm font-semibold text-primary tabular-nums">
                         {hours.toFixed(2)}h
