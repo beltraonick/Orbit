@@ -14,6 +14,7 @@ import { createManualTimeEntry, supervisorClockOut } from '@/app/actions/workerA
 import { TeamClockIn } from '@/app/(employee)/projects/[id]/TeamClockIn'
 import { calcEntryPay } from '@/lib/payroll-calc'
 import { getPeriodRange, getPreviousPeriodRange, loadCompanyPeriodSettings, type CompanyPeriodSettings } from '@/lib/employee-period'
+import { DEFAULT_CLOCK_WINDOW, zonedTimeToUtc, type ClockWindowSettings } from '@/lib/clock-window'
 import type { Locale } from '@/lib/i18n/translate'
 
 interface TimeEntry {
@@ -97,6 +98,15 @@ function fmtElapsed(hours: number, label: string) {
   return `${h}h ${m}m ${label}`
 }
 
+/** Midpoint 'HH:MM' between two 'HH:MM' times, for a half-day manual entry. */
+function midpointTime(start: string, end: string): string {
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  const mid = Math.round((sh * 60 + sm + eh * 60 + em) / 2)
+  const h = Math.floor(mid / 60), m = mid % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 function toLocalDatetimeValue(iso: string) {
   const d = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -134,6 +144,7 @@ export default function TimePage() {
   const [actionId, setActionId] = useState<string | null>(null)
   const [filter, setFilter] = useState('all')
   const [periodSettings, setPeriodSettings] = useState<CompanyPeriodSettings | null>(null)
+  const [clockWindow, setClockWindow] = useState<ClockWindowSettings>(DEFAULT_CLOCK_WINDOW)
   const [empFilter, setEmpFilter] = useState('')
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
   const [workers, setWorkers] = useState<{ id: string; full_name: string }[]>([])
@@ -180,7 +191,26 @@ export default function TimePage() {
 
   useEffect(() => {
     if (!companyId) return
-    loadCompanyPeriodSettings(createClient(), companyId).then(setPeriodSettings)
+    const supabase = createClient()
+    loadCompanyPeriodSettings(supabase, companyId).then(setPeriodSettings)
+    // Manual entries should land inside the company's own configured work
+    // day, not a hardcoded 8-to-5 — a company with a different shift window
+    // (or a different timezone) would otherwise get entries dated for the
+    // wrong day/hours.
+    supabase
+      .from('company_document_settings')
+      .select('timezone, clock_in_window_start, clock_out_deadline')
+      .eq('company_id', companyId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return
+        setClockWindow({
+          ...DEFAULT_CLOCK_WINDOW,
+          timezone: data.timezone ?? DEFAULT_CLOCK_WINDOW.timezone,
+          clock_in_window_start: data.clock_in_window_start ?? DEFAULT_CLOCK_WINDOW.clock_in_window_start,
+          clock_out_deadline: data.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
+        })
+      })
   }, [companyId])
 
   const load = useCallback(async () => {
@@ -284,8 +314,10 @@ export default function TimePage() {
     if (!addDate) { setAddError('Date is required.'); return }
     setAddSaving(true)
     setAddError('')
-    const clockIn = new Date(`${addDate}T08:00:00`).toISOString()
-    const clockOut = new Date(`${addDate}T${addIsFullDay ? '17:00:00' : '12:00:00'}`).toISOString()
+    const startTime = clockWindow.clock_in_window_start
+    const endTime = addIsFullDay ? clockWindow.clock_out_deadline : midpointTime(startTime, clockWindow.clock_out_deadline)
+    const clockIn = zonedTimeToUtc(addDate, startTime, clockWindow.timezone).toISOString()
+    const clockOut = zonedTimeToUtc(addDate, endTime, clockWindow.timezone).toISOString()
     const res = await createManualTimeEntry({
       profileId: addType === 'profile' ? addPersonId : undefined,
       workerId: addType === 'worker' ? addPersonId : undefined,
