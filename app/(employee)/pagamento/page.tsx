@@ -23,8 +23,7 @@ export default async function PagamentoPage() {
   let profileId = ''
   let hourlyRate = 0
   let dailyRate: number | null = null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let payrollRecords: any[] = []
+  let paidPeriods: { periodStart: string; periodEnd: string; totalPay: number }[] = []
 
   if (supabaseReady) {
     try {
@@ -40,14 +39,32 @@ export default async function PagamentoPage() {
         hourlyRate = Number(profile.hourly_rate) || 0
         dailyRate = profile.daily_rate != null ? Number(profile.daily_rate) : null
 
-        const { data: records } = await supabase
-          .from('payroll_records')
-          .select('*')
-          .eq('employee_id', profile.id)
-          .order('period_start', { ascending: false })
-          .limit(12)
+        // Only a finalized payroll period is an authoritative "Paid" record —
+        // payroll_periods only ever gets a row when an admin actually
+        // finalizes payroll (Payroll tab -> Finalize Payroll), so every row
+        // here really was paid, never a guess or a live estimate.
+        const { data: entries } = await supabase
+          .from('payroll_period_entries')
+          .select('total_pay, overtime_pay, payroll_periods:payroll_period_id(period_start, period_end)')
+          .eq('company_id', user.company_id)
+          .eq('person_id', profile.id)
+          .order('entry_date', { ascending: false })
+          .limit(500)
 
-        payrollRecords = records ?? []
+        type Row = { total_pay: number; overtime_pay: number; payroll_periods: { period_start: string; period_end: string } | null }
+        const byPeriod = new Map<string, { periodStart: string; periodEnd: string; totalPay: number }>()
+        for (const e of (entries ?? []) as unknown as Row[]) {
+          const period = e.payroll_periods
+          if (!period) continue
+          const key = `${period.period_start}_${period.period_end}`
+          const existing = byPeriod.get(key)
+          const amount = Number(e.total_pay) + Number(e.overtime_pay)
+          if (existing) existing.totalPay += amount
+          else byPeriod.set(key, { periodStart: period.period_start, periodEnd: period.period_end, totalPay: amount })
+        }
+        paidPeriods = Array.from(byPeriod.values())
+          .sort((a, b) => b.periodStart.localeCompare(a.periodStart))
+          .slice(0, 12)
       }
     } catch {
       // silent fallback
@@ -80,37 +97,30 @@ export default async function PagamentoPage() {
         </div>
       )}
 
-      {/* Payroll history */}
+      {/* Payroll history — only shows periods an admin has actually
+          finalized (Payroll tab -> Finalize Payroll), so every row here is a
+          real, confirmed payment record, never an estimate. */}
       <Card padding="none">
         <div className="px-5 py-4 border-b border-[var(--border)]">
           <h2 className="text-sm font-semibold text-primary">{t(locale, 'employee.pagamento.payrollHistory')}</h2>
         </div>
-        {payrollRecords.length === 0 ? (
+        {paidPeriods.length === 0 ? (
           <div className="px-5 py-10 text-center">
             <p className="text-sm text-secondary">{t(locale, 'employee.pagamento.noPayrollRecords')}</p>
             <p className="text-xs text-tertiary mt-1">{t(locale, 'employee.pagamento.recordsAppearAfter')}</p>
           </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {payrollRecords.map((r: any) => (
-              <div key={r.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-primary">
-                    {new Date(r.period_start + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    {' – '}
-                    {new Date(r.period_end + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                  <p className="text-xs text-secondary mt-0.5">
-                    {Number(r.total_hours).toFixed(1)}h
-                    {r.hourly_rate > 0 ? ` · ${fmt(Number(r.hourly_rate))}/hr` : ''}
-                  </p>
-                </div>
+            {paidPeriods.map(p => (
+              <div key={`${p.periodStart}_${p.periodEnd}`} className="px-5 py-4 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-primary">
+                  {new Date(p.periodStart + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {' – '}
+                  {new Date(p.periodEnd + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
                 <div className="text-right flex flex-col items-end gap-1.5">
-                  <span className="text-base font-bold text-primary">{fmt(Number(r.total_amount))}</span>
-                  {r.status === 'paid'
-                    ? <Badge variant="green">{t(locale, 'employee.pagamento.paid')}</Badge>
-                    : <Badge variant="amber">{t(locale, 'common.pending')}</Badge>}
+                  <span className="text-base font-bold text-primary">{fmt(p.totalPay)}</span>
+                  <Badge variant="green">{t(locale, 'employee.pagamento.paid')}</Badge>
                 </div>
               </div>
             ))}
