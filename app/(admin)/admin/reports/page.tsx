@@ -8,29 +8,35 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import type { ExportData } from '@/lib/exports/exportPayrollXLSX'
+import { calcEntryPay } from '@/lib/payroll-calc'
 
 interface ReportRow {
-  employee_id: string
+  personId: string
   full_name: string
   email: string
+  payMode: 'daily' | 'hourly'
   totalEntries: number
   totalHours: number
   regularHours: number
   overtimeHours: number
-  approvedHours: number
-  pendingHours: number
+  totalPay: number
+  overtimePay: number
 }
 
 interface EntryRow {
   id: string
-  employee_id: string
+  employee_id: string | null
+  worker_id: string | null
   clock_in: string
   clock_out: string | null
+  hours_worked: number | null
+  is_full_day: boolean | null
   city: string | null
   state: string | null
   approval_status: string | null
   project: { name: string } | null
-  profile: { full_name: string } | null
+  profile: { full_name: string; email: string; daily_rate: number | null; hourly_rate: number | null } | null
+  worker: { full_name: string; daily_rate: number | null; hourly_rate: number | null } | null
 }
 
 interface ExpenseRow {
@@ -113,7 +119,6 @@ function PayrollReport({ period }: { period: string }) {
   const companyId = useCompanyId()
   const [rows, setRows] = useState<ReportRow[]>([])
   const [entries, setEntries] = useState<EntryRow[]>([])
-  const [profiles, setProfiles] = useState<{ id: string; hourly_rate: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<'summary' | 'detail'>('summary')
 
@@ -125,63 +130,68 @@ function PayrollReport({ period }: { period: string }) {
 
     let query = supabase
       .from('time_entries')
-      .select('id, employee_id, clock_in, clock_out, city, state, approval_status, project:project_id(name), profile:employee_id(full_name, email)')
+      .select(`
+        id, employee_id, worker_id, clock_in, clock_out, hours_worked, is_full_day,
+        city, state, approval_status,
+        project:project_id(name),
+        profile:employee_id(full_name, email, daily_rate, hourly_rate),
+        worker:worker_id(full_name, daily_rate, hourly_rate)
+      `)
       .eq('company_id', companyId)
+      .not('clock_out', 'is', null)
       .order('clock_in', { ascending: false })
       .limit(500)
 
     if (start) query = query.gte('clock_in', start.toISOString())
     if (end) query = query.lte('clock_in', end.toISOString())
 
-    const [{ data: ents }, { data: profs }] = await Promise.all([
-      query,
-      supabase.from('profiles').select('id, full_name, email, hourly_rate').eq('company_id', companyId),
-    ])
-
+    const { data: ents } = await query
     const fetchedEntries = (ents ?? []) as unknown as EntryRow[]
     setEntries(fetchedEntries)
-    setProfiles((profs ?? []) as { id: string; hourly_rate: number }[])
 
+    // Same calcEntryPay() the Admin Payroll page and XLSX export use — this
+    // report can't disagree with those on what a given entry is worth.
     const empMap = new Map<string, ReportRow>()
     for (const e of fetchedEntries) {
-      if (!e.profile) continue
-      if (!empMap.has(e.employee_id)) {
-        empMap.set(e.employee_id, {
-          employee_id: e.employee_id,
-          full_name: (e.profile as unknown as { full_name: string }).full_name ?? '',
-          email: (e.profile as unknown as { email: string }).email ?? '',
+      const personId = e.employee_id ?? e.worker_id
+      if (!personId) continue
+      const calc = calcEntryPay({
+        clock_in: e.clock_in,
+        clock_out: e.clock_out,
+        hours_worked: e.hours_worked,
+        is_full_day: e.is_full_day,
+        daily_rate: e.profile?.daily_rate ?? e.worker?.daily_rate ?? null,
+        hourly_rate: e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null,
+      })
+
+      if (!empMap.has(personId)) {
+        empMap.set(personId, {
+          personId,
+          full_name: e.profile?.full_name ?? e.worker?.full_name ?? '—',
+          email: e.profile?.email ?? '',
+          payMode: calc.payMode,
           totalEntries: 0, totalHours: 0, regularHours: 0,
-          overtimeHours: 0, approvedHours: 0, pendingHours: 0,
+          overtimeHours: 0, totalPay: 0, overtimePay: 0,
         })
       }
-      const row = empMap.get(e.employee_id)!
+      const row = empMap.get(personId)!
       row.totalEntries++
-      if (e.clock_out) {
-        const h = (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
-        row.totalHours += h
-        const status = e.approval_status ?? 'approved'
-        if (status === 'approved') row.approvedHours += h
-        if (status === 'pending') row.pendingHours += h
-      }
+      const hours = calc.hoursWorked ?? 0
+      row.totalHours += hours
+      row.overtimeHours += calc.overtimeHours
+      row.regularHours += Math.max(hours - calc.overtimeHours, 0)
+      row.totalPay += calc.totalPay + calc.overtimePay
+      row.overtimePay += calc.overtimePay
     }
 
-    const allRows = Array.from(empMap.values())
-    for (const row of allRows) {
-      row.regularHours = Math.min(row.totalHours, 40)
-      row.overtimeHours = Math.max(row.totalHours - 40, 0)
-    }
-    setRows(allRows.sort((a, b) => b.totalHours - a.totalHours))
+    setRows(Array.from(empMap.values()).sort((a, b) => b.totalPay - a.totalPay))
     setLoading(false)
   }, [period, companyId])
 
   useEffect(() => { load() }, [load])
 
-  const rateMap = new Map(profiles.map(p => [p.id, Number(p.hourly_rate)]))
   const grandHours = rows.reduce((s, r) => s + r.totalHours, 0)
-  const grandPay = rows.reduce((s, r) => {
-    const rate = rateMap.get(r.employee_id) ?? 0
-    return s + r.regularHours * rate + r.overtimeHours * rate * 1.5
-  }, 0)
+  const grandPay = rows.reduce((s, r) => s + r.totalPay, 0)
 
   return (
     <>
@@ -239,26 +249,22 @@ function PayrollReport({ period }: { period: string }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {rows.map(r => {
-                    const rate = rateMap.get(r.employee_id) ?? 0
-                    const pay = r.regularHours * rate + r.overtimeHours * rate * 1.5
-                    return (
-                      <tr key={r.employee_id} className="hover:bg-surface-elevated/40 transition-colors">
-                        <td className="px-5 py-3">
-                          <p className="font-medium text-primary">{r.full_name}</p>
-                          <p className="text-xs text-tertiary">{r.email}</p>
-                        </td>
-                        <td className="text-right px-4 py-3 text-secondary tabular-nums">{r.totalEntries}</td>
-                        <td className="text-right px-4 py-3 text-secondary tabular-nums">{r.regularHours.toFixed(1)}h</td>
-                        <td className="text-right px-4 py-3 tabular-nums">
-                          {r.overtimeHours > 0
-                            ? <span className="text-amber">{r.overtimeHours.toFixed(1)}h</span>
-                            : <span className="text-tertiary">—</span>}
-                        </td>
-                        <td className="text-right px-5 py-3 font-semibold text-primary tabular-nums">{fmt(pay)}</td>
-                      </tr>
-                    )
-                  })}
+                  {rows.map(r => (
+                    <tr key={r.personId} className="hover:bg-surface-elevated/40 transition-colors">
+                      <td className="px-5 py-3">
+                        <p className="font-medium text-primary">{r.full_name}</p>
+                        <p className="text-xs text-tertiary">{r.email}</p>
+                      </td>
+                      <td className="text-right px-4 py-3 text-secondary tabular-nums">{r.totalEntries}</td>
+                      <td className="text-right px-4 py-3 text-secondary tabular-nums">{r.regularHours.toFixed(1)}h</td>
+                      <td className="text-right px-4 py-3 tabular-nums">
+                        {r.overtimeHours > 0
+                          ? <span className="text-amber">{r.overtimeHours.toFixed(1)}h</span>
+                          : <span className="text-tertiary">—</span>}
+                      </td>
+                      <td className="text-right px-5 py-3 font-semibold text-primary tabular-nums">{fmt(r.totalPay)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -287,13 +293,15 @@ function PayrollReport({ period }: { period: string }) {
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
                   {entries.map(e => {
-                    const hours = e.clock_out
-                      ? (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
-                      : null
+                    const hours = e.hours_worked != null
+                      ? Number(e.hours_worked)
+                      : e.clock_out
+                        ? (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
+                        : null
                     return (
                       <tr key={e.id} className="hover:bg-surface-elevated/40 transition-colors">
                         <td className="px-5 py-3 font-medium text-primary whitespace-nowrap">
-                          {(e.profile as unknown as { full_name: string } | null)?.full_name ?? '—'}
+                          {e.profile?.full_name ?? e.worker?.full_name ?? '—'}
                         </td>
                         <td className="px-4 py-3 text-secondary whitespace-nowrap">
                           {new Date(e.clock_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}

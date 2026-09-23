@@ -16,6 +16,7 @@ interface TimeEntry {
   id: string
   employee_id: string | null
   worker_id: string | null
+  project_id: string | null
   clock_in: string
   clock_out: string | null
   city: string | null
@@ -31,7 +32,7 @@ interface TimeEntry {
 }
 
 const ENTRY_SELECT = `
-  id, employee_id, worker_id, clock_in, clock_out,
+  id, employee_id, worker_id, project_id, clock_in, clock_out,
   city, state, notes, is_full_day, approval_status,
   clocked_by_profile_id,
   project:project_id(name),
@@ -121,6 +122,8 @@ export default function TimePage() {
   const [editClockIn, setEditClockIn] = useState('')
   const [editClockOut, setEditClockOut] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [editProjectId, setEditProjectId] = useState('')
+  const [editIsFullDay, setEditIsFullDay] = useState(true)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -263,6 +266,8 @@ export default function TimePage() {
     setEditClockIn(toLocalDatetimeValue(entry.clock_in))
     setEditClockOut(entry.clock_out ? toLocalDatetimeValue(entry.clock_out) : '')
     setEditNotes(entry.notes ?? '')
+    setEditProjectId(entry.project_id ?? '')
+    setEditIsFullDay(entry.is_full_day ?? true)
     setEditError('')
   }
 
@@ -274,6 +279,8 @@ export default function TimePage() {
     const updates: Record<string, unknown> = {
       clock_in: new Date(editClockIn).toISOString(),
       notes: editNotes || null,
+      project_id: editProjectId || null,
+      is_full_day: editIsFullDay,
     }
     if (editClockOut) {
       if (new Date(editClockOut) <= new Date(editClockIn)) {
@@ -659,6 +666,36 @@ export default function TimePage() {
                 className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
               />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-secondary mb-2">Was this a full day?</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditIsFullDay(true)}
+                  className={`flex-1 py-2 text-sm font-medium rounded-button border transition-colors ${editIsFullDay ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary hover:text-primary'}`}
+                >Full Day</button>
+                <button
+                  type="button"
+                  onClick={() => setEditIsFullDay(false)}
+                  className={`flex-1 py-2 text-sm font-medium rounded-button border transition-colors ${!editIsFullDay ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary hover:text-primary'}`}
+                >Partial Day</button>
+              </div>
+            </div>
+            {projects.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-secondary mb-1">Project / Location</label>
+                <select
+                  value={editProjectId}
+                  onChange={e => setEditProjectId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
+                >
+                  <option value="">— no project —</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-secondary mb-1">Notes</label>
               <Input

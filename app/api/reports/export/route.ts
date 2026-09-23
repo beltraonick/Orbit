@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { calcEntryPay } from '@/lib/payroll-calc'
 
 function periodDates(period: string): { start: Date | null; end: Date | null } {
   const now = new Date()
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
   let teQuery = supabase
     .from('time_entries')
     .select(
-      'employee_id, clock_in, clock_out, profile:employee_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
+      'employee_id, worker_id, clock_in, clock_out, hours_worked, is_full_day, profile:employee_id(full_name, daily_rate, hourly_rate), worker:worker_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
     )
     .eq('company_id', cid)
     .not('clock_out', 'is', null)
@@ -91,10 +92,14 @@ export async function GET(req: Request) {
     ])
 
   type RawEntry = {
-    employee_id: string
+    employee_id: string | null
+    worker_id: string | null
     clock_in: string
     clock_out: string
-    profile: { full_name: string; daily_rate: number; hourly_rate: number } | null
+    hours_worked: number | null
+    is_full_day: boolean | null
+    profile: { full_name: string; daily_rate: number | null; hourly_rate: number | null } | null
+    worker: { full_name: string; daily_rate: number | null; hourly_rate: number | null } | null
     project: { name: string } | null
   }
   type RawExpense = {
@@ -116,14 +121,24 @@ export async function GET(req: Request) {
   }
 
   const entries = ((rawEntries ?? []) as unknown as RawEntry[]).map(e => {
-    const hours =
-      (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
+    const hours = e.hours_worked != null
+      ? Number(e.hours_worked)
+      : (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
+    const calc = calcEntryPay({
+      clock_in: e.clock_in,
+      clock_out: e.clock_out,
+      hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+      is_full_day: e.is_full_day,
+      daily_rate: e.profile?.daily_rate ?? e.worker?.daily_rate ?? null,
+      hourly_rate: e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null,
+    })
     return {
-      full_name: e.profile?.full_name ?? '—',
+      full_name: e.profile?.full_name ?? e.worker?.full_name ?? '—',
       date: e.clock_in.slice(0, 10),
       hours: Math.round(hours * 100) / 100,
-      daily_rate: Number(e.profile?.daily_rate ?? 0),
-      hourly_rate: Number(e.profile?.hourly_rate ?? 0),
+      daily_rate: calc.dailyRate,
+      hourly_rate: calc.hourlyRate,
+      is_full_day: e.is_full_day,
       project: e.project?.name ?? null,
     }
   })

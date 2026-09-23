@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { updateEmployeeTask } from '@/app/actions/employeeTasks'
 import { createClient } from '@/lib/supabase/client'
+import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox'
 
 type ChecklistItem = { text: string; done: boolean }
 
@@ -50,7 +51,7 @@ export function EmployeeTaskList({ initialTasks, locale }: Props) {
   const [editNotes, setEditNotes] = useState('')
   const [taskPhotos, setTaskPhotos] = useState<string[]>([])
   const [photosLoading, setPhotosLoading] = useState(false)
-  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
   const [newCheckItem, setNewCheckItem] = useState('')
   const [isPending, startTransition] = useTransition()
   const [saved, setSaved] = useState(false)
@@ -94,7 +95,7 @@ export function EmployeeTaskList({ initialTasks, locale }: Props) {
 
   function closeEdit() {
     setEditing(null)
-    setLightboxPhoto(null)
+    setLightboxIndex(null)
   }
 
   function toggleCheckItem(index: number) {
@@ -339,7 +340,7 @@ export function EmployeeTaskList({ initialTasks, locale }: Props) {
                       <button
                         key={i}
                         type="button"
-                        onClick={() => setLightboxPhoto(url)}
+                        onClick={() => setLightboxIndex(i)}
                         className="aspect-square rounded-[10px] overflow-hidden bg-surface-elevated active:opacity-70"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -366,23 +367,12 @@ export function EmployeeTaskList({ initialTasks, locale }: Props) {
       )}
 
       {/* Photo lightbox */}
-      {lightboxPhoto && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center"
-          onClick={() => setLightboxPhoto(null)}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightboxPhoto} alt="" className="max-w-full max-h-full object-contain" />
-          <button
-            type="button"
-            className="absolute top-5 right-5 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center"
-            onClick={() => setLightboxPhoto(null)}
-          >
-            <svg viewBox="0 0 20 20" fill="white" className="w-5 h-5">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-        </div>
+      {lightboxIndex != null && (
+        <PhotoLightbox
+          photos={taskPhotos.map((url): LightboxPhoto => ({ url }))}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
       )}
     </>
   )
