@@ -52,14 +52,21 @@ function entryPay(e: ExportEntry) {
   })
 }
 
+// Excel sheet names can't contain : \ / ? * [ ] and are capped at 31 chars.
+// Dates formatted with slashes (e.g. from toLocaleDateString) are a common
+// source of a silently-thrown, unrecoverable error from XLSX.writeFile.
+function safeSheetName(name: string): string {
+  return name.replace(/[:\\/?*[\]]/g, '-').slice(0, 31)
+}
+
 export async function exportPayrollXLSX(data: ExportData): Promise<void> {
   const XLSX = (await import('xlsx')).default
   const wb = XLSX.utils.book_new()
 
   // ── Tab 1: Daily Attendance ──────────────────────────────────────────────────
-  const tab1Name = data.period_start && data.period_end
+  const tab1Name = safeSheetName(data.period_start && data.period_end
     ? `${data.period_start.slice(5)} to ${data.period_end.slice(5)}`
-    : data.period_label.slice(0, 31)
+    : data.period_label)
 
   const attendanceRows = data.entries.map(e => {
     const calc = entryPay(e)
@@ -79,7 +86,7 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
   const ws1 = XLSX.utils.json_to_sheet(attendanceRows.length ? attendanceRows : [
     { 'EMPLOYEE NAME': '', 'WORKED?': '', 'DATE': '', 'PAY TYPE': '', 'PRICE $': '', 'FULL DAY?': '', 'HOURS': '', 'TOTAL $': '', 'NOTES': '' },
   ])
-  XLSX.utils.book_append_sheet(wb, ws1, tab1Name.slice(0, 31))
+  XLSX.utils.book_append_sheet(wb, ws1, tab1Name)
 
   // ── Tab 2: Payroll Summary ───────────────────────────────────────────────────
   const empPayMap = new Map<string, number>()
@@ -106,7 +113,7 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
   const ws2 = XLSX.utils.json_to_sheet(payrollRows.length ? payrollRows : [
     { 'EMPLOYEE NAME': '', 'TOTAL $': '' },
   ])
-  XLSX.utils.book_append_sheet(wb, ws2, `Payroll - ${payDate}`)
+  XLSX.utils.book_append_sheet(wb, ws2, safeSheetName(`Payroll - ${payDate}`))
 
   // ── Tab 3: Financial Summary ─────────────────────────────────────────────────
   const totalReimb = data.expenses
