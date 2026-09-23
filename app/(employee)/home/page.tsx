@@ -12,33 +12,25 @@ import { t } from '@/lib/i18n/translate'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
+import { getPeriodRange, type PeriodType } from '@/lib/employee-period'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
   !process.env.NEXT_PUBLIC_SUPABASE_URL.startsWith('your_')
 
-type PeriodType = 'weekly' | 'biweekly' | 'monthly'
-
-function getPeriodRange(periodType: PeriodType, today: Date): { start: Date } {
-  const start = new Date(today)
-  if (periodType === 'weekly') {
-    start.setDate(today.getDate() - today.getDay())
-    start.setHours(0, 0, 0, 0)
-  } else if (periodType === 'biweekly') {
-    const day = today.getDate()
-    start.setDate(day <= 15 ? 1 : 16)
-    start.setHours(0, 0, 0, 0)
-  } else {
-    start.setDate(1)
-    start.setHours(0, 0, 0, 0)
+// Daily-pay employees see a "days worked" tile (Full Day = 1, Half Day = 0.5);
+// hourly-pay employees see "hours worked" instead — same period, same
+// calcEntryPay() math as Days and Pay, so the three screens can't disagree.
+function periodDaysLabel(periodType: PeriodType, locale: Language, isDailyMode: boolean) {
+  if (isDailyMode) {
+    if (periodType === 'weekly') return t(locale, 'employee.home.daysThisWeek')
+    if (periodType === 'monthly') return t(locale, 'employee.home.daysThisMonth')
+    return t(locale, 'employee.home.daysThisPeriod')
   }
-  return { start }
-}
-
-function periodDaysLabel(periodType: PeriodType, locale: Language) {
-  if (periodType === 'weekly') return t(locale, 'employee.home.daysThisWeek')
-  if (periodType === 'monthly') return t(locale, 'employee.home.daysThisMonth')
-  return t(locale, 'employee.home.daysThisPeriod')
+  if (periodType === 'weekly') return t(locale, 'employee.home.hoursThisWeek')
+  if (periodType === 'monthly') return t(locale, 'employee.home.hoursThisMonth')
+  return t(locale, 'employee.home.hoursThisPeriod')
 }
 
 function periodEarningsLabel(periodType: PeriodType, locale: Language) {
@@ -67,7 +59,9 @@ export default async function EmployeeHomePage() {
   let canSelfClock = true
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let periodDays = 0
+  let periodHours = 0
   let periodEarnings = 0
+  let isDailyMode = false
   let homePeriodType: PeriodType = 'biweekly'
 
   if (supabaseReady) {
@@ -76,7 +70,7 @@ export default async function EmployeeHomePage() {
 
       let { data: profile } = await supabase
         .from('profiles')
-        .select('id, hourly_rate, permissions')
+        .select('id, hourly_rate, daily_rate, permissions')
         .eq('email', user.email)
         .maybeSingle()
 
@@ -90,7 +84,7 @@ export default async function EmployeeHomePage() {
             email: user.email,
             status: 'active',
           })
-          .select('id, hourly_rate, permissions')
+          .select('id, hourly_rate, daily_rate, permissions')
           .single()
         profile = newProfile
       }
@@ -139,27 +133,38 @@ export default async function EmployeeHomePage() {
 
         const { data: periodEntries } = await supabase
           .from('time_entries')
-          .select('clock_in, clock_out')
+          .select('clock_in, clock_out, hours_worked, is_full_day')
           .eq('employee_id', profile.id)
           .gte('clock_in', periodStart.toISOString())
           .not('clock_out', 'is', null)
 
         const closed = periodEntries ?? []
-        // Count distinct calendar days with at least one closed entry
-        periodDays = new Set(closed.map(e => e.clock_in.slice(0, 10))).size
-        const hourlyRate = Number(profile.hourly_rate) || 0
-        periodEarnings = closed.reduce((sum, e) => {
-          const h = (new Date(e.clock_out!).getTime() - new Date(e.clock_in).getTime()) / 3600000
-          return sum + h * hourlyRate
-        }, 0)
+        isDailyMode = isDailyPayMode({ daily_rate: profile.daily_rate, hourly_rate: profile.hourly_rate })
+
+        // Same calcEntryPay() Days and Pay use, so Home can't show a
+        // different "days worked" or earnings figure for the same period.
+        for (const e of closed) {
+          const calc = calcEntryPay({
+            clock_in: e.clock_in,
+            clock_out: e.clock_out,
+            hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+            is_full_day: e.is_full_day,
+            daily_rate: profile.daily_rate,
+            hourly_rate: profile.hourly_rate,
+          })
+          periodDays += calc.fullDay ? 1 : 0.5
+          periodHours += calc.hoursWorked ?? 0
+          periodEarnings += calc.totalPay
+        }
       }
     } catch {
       // silent fallback
     }
   }
 
-  const daysLabel = periodDaysLabel(homePeriodType, locale)
+  const daysLabel = periodDaysLabel(homePeriodType, locale, isDailyMode)
   const earningsLabel = periodEarningsLabel(homePeriodType, locale)
+  const periodStatValue = isDailyMode ? periodDays : periodHours
 
   // Quick actions config — same card design as admin QuickActionsWidget
   type QA = { href: string; label: string; iconBg: string; iconColor: string; icon: ReactNode }
@@ -301,7 +306,9 @@ export default async function EmployeeHomePage() {
         <Card>
           <p className="text-xs text-secondary uppercase tracking-wide mb-1">{daysLabel}</p>
           <p className="text-2xl font-bold text-primary tabular-nums">
-            {supabaseReady && profileId ? periodDays : '—'}
+            {supabaseReady && profileId
+              ? (periodStatValue % 1 === 0 ? periodStatValue : periodStatValue.toFixed(1))
+              : '—'}
           </p>
         </Card>
         <Card>
