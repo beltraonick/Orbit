@@ -12,6 +12,7 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { useCompanyId } from '@/lib/company-context'
 import { createClient } from '@/lib/supabase/client'
 import { DEFAULT_CLOCK_WINDOW, COMMON_TIMEZONES } from '@/lib/clock-window'
+import { getPeriodRange, loadCompanyPeriodSettings, toDateStr } from '@/lib/employee-period'
 
 const VERSION = '1.0.0'
 
@@ -390,6 +391,8 @@ export default function SettingsPage() {
   const [homePeriodLoading, setHomePeriodLoading] = useState(true)
   const [homePeriodSaving, setHomePeriodSaving] = useState(false)
   const [homePeriodSaved, setHomePeriodSaved] = useState(false)
+  const [periodAnchor, setPeriodAnchor] = useState('')
+  const [homePeriodError, setHomePeriodError] = useState('')
 
   // Pay System state
   const [paySystem, setPaySystem] = useState<'daily' | 'hourly' | null>(null)
@@ -475,6 +478,7 @@ export default function SettingsPage() {
         setHomePeriodLoading(false)
         setPaySystemLoading(false)
       })
+    loadCompanyPeriodSettings(supabase, companyId).then(p => setPeriodAnchor(p.anchor ?? ''))
   }, [companyId])
 
   // Existing employees/workers keep whatever mode they were already saved
@@ -557,23 +561,26 @@ export default function SettingsPage() {
     e.preventDefault()
     if (!companyId) return
     setHomePeriodSaving(true)
+    setHomePeriodError('')
     const supabase = createClient()
+    // Monthly ignores the start date; weekly/bi-weekly repeat from it.
+    const values = {
+      home_period_type: homePeriodType,
+      pay_period_anchor: homePeriodType === 'monthly' ? null : (periodAnchor || null),
+    }
     const { data: existing } = await supabase
       .from('company_document_settings')
       .select('id')
       .eq('company_id', companyId)
       .maybeSingle()
-    if (existing) {
-      await supabase
-        .from('company_document_settings')
-        .update({ home_period_type: homePeriodType })
-        .eq('company_id', companyId)
-    } else {
-      await supabase
-        .from('company_document_settings')
-        .insert({ company_id: companyId, home_period_type: homePeriodType })
-    }
+    const { error } = existing
+      ? await supabase.from('company_document_settings').update(values).eq('company_id', companyId)
+      : await supabase.from('company_document_settings').insert({ company_id: companyId, ...values })
     setHomePeriodSaving(false)
+    if (error) {
+      setHomePeriodError('Could not save the pay period. Please try again.')
+      return
+    }
     setHomePeriodSaved(true)
     setTimeout(() => setHomePeriodSaved(false), 2500)
   }
@@ -1047,11 +1054,11 @@ export default function SettingsPage() {
       </Section>
 
       {/* Dashboard Period */}
-      <Section title="Dashboard Period">
+      <Section title="Pay Period">
         <Card>
           <form onSubmit={handleSaveHomePeriod} className="space-y-4">
             <p className="text-xs text-secondary">
-              Controls the time window shown in the stats tiles on the employee and supervisor home screen (days worked + estimated earnings). Each company can set the period that matches its payroll cycle.
+              Your payroll cycle. It sets Payroll → Last / Current Pay Period and the period employees see on Home, Days and Pay.
             </p>
             {homePeriodLoading ? (
               <div className="h-11 bg-surface-elevated rounded-input animate-pulse" />
@@ -1059,7 +1066,9 @@ export default function SettingsPage() {
               <div className="flex gap-2">
                 {(['weekly', 'biweekly', 'monthly'] as const).map(opt => {
                   const labels = { weekly: 'Weekly', biweekly: 'Bi-weekly', monthly: 'Monthly' }
-                  const sublabels = { weekly: 'Sun – Sat', biweekly: '1–15 / 16–end', monthly: '1st – last day' }
+                  const sublabels = periodAnchor
+                    ? { weekly: 'Every 7 days', biweekly: 'Every 14 days', monthly: '1st – last day' }
+                    : { weekly: 'Sun – Sat', biweekly: '1–15 / 16–end', monthly: '1st – last day' }
                   return (
                     <button
                       key={opt}
@@ -1078,6 +1087,28 @@ export default function SettingsPage() {
                 })}
               </div>
             )}
+            {homePeriodType !== 'monthly' && (
+              <div>
+                <label className="block text-xs font-medium text-secondary mb-1">
+                  First day of a pay period (optional)
+                </label>
+                <input
+                  type="date"
+                  value={periodAnchor}
+                  onChange={ev => setPeriodAnchor(ev.target.value)}
+                  className="text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                />
+                <p className="text-xs text-tertiary mt-1">
+                  {periodAnchor
+                    ? (() => {
+                        const r = getPeriodRange(homePeriodType, new Date(), periodAnchor)
+                        return `Current pay period: ${toDateStr(r.start)} → ${toDateStr(r.end)}`
+                      })()
+                    : 'Leave empty to use ' + (homePeriodType === 'weekly' ? 'Sunday – Saturday weeks.' : '1st–15th and 16th–end of month.')}
+                </p>
+              </div>
+            )}
+            {homePeriodError && <p className="text-xs text-danger">{homePeriodError}</p>}
             <div className="pt-1 flex items-center gap-3">
               <Button
                 type="submit"

@@ -6,6 +6,8 @@ import { Card } from '@/components/ui/Card'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay } from '@/lib/payroll-calc'
 import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
+import { useCompanyId } from '@/lib/company-context'
+import { getPeriodRange, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -14,25 +16,6 @@ const fmtDate = (iso: string) =>
   new Date(iso + 'T12:00:00').toLocaleDateString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric',
   })
-
-function getCurrentQuinzenaDates(): { start: string; end: string } {
-  const now = new Date()
-  const day = now.getDate()
-  const year = now.getFullYear()
-  const month = now.getMonth()
-  let start: Date, end: Date
-  if (day <= 15) {
-    start = new Date(year, month, 1)
-    end = new Date(year, month, 15)
-  } else {
-    start = new Date(year, month, 16)
-    end = new Date(year, month + 1, 0)
-  }
-  return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
-  }
-}
 
 // Normalized shape both the live (time_entries) and finalized
 // (payroll_period_entries) sources map into, so the render logic below
@@ -66,8 +49,17 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   // screen shows them as-is instead of recomputing from live rates.
   const [finalized, setFinalized] = useState(false)
 
-  const periodStart = preset === 'custom' ? customStart : getCurrentQuinzenaDates().start
-  const periodEnd = preset === 'custom' ? customEnd : getCurrentQuinzenaDates().end
+  // Same company pay period the admin sets (Settings → Pay Period).
+  const companyId = useCompanyId()
+  const [periodSettings, setPeriodSettings] = useState<CompanyPeriodSettings | null>(null)
+  useEffect(() => {
+    loadCompanyPeriodSettings(createClient(), companyId).then(setPeriodSettings)
+  }, [companyId])
+  const currentRange = periodSettings
+    ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
+    : null
+  const periodStart = preset === 'custom' ? customStart : (currentRange ? toDateStr(currentRange.start) : '')
+  const periodEnd = preset === 'custom' ? customEnd : (currentRange ? toDateStr(currentRange.end) : '')
 
   const load = useCallback(async () => {
     if (!periodStart || !periodEnd) return

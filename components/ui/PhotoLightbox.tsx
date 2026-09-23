@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface LightboxPhoto {
   url: string
@@ -34,6 +35,8 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
   const pinchRef = useRef(0)
   const scaleRef = useRef(1)
   const dragging = useRef(false)
+  const draggingDown = useRef(false)
+  const [dragY, setDragY] = useState(0)
 
   const current = photos[Math.max(0, Math.min(index, photos.length - 1))]
 
@@ -81,12 +84,23 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
     } else if (e.touches.length === 1 && scale <= 1) {
       const dx = e.touches[0].clientX - touchX.current
       const dy = e.touches[0].clientY - touchY.current
-      if (Math.abs(dx) > Math.abs(dy) + 4) dragging.current = true
+      if (!draggingDown.current && Math.abs(dx) > Math.abs(dy) + 4) dragging.current = true
+      // Swipe down to close — the familiar gesture from the Photos app.
+      if (!dragging.current && dy > 8 && dy > Math.abs(dx)) draggingDown.current = true
       if (dragging.current) setDrag(dx)
+      if (draggingDown.current) setDragY(Math.max(0, dy))
     }
   }
 
   function onTouchEnd() {
+    if (scale <= 1 && draggingDown.current && dragY > 100) {
+      draggingDown.current = false
+      setDragY(0)
+      onClose()
+      return
+    }
+    draggingDown.current = false
+    setDragY(0)
     if (scale <= 1 && dragging.current) {
       if (drag < -60) goNext()
       else if (drag > 60) goPrev()
@@ -112,13 +126,19 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
   if (!current) return null
   const catInfo = CAT[current.category ?? '']
 
-  return (
+  // Rendered into <body> so a transformed/animated parent (drawers, modals)
+  // can never trap this full-screen viewer or push its close button off-screen.
+  const viewer = (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col select-none">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 pt-safe-or-4 py-3 flex-shrink-0">
+      <div
+        className="flex items-center justify-between px-4 flex-shrink-0"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)', paddingBottom: 12 }}
+      >
         <button
           onClick={onClose}
-          className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+          aria-label="Close"
+          className="w-11 h-11 rounded-full bg-white/15 flex items-center justify-center active:bg-white/25 transition-colors"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-white">
             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -158,6 +178,7 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
       <div
         className="flex-1 relative flex items-center justify-center overflow-hidden"
         style={{ touchAction: 'none' }}
+        onClick={e => { if (e.target === e.currentTarget && scale <= 1) onClose() }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -180,8 +201,9 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
           draggable={false}
           className="max-w-full max-h-full object-contain"
           style={{
-            transform: `scale(${scale}) translateX(${scale <= 1 ? drag : 0}px)`,
-            transition: drag === 0 ? 'transform 0.2s ease' : 'none',
+            transform: `scale(${scale}) translate(${scale <= 1 ? drag : 0}px, ${scale <= 1 ? dragY : 0}px)`,
+            transition: drag === 0 && dragY === 0 ? 'transform 0.2s ease' : 'none',
+            opacity: dragY > 0 ? Math.max(0.4, 1 - dragY / 400) : 1,
           }}
         />
 
@@ -198,7 +220,10 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
       </div>
 
       {/* Metadata + dots */}
-      <div className="flex-shrink-0 px-5 py-4 space-y-1.5">
+      <div
+        className="flex-shrink-0 px-5 pt-4 space-y-1.5"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)' }}
+      >
         <div className="flex items-center gap-2">
           {catInfo && (
             <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wide ${catInfo.cls}`}>
@@ -245,4 +270,7 @@ export function PhotoLightbox({ photos, initialIndex = 0, onClose, onDelete }: P
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return viewer
+  return createPortal(viewer, document.body)
 }

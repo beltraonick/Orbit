@@ -12,7 +12,7 @@ import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
-import { getPeriodRange, type PeriodType } from '@/lib/employee-period'
+import { getPeriodRange, loadCompanyPeriodSettings, type PeriodType } from '@/lib/employee-period'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -115,7 +115,10 @@ export default async function EmployeeHomePage() {
           clockInTime = openEntry.clock_in
         }
 
-        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, today)
+        // Same company pay period Admin Payroll uses (type + optional start date).
+        const periodSettings = await loadCompanyPeriodSettings(supabase, user.company_id)
+        homePeriodType = periodSettings.periodType
+        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, today, periodSettings.anchor)
         periodStartDate = periodStart
         periodEndDate = periodEnd
 

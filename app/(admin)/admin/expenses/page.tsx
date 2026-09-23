@@ -11,7 +11,7 @@ import {
   getExpenseCategories,
   createExpense,
   updateExpense,
-  deleteExpense,
+  adminDeleteExpense,
   submitExpense,
   approveExpense,
   rejectExpense,
@@ -60,7 +60,9 @@ function statusBadge(status: string) {
   if (status === 'rejected') return <Badge variant="red">Rejected</Badge>
   if (status === 'needs_review') return <Badge variant="amber">Needs Review</Badge>
   if (status === 'submitted') return <Badge variant="blue">Submitted</Badge>
-  return <Badge variant="default">Draft</Badge>
+  if (status === 'paid') return <Badge variant="green">Paid</Badge>
+  if (status === 'draft') return <Badge variant="default">Draft</Badge>
+  return <Badge variant="default">{status || 'Unknown'}</Badge>
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -212,8 +214,9 @@ export default function ExpensesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this expense?')) return
-    await deleteExpense(id)
+    if (!confirm('Delete this expense? This cannot be undone.')) return
+    const res = await adminDeleteExpense(id)
+    if (res && 'error' in res && res.error) { alert(res.error); return }
     load()
   }
 
@@ -353,9 +356,11 @@ export default function ExpensesPage() {
                       <>
                         <Button size="sm" variant="ghost" onClick={() => openEdit(exp)}>{e('editExpense')}</Button>
                         <Button size="sm" variant="ghost" onClick={() => handleSubmit(exp.id)}>{e('submitForReview')}</Button>
-                        <Button size="sm" variant="ghost" onClick={() => handleDelete(exp.id)}>✕</Button>
                       </>
                     )}
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(exp.id)} aria-label="Delete expense" title="Delete expense">
+                      Delete
+                    </Button>
                     {['submitted', 'needs_review'].includes(exp.approval_status) && (
                       <>
                         {reviewingId === exp.id ? (
