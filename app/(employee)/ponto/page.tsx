@@ -4,6 +4,8 @@ import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { createClient } from '@/lib/supabase/server'
 import { t } from '@/lib/i18n/translate'
+import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
+import { getPeriodRange, type PeriodType } from '@/lib/employee-period'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -23,47 +25,72 @@ export default async function PontoPage() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let entries: any[] = []
-  let weekHours = 0
-  let monthHours = 0
+  let periodDays = 0
+  let periodHours = 0
+  let periodEntryCount = 0
+  let isDailyMode = false
+  let profileDailyRate: number | null = null
+  let profileHourlyRate: number | null = null
+  let homePeriodType: PeriodType = 'biweekly'
 
   if (supabaseReady) {
     try {
       const supabase = createClient()
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', user.email)
-        .maybeSingle()
+      const [{ data: profile }, { data: docSettings }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, daily_rate, hourly_rate')
+          .eq('email', user.email)
+          .maybeSingle(),
+        supabase
+          .from('company_document_settings')
+          .select('home_period_type')
+          .eq('company_id', user.company_id)
+          .maybeSingle(),
+      ])
+
+      if (docSettings?.home_period_type) {
+        homePeriodType = docSettings.home_period_type as PeriodType
+      }
 
       if (profile) {
-        const monthStart = new Date()
-        monthStart.setDate(1)
-        monthStart.setHours(0, 0, 0, 0)
+        isDailyMode = isDailyPayMode({ daily_rate: profile.daily_rate, hourly_rate: profile.hourly_rate })
+        profileDailyRate = profile.daily_rate
+        profileHourlyRate = profile.hourly_rate
 
         const { data } = await supabase
           .from('time_entries')
-          .select('id, clock_in, clock_out, city, state, approval_status, project:project_id(name)')
+          .select('id, clock_in, clock_out, hours_worked, is_full_day, city, state, approval_status, project:project_id(name)')
           .eq('employee_id', profile.id)
           .order('clock_in', { ascending: false })
           .limit(90)
 
         entries = data ?? []
 
-        const weekStart = new Date()
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay())
-        weekStart.setHours(0, 0, 0, 0)
-
+        // Same calcEntryPay() Home and Pay use, over the same period Home
+        // shows — so Days can't disagree with either.
+        const { start: periodStart } = getPeriodRange(homePeriodType, new Date())
         for (const e of entries) {
-          const h = calcHours(e.clock_in, e.clock_out)
-          if (h == null) continue
-          if (new Date(e.clock_in) >= weekStart) weekHours += h
-          if (new Date(e.clock_in) >= monthStart) monthHours += h
+          if (!e.clock_out || new Date(e.clock_in) < periodStart) continue
+          const calc = calcEntryPay({
+            clock_in: e.clock_in,
+            clock_out: e.clock_out,
+            hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+            is_full_day: e.is_full_day,
+            daily_rate: profile.daily_rate,
+            hourly_rate: profile.hourly_rate,
+          })
+          periodDays += calc.fullDay ? 1 : 0.5
+          periodHours += calc.hoursWorked ?? 0
+          periodEntryCount += 1
         }
       }
     } catch {
       // silent fallback
     }
   }
+
+  const periodStatValue = isDailyMode ? periodDays : periodHours
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
@@ -72,16 +99,20 @@ export default async function PontoPage() {
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'common.thisWeek')}</p>
+          <p className="text-xs text-secondary uppercase tracking-wide mb-1">
+            {isDailyMode ? t(locale, 'employee.home.daysThisPeriod') : t(locale, 'employee.home.hoursThisPeriod')}
+          </p>
           <p className="text-2xl font-bold text-primary">
-            {weekHours > 0 ? `${weekHours.toFixed(1)}h` : '—'}
+            {periodStatValue > 0
+              ? (isDailyMode
+                  ? (periodStatValue % 1 === 0 ? periodStatValue : periodStatValue.toFixed(1))
+                  : `${periodStatValue.toFixed(1)}h`)
+              : '—'}
           </p>
         </Card>
         <Card>
-          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'common.thisMonth')}</p>
-          <p className="text-2xl font-bold text-primary">
-            {monthHours > 0 ? `${monthHours.toFixed(1)}h` : '—'}
-          </p>
+          <p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'employee.ponto.entriesThisPeriod')}</p>
+          <p className="text-2xl font-bold text-primary">{periodEntryCount > 0 ? periodEntryCount : '—'}</p>
         </Card>
       </div>
 
@@ -99,6 +130,16 @@ export default async function PontoPage() {
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
             {entries.map((e: any) => {
               const hours = calcHours(e.clock_in, e.clock_out)
+              const fullDay = isDailyMode && e.clock_out
+                ? calcEntryPay({
+                    clock_in: e.clock_in,
+                    clock_out: e.clock_out,
+                    hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+                    is_full_day: e.is_full_day,
+                    daily_rate: profileDailyRate,
+                    hourly_rate: profileHourlyRate,
+                  }).fullDay
+                : null
               const status = e.approval_status ?? 'approved'
               const inTime = new Date(e.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
               const outTime = e.clock_out
@@ -123,7 +164,11 @@ export default async function PontoPage() {
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    {hours != null && (
+                    {fullDay != null ? (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                        {fullDay ? t(locale, 'employee.pagamento.fullDay') : t(locale, 'employee.pagamento.halfDay')}
+                      </span>
+                    ) : hours != null && (
                       <span className="text-sm font-semibold text-primary tabular-nums">
                         {hours.toFixed(2)}h
                       </span>

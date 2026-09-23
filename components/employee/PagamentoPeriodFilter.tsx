@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/Card'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-
-const STANDARD_DAY_HOURS = 8
+import { calcEntryPay } from '@/lib/payroll-calc'
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -96,18 +95,20 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   let totalHours = 0
   let totalDays = 0
 
+  // Same calcEntryPay() Home and the Admin Payroll page use, so this screen
+  // can't show a different total for the same period.
   for (const e of entries) {
-    const h = e.hours_worked != null
-      ? Number(e.hours_worked)
-      : (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
-    totalHours += h
-    if (isDailyRate && dailyRate) {
-      const fullDay = e.is_full_day === true || (e.is_full_day === null && h >= STANDARD_DAY_HOURS)
-      totalEarnings += fullDay ? dailyRate : dailyRate * 0.5
-      totalDays += fullDay ? 1 : 0.5
-    } else {
-      totalEarnings += h * hourlyRate
-    }
+    const calc = calcEntryPay({
+      clock_in: e.clock_in,
+      clock_out: e.clock_out,
+      hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+      is_full_day: e.is_full_day,
+      daily_rate: dailyRate,
+      hourly_rate: hourlyRate,
+    })
+    totalHours += calc.hoursWorked ?? 0
+    totalEarnings += calc.totalPay
+    if (isDailyRate) totalDays += calc.fullDay ? 1 : 0.5
   }
 
   const PRESET_OPTIONS = [
@@ -193,18 +194,19 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
           </div>
           <div className="divide-y divide-[var(--border)]">
             {entries.map(e => {
-              const h = e.hours_worked != null
-                ? Number(e.hours_worked)
-                : (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
-              let entryPay: number
-              let dayLabel: string | null = null
-              if (isDailyRate && dailyRate) {
-                const fullDay = e.is_full_day === true || (e.is_full_day === null && h >= STANDARD_DAY_HOURS)
-                entryPay = fullDay ? dailyRate : dailyRate * 0.5
-                dayLabel = fullDay ? t('employee.pagamento.fullDay') : t('employee.pagamento.halfDay')
-              } else {
-                entryPay = h * hourlyRate
-              }
+              const calc = calcEntryPay({
+                clock_in: e.clock_in,
+                clock_out: e.clock_out,
+                hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+                is_full_day: e.is_full_day,
+                daily_rate: dailyRate,
+                hourly_rate: hourlyRate,
+              })
+              const entryPay = calc.totalPay
+              const dayLabel = isDailyRate
+                ? (calc.fullDay ? t('employee.pagamento.fullDay') : t('employee.pagamento.halfDay'))
+                : null
+              const h = calc.hoursWorked ?? 0
               const proj = e.project as { name: string } | null
               return (
                 <div key={e.id} className="flex items-start gap-3 px-5 py-3">
