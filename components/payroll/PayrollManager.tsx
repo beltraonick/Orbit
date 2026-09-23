@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
+import { finalizePayrollPeriod, getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 
 const fmt$ = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -118,12 +119,52 @@ export function PayrollManager() {
   const [rows, setRows] = useState<DayRow[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Finalized-period lock. Once a period is finalized, its numbers are read
+  // from the permanent snapshot instead of recomputed live, so later rate or
+  // Pay System changes can never move a paid period's numbers.
+  const [finalized, setFinalized] = useState(false)
+  const [finalizedAt, setFinalizedAt] = useState<string | null>(null)
+  const [finalizedByName, setFinalizedByName] = useState<string | null>(null)
+  const [finalizing, setFinalizing] = useState(false)
+  const [finalizeError, setFinalizeError] = useState('')
+
   const periodStart = preset === 'custom' ? customStart : getQuinzenaDates(preset as 'current' | 'last').start
   const periodEnd   = preset === 'custom' ? customEnd   : getQuinzenaDates(preset as 'current' | 'last').end
 
   const load = useCallback(async () => {
     if (!periodStart || !periodEnd) return
     setLoading(true)
+    setFinalizeError('')
+
+    const snapshot = await getFinalizedPayrollPeriod(periodStart, periodEnd)
+    if (snapshot.finalized) {
+      setFinalized(true)
+      setFinalizedAt(snapshot.finalizedAt)
+      setFinalizedByName(snapshot.finalizedByName)
+      setRows(snapshot.entries.map((e): DayRow => ({
+        entryId: e.id,
+        personId: e.person_id,
+        personName: e.person_name,
+        date: e.entry_date,
+        projectName: e.project_name ?? '—',
+        payMode: e.pay_mode,
+        dailyRate: Number(e.daily_rate),
+        hourlyRate: Number(e.hourly_rate),
+        hoursWorked: e.hours_worked != null ? Number(e.hours_worked) : null,
+        isFullDay: e.is_full_day,
+        notes: e.notes,
+        fullDay: e.full_day,
+        totalPay: Number(e.total_pay),
+        overtimeHours: Number(e.overtime_hours),
+        overtimePay: Number(e.overtime_pay),
+      })))
+      setLoading(false)
+      return
+    }
+    setFinalized(false)
+    setFinalizedAt(null)
+    setFinalizedByName(null)
+
     const supabase = createClient()
 
     const { data: entries } = await supabase
@@ -186,6 +227,25 @@ export function PayrollManager() {
   }, [companyId, periodStart, periodEnd])
 
   useEffect(() => { load() }, [load])
+
+  async function handleFinalize() {
+    if (!periodStart || !periodEnd) return
+    const label = `${fmtDateLong(periodStart)} – ${fmtDateLong(periodEnd)}`
+    const confirmed = window.confirm(
+      `Finalize payroll for ${label}?\n\nThis locks in today's numbers for this period FOREVER. Later changes to anyone's rate, or to the company's Pay System, will never affect this period again. This cannot be undone.\n\nOnly do this once you've actually paid this period.`
+    )
+    if (!confirmed) return
+
+    setFinalizing(true)
+    setFinalizeError('')
+    const result = await finalizePayrollPeriod(periodStart, periodEnd)
+    setFinalizing(false)
+    if (result.error) {
+      setFinalizeError(result.error)
+      return
+    }
+    await load()
+  }
 
   const summaries: Summary[] = Object.values(
     rows.reduce((acc, row) => {
@@ -412,10 +472,40 @@ ${perPerson}
                 </svg>
                 {t('admin.payroll.exportInvoice')}
               </button>
+              {!finalized && (
+                <button
+                  onClick={handleFinalize}
+                  disabled={finalizing}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-button bg-primary text-white text-sm hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0">
+                    <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+                  </svg>
+                  {finalizing ? 'Finalizing…' : 'Finalize Payroll'}
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
+
+      {finalizeError && (
+        <div className="mb-4 px-4 py-2.5 rounded-button bg-danger/10 border border-danger/20 text-danger text-sm print:hidden">
+          {finalizeError}
+        </div>
+      )}
+
+      {finalized && (
+        <div className="mb-6 px-4 py-3 rounded-button bg-green/10 border border-green/20 flex items-center gap-2.5 print:hidden">
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-green flex-shrink-0">
+            <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
+          </svg>
+          <p className="text-sm text-green">
+            Finalized{finalizedAt ? ` on ${new Date(finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+            {finalizedByName ? ` by ${finalizedByName}` : ''} — these numbers are locked and will not change even if rates or the Pay System change later.
+          </p>
+        </div>
+      )}
 
       {/* Period controls */}
       <div className="flex flex-wrap gap-3 mb-6 print:hidden">
