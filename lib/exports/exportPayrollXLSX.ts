@@ -29,6 +29,15 @@ export interface ExportMileage {
   approval_status: string
 }
 
+export interface ExportManualComp {
+  full_name: string
+  date: string
+  category: string
+  description: string
+  project: string | null
+  amount: number
+}
+
 export interface ExportData {
   company_name: string
   period_label: string
@@ -37,6 +46,7 @@ export interface ExportData {
   entries: ExportEntry[]
   expenses: ExportExpense[]
   mileage: ExportMileage[]
+  manualCompensations?: ExportManualComp[]
 }
 
 // Delegates to the same calcEntryPay() the Admin Payroll page uses, so this
@@ -68,6 +78,8 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
     ? `${data.period_start.slice(5)} to ${data.period_end.slice(5)}`
     : data.period_label)
 
+  const manualComps = data.manualCompensations ?? []
+
   const attendanceRows = data.entries.map(e => {
     const calc = entryPay(e)
     return {
@@ -83,7 +95,19 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
     }
   })
 
-  const ws1 = XLSX.utils.json_to_sheet(attendanceRows.length ? attendanceRows : [
+  const manualAttendanceRows = manualComps.map(m => ({
+    'EMPLOYEE NAME': m.full_name,
+    'WORKED?': '—',
+    'DATE': m.date,
+    'PAY TYPE': 'Manual',
+    'PRICE $': '—',
+    'FULL DAY?': '—',
+    'HOURS': '—',
+    'TOTAL $': Math.round(m.amount * 100) / 100,
+    'NOTES': `${m.category}: ${m.description}${m.project ? ' — ' + m.project : ''}`,
+  }))
+
+  const ws1 = XLSX.utils.json_to_sheet(attendanceRows.length || manualAttendanceRows.length ? [...attendanceRows, ...manualAttendanceRows] : [
     { 'EMPLOYEE NAME': '', 'WORKED?': '', 'DATE': '', 'PAY TYPE': '', 'PRICE $': '', 'FULL DAY?': '', 'HOURS': '', 'TOTAL $': '', 'NOTES': '' },
   ])
   XLSX.utils.book_append_sheet(wb, ws1, tab1Name)
@@ -93,6 +117,9 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
   for (const e of data.entries) {
     const calc = entryPay(e)
     empPayMap.set(e.full_name, (empPayMap.get(e.full_name) ?? 0) + calc.totalPay)
+  }
+  for (const m of manualComps) {
+    empPayMap.set(m.full_name, (empPayMap.get(m.full_name) ?? 0) + m.amount)
   }
 
   const payDate = data.period_end
@@ -205,6 +232,23 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
     { 'EMPLOYEE NAME': 'No mileage trips for this period', 'DATE': '', 'ORIGIN': '', 'DESTINATION': '', 'MILES': '', 'STATUS': '', 'AMOUNT $': '' },
   ])
   XLSX.utils.book_append_sheet(wb, ws6, 'Mileage')
+
+  // ── Tab 7: Manual Compensation (itemized) ───────────────────────────────────
+  // Kept separate from and auditable against the calculated Daily/Hourly pay
+  // above — extra work, bonuses, corrections, and production-paid
+  // subcontractor pay all land here as their own line items.
+  const manualCompRows = manualComps.map(m => ({
+    'EMPLOYEE NAME': m.full_name,
+    'DATE': m.date,
+    'CATEGORY': m.category,
+    'DESCRIPTION': m.description,
+    'JOB': m.project ?? '',
+    'AMOUNT $': Math.round(m.amount * 100) / 100,
+  }))
+  const ws7 = XLSX.utils.json_to_sheet(manualCompRows.length ? manualCompRows : [
+    { 'EMPLOYEE NAME': 'No manual compensation for this period', 'DATE': '', 'CATEGORY': '', 'DESCRIPTION': '', 'JOB': '', 'AMOUNT $': '' },
+  ])
+  XLSX.utils.book_append_sheet(wb, ws7, 'Manual Compensation')
 
   XLSX.writeFile(wb, `Payroll-${data.period_start ?? new Date().toISOString().slice(0, 10)}.xlsx`)
 }
