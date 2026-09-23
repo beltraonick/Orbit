@@ -58,7 +58,7 @@ export default async function PayrollReceiptPage({
 }) {
   const user = getCurrentUser()
   if (!user) redirect('/login')
-  if (user.role !== 'admin' && user.role !== 'owner') redirect('/dashboard')
+  if (user.role !== 'admin' && user.role !== 'owner') redirect('/')
 
   const period = searchParams.period ?? 'month'
   const { start, end } = periodDates(period)

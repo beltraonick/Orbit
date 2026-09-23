@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { actionFailed } from '@/lib/write-feedback'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -193,7 +194,7 @@ export default function EmployeeMileagePage() {
     })
     setSaving(false)
     setGps({ active: false, startLat: null, startLng: null, startTime: null, watchId: null, currentLat: null, currentLng: null })
-    if (!res.error) load()
+    if (!actionFailed(res)) load()
   }
 
   function openManual() {
@@ -309,8 +310,8 @@ export default function EmployeeMileagePage() {
                       {trip.approval_status === 'draft' && (
                         <div className="flex gap-1 mt-2">
                           {canManual && <Button size="sm" variant="ghost" onClick={() => openEdit(trip)}>{m('editTrip')}</Button>}
-                          <Button size="sm" variant="ghost" onClick={() => submitMileageTrip(trip.id).then(load)}>{m('submitForReview')}</Button>
-                          <Button size="sm" variant="ghost" onClick={() => deleteMileageTrip(trip.id).then(load)}>✕</Button>
+                          <Button size="sm" variant="ghost" onClick={async () => { actionFailed(await submitMileageTrip(trip.id)); load() }}>{m('submitForReview')}</Button>
+                          <Button size="sm" variant="ghost" onClick={async () => { if (!confirm('Delete this trip?')) return; actionFailed(await deleteMileageTrip(trip.id)); load() }}>✕</Button>
                         </div>
                       )}
                     </div>

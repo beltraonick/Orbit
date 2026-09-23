@@ -60,11 +60,13 @@ export async function regenerateInviteCode(): Promise<{ code?: string; error?: s
     .upsert({ id: company_id, name: 'My Company', language: 'en' }, { onConflict: 'id', ignoreDuplicates: true })
 
   // Deactivate all existing codes for this company.
-  await supabase
+  // If this fails, stop: the old code would otherwise stay usable.
+  const { error: deactivateErr } = await supabase
     .from('invite_codes')
     .update({ is_active: false })
     .eq('company_id', company_id)
     .eq('is_active', true)
+  if (deactivateErr) return { error: deactivateErr.message }
 
   // Only pass created_by when it's a real UUID (seed users have non-UUID ids).
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

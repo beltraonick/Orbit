@@ -16,10 +16,23 @@ import { REQUEST_UNAVAILABLE_MESSAGE, logAuthInfraFailure } from '@/lib/auth/inf
 
 const TOKEN_TTL_HOURS = 1
 
+// Reset links are delivered by email only. They are NEVER returned to the
+// browser that asked for them: whoever typed an email address would otherwise
+// get a working link for that account (account takeover). When email is not
+// configured (RESEND_API_KEY), no token is created and the person is told to
+// ask their company admin, who can set a new password under Employees.
+function emailDeliveryConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY)
+}
+
 export async function requestPasswordReset(
   email: string
-): Promise<{ error?: string; resetUrl?: string }> {
+): Promise<{ error?: string; delivery?: 'email' | 'admin' }> {
   if (!email?.trim()) return { error: 'Email is required.' }
+
+  // The answer depends only on configuration, never on whether the account
+  // exists, so it can't be used to discover which emails are registered.
+  if (!emailDeliveryConfigured()) return { delivery: 'admin' }
 
   let supabase
   try {
@@ -41,10 +54,9 @@ export async function requestPasswordReset(
     return { error: REQUEST_UNAVAILABLE_MESSAGE }
   }
 
-  // Don't reveal whether the account exists — always return success.
-  // The reset URL is only returned when the account exists and is approved.
+  // Don't reveal whether the account exists — always return the same result.
   if (!profile || !profile.password_hash || profile.auth_status !== 'approved') {
-    return {}
+    return { delivery: 'email' }
   }
 
   // Invalidate prior unused reset tokens.
@@ -69,9 +81,21 @@ export async function requestPasswordReset(
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  // In production: send this URL by email.
-  // For now, return it so the UI can display it.
-  return { resetUrl: `${baseUrl}/reset-password?token=${token}` }
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`
+  try {
+    const { Resend } = await import('resend')
+    const { error: sendErr } = await new Resend(process.env.RESEND_API_KEY).emails.send({
+      from: process.env.PASSWORD_RESET_FROM ?? 'OrbitOps <onboarding@resend.dev>',
+      to: normalized,
+      subject: 'Reset your OrbitOps password',
+      text: `Use this link to choose a new password (valid for ${TOKEN_TTL_HOURS} hour):\n\n${resetUrl}\n\nIf you didn't ask for this, you can ignore this email.`,
+    })
+    if (sendErr) throw new Error(sendErr.message)
+  } catch (err) {
+    logAuthInfraFailure('password_reset.send_email', err)
+    return { error: REQUEST_UNAVAILABLE_MESSAGE }
+  }
+  return { delivery: 'email' }
 }
 
 export async function resetPassword(

@@ -1,5 +1,6 @@
 'use client'
 
+import { actionFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -421,7 +422,7 @@ export default function SettingsPage() {
     setPlanSaved(false)
     const res = await changeCompanyPlan(selectedPlan)
     setSavingPlan(false)
-    if (!res.error) {
+    if (!actionFailed(res)) {
       const refreshed = await getCompanyPlan()
       if (refreshed.info) setPlanInfo(refreshed.info)
       setChangingPlan(false)
@@ -631,7 +632,7 @@ export default function SettingsPage() {
   async function handleRegenerate() {
     setInviteRegenerating(true)
     const res = await regenerateInviteCode()
-    if (res.code) setInviteCode(res.code)
+    if (!actionFailed(res) && res.code) setInviteCode(res.code)
     setInviteRegenerating(false)
   }
 

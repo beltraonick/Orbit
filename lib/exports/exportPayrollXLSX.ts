@@ -70,7 +70,8 @@ function safeSheetName(name: string): string {
 }
 
 export async function exportPayrollXLSX(data: ExportData): Promise<void> {
-  const XLSX = (await import('xlsx')).default
+  // xlsx's browser build only has named exports — `.default` is undefined there.
+  const XLSX = await import('xlsx')
   const wb = XLSX.utils.book_new()
 
   // ── Tab 1: Daily Attendance ──────────────────────────────────────────────────

@@ -702,6 +702,7 @@ export default function ReportsPage() {
       await exportPayrollXLSX(data)
     } catch (err) {
       console.error('XLSX export failed:', err)
+      window.alert('Could not export the spreadsheet. Please try again.')
     } finally {
       setExportingXLSX(false)
     }

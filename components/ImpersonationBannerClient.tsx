@@ -10,7 +10,8 @@ export function ImpersonationBannerClient({ name }: { name: string }) {
 
   async function handleStop() {
     setLoading(true)
-    await stopImpersonation()
+    const res = await stopImpersonation()
+    if (res.error) console.error('[impersonation]', res.error)
     router.push('/owner/dashboard')
     router.refresh()
   }

@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/Card'
@@ -46,7 +47,7 @@ export function ChangeOrdersList({
       .update({ status, client_comment: comment, decided_at: new Date().toISOString() })
       .eq('id', id)
 
-    if (!error) {
+    if (!writeFailed(error, status === 'approved' ? 'approve this change order' : 'decline this change order')) {
       setOrders(prev => prev.map(o => (o.id === id ? { ...o, status, client_comment: comment } : o)))
     }
     setBusyId(null)
@@ -57,7 +58,7 @@ export function ChangeOrdersList({
     const supabase = createClient()
     const comment = comments[id]?.trim() || null
     const { error } = await supabase.from('change_orders').update({ client_comment: comment }).eq('id', id)
-    if (!error) {
+    if (!writeFailed(error, 'save your comment')) {
       setOrders(prev => prev.map(o => (o.id === id ? { ...o, client_comment: comment } : o)))
     }
     setBusyId(null)

@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -70,7 +71,7 @@ export function ProfileForm({ initialProfile }: { initialProfile: Profile }) {
     if (!uploadErr) {
       const { data } = supabase.storage.from('project-photos').getPublicUrl(path)
       setAvatarUrl(data.publicUrl)
-    }
+    } else writeFailed(uploadErr, 'upload your photo')
     setUploadingAvatar(false)
     if (fileRef.current) fileRef.current.value = ''
   }

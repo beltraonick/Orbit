@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
 const SESSION_COOKIE = 'uc_session'
-const PUBLIC_PATHS = ['/login', '/register', '/signup', '/pending', '/activate', '/forgot-password', '/reset-password', '/adminnovarkadmin']
+const PUBLIC_PATHS = ['/login', '/register', '/signup', '/pending', '/activate', '/forgot-password', '/reset-password', '/adminnovarkadmin',
+  // Static PWA files: the browser fetches these without a session (install
+  // from the login screen, service-worker updates), so they must never
+  // redirect to /login.
+  '/sw.js', '/manifest.json']
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
