@@ -24,7 +24,10 @@ export default async function ProfilePage() {
   return (
     <LocaleProvider locale={locale}>
       <div className="min-h-screen bg-background">
-        <header className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)] flex items-center justify-between px-4 h-14">
+        <header
+          className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)] flex items-center justify-between px-4 h-14"
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
           <a href={backHref} className="flex items-center gap-2 text-sm text-secondary hover:text-primary transition-colors">
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
               <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -37,7 +40,7 @@ export default async function ProfilePage() {
           </LogoutForm>
         </header>
 
-        <main className="pt-14 max-w-lg mx-auto px-4 py-6 md:py-8">
+        <main className="max-w-lg mx-auto px-4 py-6 md:py-8" style={{ paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
           <ProfileForm
             initialProfile={{
               id: user.id,
