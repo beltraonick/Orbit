@@ -1,6 +1,12 @@
 import type { AuthUser, Language, SessionUser, UserRole, UserStatus } from './types'
 import { hashPassword, generateId } from './crypto'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
+
+// These lookups run before any session/identity exists (login, invite-code
+// registration) — by definition they can't be scoped to a company via RLS,
+// since finding out the company IS the point of the lookup. They use the
+// service role (bypasses RLS) rather than the anon/authenticated bridge.
+const createClient = createServiceRoleClient
 
 const COMPANY_ID = '00000000-0000-0000-0000-000000000001'
 

@@ -4,6 +4,7 @@ import { getCurrentUser, getImpersonatorToken } from '@/lib/auth/session'
 import { touchAccess } from '@/lib/auth/access'
 import { LogoutForm } from '@/components/LogoutForm'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
+import { SupabaseAuthBridge } from '@/components/SupabaseAuthBridge'
 import { LocaleProvider } from '@/lib/i18n/LocaleContext'
 import { t } from '@/lib/i18n/translate'
 import { ClientNav } from './ClientNav'
@@ -24,6 +25,7 @@ export default async function ClientLayout({ children }: { children: React.React
 
   return (
     <LocaleProvider locale={user.language}>
+    <SupabaseAuthBridge />
     <div className="min-h-screen bg-background">
       {/* Top bar */}
       <header className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)]" style={{ paddingTop: 'env(safe-area-inset-top)' }}>

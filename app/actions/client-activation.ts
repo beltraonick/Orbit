@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { getCurrentUser } from '@/lib/auth/session'
 import { generateSecureToken, hashToken, hashPassword } from '@/lib/auth/crypto'
 
@@ -59,7 +60,9 @@ export async function activateClientAccount(
   if (!password || password.length < 8) return { error: 'Password must be at least 8 characters.' }
   if (password !== confirmPassword) return { error: 'Passwords do not match.' }
 
-  const supabase = createClient()
+  // Runs before any session exists — authorization comes from possessing
+  // the one-time token, verified below, not from row-level security.
+  const supabase = createServiceRoleClient()
   const tokenHash = hashToken(token.trim())
 
   const { data: activation } = await supabase
