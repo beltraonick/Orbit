@@ -88,6 +88,12 @@ export default function EmployeesPage() {
   const [workerSaving, setWorkerSaving] = useState(false)
   const [workerError, setWorkerError] = useState('')
 
+  // Company-level Pay System (Settings → Payroll & Compensation). When set,
+  // new employees/workers default to it and skip the per-person Daily/Hourly
+  // choice — existing people keep whatever mode they were already saved
+  // with, editable as before, so this never silently changes someone's pay.
+  const [paySystem, setPaySystem] = useState<'daily' | 'hourly' | null>(null)
+
   const ROLE_OPTIONS = [
     { value: 'employee', label: t('admin.employees.roleEmployee') },
     { value: 'admin', label: t('admin.employees.roleAdmin') },
@@ -101,16 +107,18 @@ export default function EmployeesPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [{ data: emps }, { data: open }, { data: projs }, { data: wrks }] = await Promise.all([
+    const [{ data: emps }, { data: open }, { data: projs }, { data: wrks }, { data: settings }] = await Promise.all([
       supabase.from('profiles').select('*').eq('company_id', companyId).order('full_name'),
       supabase.from('time_entries').select('employee_id').is('clock_out', null),
       supabase.from('projects').select('id, name').eq('company_id', companyId).order('name'),
       supabase.from('workers').select('*').eq('company_id', companyId).order('full_name'),
+      supabase.from('company_document_settings').select('pay_system').eq('company_id', companyId).maybeSingle(),
     ])
     setEmployees(emps ?? [])
     setOpenIds(new Set((open ?? []).map((e: { employee_id: string }) => e.employee_id)))
     setAllProjects(projs ?? [])
     setWorkers(wrks ?? [])
+    setPaySystem((settings?.pay_system as 'daily' | 'hourly' | null) ?? null)
     setLoading(false)
   }, [companyId])
 
@@ -124,7 +132,7 @@ export default function EmployeesPage() {
 
   function openAdd() {
     setEditing(null)
-    setForm({ ...BLANK })
+    setForm({ ...BLANK, pay_mode: paySystem ?? BLANK.pay_mode })
     setMemberProjectIds([])
     setError('')
     setActivationUrl('')
@@ -183,7 +191,7 @@ export default function EmployeesPage() {
 
   function openAddWorker() {
     setEditingWorker(null)
-    setWorkerForm({ ...WORKER_BLANK })
+    setWorkerForm({ ...WORKER_BLANK, pay_mode: paySystem ?? WORKER_BLANK.pay_mode })
     setWorkerProjectIds([])
     setWorkerError('')
     setShowWorkerModal(true)
@@ -690,34 +698,47 @@ export default function EmployeesPage() {
                       onChange={e => setWorkerForm(f => ({ ...f, full_name: e.target.value }))}
                     />
                   </div>
-                  {/* Pay Type toggle */}
-                  <div className="col-span-2">
-                    <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
-                    <div className="flex rounded-button border border-[var(--border)] overflow-hidden w-full">
-                      <button
-                        type="button"
-                        onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'hourly', daily_rate: 0 }))}
-                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
-                          workerForm.pay_mode === 'hourly'
-                            ? 'bg-brand text-white'
-                            : 'text-secondary hover:text-primary bg-surface'
-                        }`}
-                      >
-                        {t('admin.employees.payTypeHourly')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'daily', hourly_rate: 0 }))}
-                        className={`flex-1 px-3 py-2 text-sm transition-colors ${
-                          workerForm.pay_mode === 'daily'
-                            ? 'bg-brand text-white'
-                            : 'text-secondary hover:text-primary bg-surface'
-                        }`}
-                      >
-                        {t('admin.employees.payTypeDaily')}
-                      </button>
+                  {/* Pay Type toggle — hidden when adding a new worker if the company
+                      already has a Pay System set, so it just follows the org default.
+                      Still shown when editing an existing worker, so an existing
+                      record's mode is never silently changed. */}
+                  {paySystem && !editingWorker ? (
+                    <div className="col-span-2">
+                      <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
+                      <p className="text-sm text-primary">
+                        {paySystem === 'daily' ? t('admin.employees.payTypeDaily') : t('admin.employees.payTypeHourly')}
+                        <span className="text-tertiary text-xs ml-1.5">(company Pay System)</span>
+                      </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="col-span-2">
+                      <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
+                      <div className="flex rounded-button border border-[var(--border)] overflow-hidden w-full">
+                        <button
+                          type="button"
+                          onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'hourly', daily_rate: 0 }))}
+                          className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                            workerForm.pay_mode === 'hourly'
+                              ? 'bg-brand text-white'
+                              : 'text-secondary hover:text-primary bg-surface'
+                          }`}
+                        >
+                          {t('admin.employees.payTypeHourly')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'daily', hourly_rate: 0 }))}
+                          className={`flex-1 px-3 py-2 text-sm transition-colors ${
+                            workerForm.pay_mode === 'daily'
+                              ? 'bg-brand text-white'
+                              : 'text-secondary hover:text-primary bg-surface'
+                          }`}
+                        >
+                          {t('admin.employees.payTypeDaily')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {workerForm.pay_mode === 'daily' ? (
                     <Input
                       label={t('admin.employees.workerDailyRate')}
@@ -958,9 +979,18 @@ export default function EmployeesPage() {
                     value={form.position ?? ''}
                     onChange={e => setForm(f => ({ ...f, position: e.target.value }))}
                   />
-                  {/* Pay Type toggle */}
+                  {/* Pay Type toggle — hidden when adding a new employee if the
+                      company already has a Pay System set, so it just follows the
+                      org default. Still shown when editing an existing employee, so
+                      an existing record's mode is never silently changed. */}
                   <div className="col-span-2">
                     <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
+                    {paySystem && !editing ? (
+                      <p className="text-sm text-primary">
+                        {paySystem === 'daily' ? t('admin.employees.payTypeDaily') : t('admin.employees.payTypeHourly')}
+                        <span className="text-tertiary text-xs ml-1.5">(company Pay System)</span>
+                      </p>
+                    ) : (
                     <div className="flex rounded-button border border-[var(--border)] overflow-hidden w-full">
                       <button
                         type="button"
@@ -985,6 +1015,7 @@ export default function EmployeesPage() {
                         {t('admin.employees.payTypeDaily')}
                       </button>
                     </div>
+                    )}
                   </div>
                   {form.pay_mode === 'hourly' ? (
                     <div className="col-span-2">
