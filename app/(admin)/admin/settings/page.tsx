@@ -391,6 +391,12 @@ export default function SettingsPage() {
   const [homePeriodSaving, setHomePeriodSaving] = useState(false)
   const [homePeriodSaved, setHomePeriodSaved] = useState(false)
 
+  // Pay System state
+  const [paySystem, setPaySystem] = useState<'daily' | 'hourly' | null>(null)
+  const [paySystemLoading, setPaySystemLoading] = useState(true)
+  const [paySystemSaving, setPaySystemSaving] = useState(false)
+  const [paySystemSaved, setPaySystemSaved] = useState(false)
+
   useEffect(() => {
     getCompanyInviteCode().then(res => {
       setInviteCode(res.code ?? null)
@@ -446,7 +452,7 @@ export default function SettingsPage() {
       })
     supabase
       .from('company_document_settings')
-      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type')
+      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type, pay_system')
       .eq('company_id', companyId)
       .maybeSingle()
       .then(({ data }) => {
@@ -461,9 +467,11 @@ export default function SettingsPage() {
           if (data.home_period_type) {
             setHomePeriodType(data.home_period_type as 'weekly' | 'biweekly' | 'monthly')
           }
+          setPaySystem((data.pay_system as 'daily' | 'hourly' | null) ?? null)
         }
         setClockWindowLoading(false)
         setHomePeriodLoading(false)
+        setPaySystemLoading(false)
       })
   }, [companyId])
 
@@ -541,6 +549,38 @@ export default function SettingsPage() {
     setHomePeriodSaving(false)
     setHomePeriodSaved(true)
     setTimeout(() => setHomePeriodSaved(false), 2500)
+  }
+
+  async function handleChangePaySystem(next: 'daily' | 'hourly') {
+    if (next === paySystem || !companyId) return
+
+    const message = paySystem == null
+      ? `Set this company's Pay System to ${next === 'daily' ? 'Daily' : 'Hourly'}? New employees and workers you add will default to this. Existing employee/worker rates are not changed, and past payroll is never recalculated.`
+      : `Change this company's Pay System from ${paySystem === 'daily' ? 'Daily' : 'Hourly'} to ${next === 'daily' ? 'Daily' : 'Hourly'}?\n\nThis does NOT change any existing employee/worker rate, and it never recalculates past payroll. It only changes the default for new people you add and the terminology shown across the app going forward.\n\nIf you have employees paid the old way, make sure their individual rate still matches — otherwise their pay may show as $0 on future entries.`
+
+    if (!window.confirm(message)) return
+
+    setPaySystemSaving(true)
+    const supabase = createClient()
+    const { data: existing } = await supabase
+      .from('company_document_settings')
+      .select('id')
+      .eq('company_id', companyId)
+      .maybeSingle()
+    if (existing) {
+      await supabase
+        .from('company_document_settings')
+        .update({ pay_system: next })
+        .eq('company_id', companyId)
+    } else {
+      await supabase
+        .from('company_document_settings')
+        .insert({ company_id: companyId, pay_system: next })
+    }
+    setPaySystem(next)
+    setPaySystemSaving(false)
+    setPaySystemSaved(true)
+    setTimeout(() => setPaySystemSaved(false), 2500)
   }
 
   async function handleSaveCompany(e: React.FormEvent) {
@@ -908,6 +948,55 @@ export default function SettingsPage() {
               )}
             </div>
           </form>
+        </Card>
+      </Section>
+
+      {/* Pay System */}
+      <Section title="Payroll & Compensation">
+        <Card>
+          <div className="space-y-4">
+            <p className="text-xs text-secondary">
+              Choose how this company pays its normal employees and workers. This sets the default for new people you add and the terminology shown across Home, Time, Pay, and Reports. Each employee/worker still has their own individual rate — this only decides whether that rate is per day or per hour by default.
+            </p>
+            {paySystemLoading ? (
+              <div className="h-16 bg-surface-elevated rounded-input animate-pulse" />
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={paySystemSaving}
+                  onClick={() => handleChangePaySystem('daily')}
+                  className={`flex-1 py-2.5 px-3 rounded-button border text-sm font-medium transition-colors text-left disabled:opacity-50 ${
+                    paySystem === 'daily'
+                      ? 'bg-brand/10 border-brand text-brand'
+                      : 'border-[var(--border)] text-secondary hover:text-primary'
+                  }`}
+                >
+                  <p>Daily Pay</p>
+                  <p className="text-xs font-normal text-tertiary mt-0.5">Full Day / Half Day + individual Daily Rate</p>
+                </button>
+                <button
+                  type="button"
+                  disabled={paySystemSaving}
+                  onClick={() => handleChangePaySystem('hourly')}
+                  className={`flex-1 py-2.5 px-3 rounded-button border text-sm font-medium transition-colors text-left disabled:opacity-50 ${
+                    paySystem === 'hourly'
+                      ? 'bg-brand/10 border-brand text-brand'
+                      : 'border-[var(--border)] text-secondary hover:text-primary'
+                  }`}
+                >
+                  <p>Hourly Pay</p>
+                  <p className="text-xs font-normal text-tertiary mt-0.5">Worked hours + individual Hourly Rate</p>
+                </button>
+              </div>
+            )}
+            {paySystem == null && !paySystemLoading && (
+              <p className="text-xs text-amber">No Pay System selected yet — employee/worker forms will keep showing a per-person Daily/Hourly choice until you set one.</p>
+            )}
+            {paySystemSaved && (
+              <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
+            )}
+          </div>
         </Card>
       </Section>
 
