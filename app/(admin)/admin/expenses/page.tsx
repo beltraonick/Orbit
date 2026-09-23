@@ -22,6 +22,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
 import { ReceiptScanner } from '@/components/ReceiptScanner'
+import { PhotoLightbox } from '@/components/ui/PhotoLightbox'
 
 const RECEIPT_BUCKET = 'receipts'
 
@@ -81,6 +82,7 @@ export default function ExpensesPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showModal, setShowModal] = useState(false)
+  const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null)
   const [editing, setEditing] = useState<Expense | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState('')
@@ -341,14 +343,13 @@ export default function ExpensesPage() {
                     <p className="text-xs text-gray-400 mt-1 italic">{exp.reviewer_notes}</p>
                   )}
                   {exp.receipt?.file_url && (
-                    <a
-                      href={exp.receipt.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => setViewingReceiptUrl(exp.receipt!.file_url)}
                       className="text-xs text-blue hover:opacity-80 mt-1 inline-block"
                     >
                       View receipt{exp.receipt.last_four_digits ? ` · Card •••• ${exp.receipt.last_four_digits}` : ''}
-                    </a>
+                    </button>
                   )}
                 </div>
                 <div className="text-right shrink-0">
@@ -512,6 +513,13 @@ export default function ExpensesPage() {
         <ReceiptScanner
           onCapture={handleScanCapture}
           onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {viewingReceiptUrl && (
+        <PhotoLightbox
+          photos={[{ url: viewingReceiptUrl }]}
+          onClose={() => setViewingReceiptUrl(null)}
         />
       )}
     </div>
