@@ -38,10 +38,14 @@ async function getLocation() {
     navigator.geolocation.getCurrentPosition(
       async pos => {
         const { latitude, longitude } = pos.coords
+        // City/state is a nice-to-have: never let a slow or rate-limited
+        // geocoder hold up the clock-in itself (it used to wait forever).
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 3000)
         try {
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { 'Accept-Language': 'en-US' } }
+            { headers: { 'Accept-Language': 'en-US' }, signal: ctrl.signal }
           )
           const data = await res.json()
           const addr = data.address ?? {}
@@ -50,10 +54,12 @@ async function getLocation() {
           resolve({ latitude, longitude, city, state })
         } catch {
           resolve({ latitude, longitude, city: '', state: '' })
+        } finally {
+          clearTimeout(timer)
         }
       },
       () => resolve(null),
-      { timeout: 8000, enableHighAccuracy: true }
+      { timeout: 6000, enableHighAccuracy: true, maximumAge: 60000 }
     )
   })
 }
@@ -72,6 +78,7 @@ export function ClockButtons({
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('')
   const [locationInfo, setLocationInfo] = useState('')
+  const [clockError, setClockError] = useState('')
   const [confirmingOut, setConfirmingOut] = useState(false)
   const [nowLocal, setNowLocal] = useState('')
 
@@ -118,6 +125,7 @@ export function ClockButtons({
 
   async function clockIn() {
     setLoading(true)
+    setClockError('')
     setLocationInfo(t('employee.clockButtons.gettingLocation'))
 
     const loc = await getLocation()
@@ -148,7 +156,16 @@ export function ClockButtons({
       const { error } = await supabase.from('time_entries').insert(payload)
       if (error) throw error
     } catch (err) {
-      await queueIfOffline({ table: 'time_entries', type: 'insert', payload }, err)
+      // No connection: kept in the offline queue and sent later — the
+      // optimistic "Clocked in" is right. Any other failure means nothing was
+      // saved: undo the optimistic state and say so, never fake a clock-in.
+      const queued = await queueIfOffline({ table: 'time_entries', type: 'insert', payload }, err)
+      if (!queued) {
+        setClockedIn(false)
+        setLocalClockInTime(null)
+        setLocalEntryId(null)
+        setClockError('Clock-in was not saved. Please try again.')
+      }
     }
 
     router.refresh()
@@ -165,6 +182,8 @@ export function ClockButtons({
     setClockedIn(false)
     setLocalClockInTime(null)
 
+    const previousClockIn = localClockInTime
+    setClockError('')
     try {
       const supabase = createClient()
       const { error } = await supabase.from('time_entries').update(payload).eq('id', localEntryId)
@@ -176,7 +195,14 @@ export function ClockButtons({
         body: JSON.stringify({ time_entry_id: localEntryId }),
       }).catch(() => {})
     } catch (err) {
-      await queueIfOffline({ table: 'time_entries', type: 'update', match: { id: localEntryId }, payload }, err)
+      const queued = await queueIfOffline({ table: 'time_entries', type: 'update', match: { id: localEntryId }, payload }, err)
+      if (!queued) {
+        setClockedIn(true)
+        setLocalClockInTime(previousClockIn)
+        setClockError('Clock-out was not saved. Please try again.')
+        setLoading(false)
+        return
+      }
     }
 
     setLocalEntryId(null)
@@ -197,6 +223,8 @@ export function ClockButtons({
           </p>
         )}
         <p className="text-lg font-semibold text-tertiary tracking-wide font-mono tabular-nums">{elapsed}</p>
+
+        {clockError && <p className="text-sm text-danger text-center">{clockError}</p>}
 
         {!confirmingOut ? (
           <Button variant="danger" size="lg" onClick={() => setConfirmingOut(true)} loading={loading} className="w-full mt-1">
@@ -233,6 +261,9 @@ export function ClockButtons({
   return (
     <div className="flex flex-col items-center gap-4 py-2">
       <p className="text-sm text-secondary">{t('employee.clockButtons.notClockedIn')}</p>
+      {clockError && (
+        <p className="text-sm text-danger text-center">{clockError}</p>
+      )}
       {locationInfo && (
         <p className="text-xs text-secondary flex items-center gap-1.5">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-brand">
