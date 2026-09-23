@@ -1,13 +1,10 @@
 -- STEP3_AFTER_039_CHECK.sql — run right after STEP3_APPLY_039_manual_compensation.sql.
 -- READ-ONLY: a single SELECT. It does not create, insert, update, or delete anything.
 -- Returns no password hashes, tokens, keys or secrets (only counts, booleans and md5 fingerprints of non-secret columns).
--- Paste the BASELINE_PASTE value from PRE on the marked line below before running.
+-- PREFILLED with the production PRE baseline (2026-09-23 15:17 UTC). Paste nothing — run as is.
 WITH
 baseline(metric, value) AS (VALUES
-  ('__none__', NULL::text)
-  -- >>> PASTE the BASELINE_PASTE value from PRE_037_039_PRODUCTION_CHECK on the next line (it starts with a comma) <<<
-,('companies.count','3'),('companies.fingerprint','9d44c9b931a84d0a6c7461272ea2fbbb'),('expenses.count (created before cutoff)','3'),('expenses.fingerprint (created before cutoff)','1eee9f135ec4d5920da8e9abd94ce0fe'),('profiles.count','26'),('profiles.fingerprint (id/company/email/name/role/status/auth_status/has_password)','6f8c309360ae8120b8b2d131abe30c70'),('profiles.password_hash_present_count','26'),('projects.count','8'),('projects.fingerprint','83e9cfd4926733868e097a42ae9ebf8b'),('rates.fingerprint (profiles + workers daily/hourly rates)','f58439d8ae85fe0904399a1967391469'),('settings.customized_rows_fingerprint (existing saved settings)','853fea584e79545e04c5e35ce387982f'),('settings.effective_values_fingerprint (what the app sees, all companies)','5bfdb9a6a5370215bdfdbcfef4285283'),('time_entries.count (created before cutoff)','8'),('time_entries.fingerprint (created before cutoff)','81adfbe354a696b6463b3c338a1e7439'),('workers.count','18'),('workers.fingerprint','c5287b03d9101f318efa69d5ac2cce3f'),('cutoff','2026-09-23 00:00:00+00')
-
+  ('__none__', NULL::text),('companies.count','3'),('companies.fingerprint','9d44c9b931a84d0a6c7461272ea2fbbb'),('expenses.count (created before cutoff)','3'),('expenses.fingerprint (created before cutoff)','1eee9f135ec4d5920da8e9abd94ce0fe'),('profiles.count','26'),('profiles.fingerprint (id/company/email/name/role/status/auth_status/has_password)','6f8c309360ae8120b8b2d131abe30c70'),('profiles.password_hash_present_count','26'),('projects.count','8'),('projects.fingerprint','83e9cfd4926733868e097a42ae9ebf8b'),('rates.fingerprint (profiles + workers daily/hourly rates)','f58439d8ae85fe0904399a1967391469'),('settings.customized_rows_fingerprint (existing saved settings)','853fea584e79545e04c5e35ce387982f'),('settings.effective_values_fingerprint (what the app sees, all companies)','5bfdb9a6a5370215bdfdbcfef4285283'),('time_entries.count (created before cutoff)','8'),('time_entries.fingerprint (created before cutoff)','81adfbe354a696b6463b3c338a1e7439'),('workers.count','18'),('workers.fingerprint','c5287b03d9101f318efa69d5ac2cce3f'),('cutoff','2026-09-23 00:00:00+00')
 ),
 cutoff AS (
   SELECT coalesce((SELECT value FROM baseline WHERE metric = 'cutoff')::timestamptz,
@@ -44,6 +41,8 @@ cur(metric, value) AS (
 ),
 report(ord, section, check_name, value, result) AS (
   SELECT 0, 'RUN', 'executed at', now()::text, 'INFO'
+  UNION ALL SELECT 0, 'RUN', 'PREFILLED file: baseline rows loaded (expect 17)', (SELECT count(*) FROM baseline WHERE metric <> '__none__')::text,
+                   CASE WHEN (SELECT count(*) FROM baseline WHERE metric <> '__none__') = 17 THEN 'PASS' ELSE 'STOP' END
   UNION ALL SELECT 40, '037', 'pay_system column exists', (EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='company_document_settings' AND column_name='pay_system'))::text, CASE WHEN (EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='company_document_settings' AND column_name='pay_system')) = true THEN 'PASS' ELSE 'FAIL' END
   UNION ALL SELECT 41, '037', 'pay_system CHECK allows only daily/hourly',
                    (SELECT string_agg(pg_get_constraintdef(oid), '; ') FROM pg_constraint
