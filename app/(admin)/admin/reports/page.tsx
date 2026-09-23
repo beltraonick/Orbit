@@ -686,7 +686,7 @@ type ReportTab = 'payroll' | 'expenses' | 'mileage'
 export default function ReportsPage() {
   const { t } = useTranslation()
   const PERIOD_OPTIONS = usePeriodOptions()
-  const [period, setPeriod] = usePersistentState<string>('reports.period', 'month', oneOf(['week', 'last_week', 'month', 'last_month', 'all'] as const))
+  const [period, setPeriod] = usePersistentState<string>('reports.period', 'all', oneOf(['week', 'last_week', 'month', 'last_month', 'all'] as const))
   const [tab, setTab] = usePersistentState<ReportTab>('reports.tab', 'payroll', oneOf(['payroll', 'expenses', 'mileage'] as const))
   const [exportingXLSX, setExportingXLSX] = useState(false)
 
