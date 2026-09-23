@@ -169,7 +169,7 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
 
   if (insertError) {
     // Roll back the period row so a half-written finalize doesn't block retrying.
-    await supabase.from('payroll_periods').delete().eq('id', period.id)
+    await supabase.from('payroll_periods').delete().eq('id', period.id).eq('company_id', companyId)
     return { error: insertError.message }
   }
 
@@ -202,6 +202,7 @@ export async function getFinalizedPayrollPeriod(periodStart: string, periodEnd: 
     .from('payroll_period_entries')
     .select('*')
     .eq('payroll_period_id', period.id)
+    .eq('company_id', user.company_id)
     .order('entry_date', { ascending: true })
 
   return {

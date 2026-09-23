@@ -190,7 +190,7 @@ export default function TimePage() {
   async function approve(id: string) {
     setActionId(id)
     const supabase = createClient()
-    await supabase.from('time_entries').update({ approval_status: 'approved' }).eq('id', id)
+    await supabase.from('time_entries').update({ approval_status: 'approved' }).eq('id', id).eq('company_id', companyId)
     load()
     setActionId(null)
   }
@@ -198,7 +198,7 @@ export default function TimePage() {
   async function reject(id: string) {
     setActionId(id)
     const supabase = createClient()
-    await supabase.from('time_entries').update({ approval_status: 'rejected' }).eq('id', id)
+    await supabase.from('time_entries').update({ approval_status: 'rejected' }).eq('id', id).eq('company_id', companyId)
     load()
     setActionId(null)
   }
@@ -292,7 +292,7 @@ export default function TimePage() {
     } else {
       updates.clock_out = null
     }
-    const { error } = await supabase.from('time_entries').update(updates).eq('id', editEntry.id)
+    const { error } = await supabase.from('time_entries').update(updates).eq('id', editEntry.id).eq('company_id', companyId)
     if (error) { setEditError(error.message); setEditSaving(false); return }
     setEditEntry(null)
     setEditSaving(false)
@@ -303,7 +303,7 @@ export default function TimePage() {
     if (!deleteId) return
     setDeleting(true)
     const supabase = createClient()
-    await supabase.from('time_entries').delete().eq('id', deleteId)
+    await supabase.from('time_entries').delete().eq('id', deleteId).eq('company_id', companyId)
     setDeleteId(null)
     setDeleting(false)
     load()
