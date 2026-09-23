@@ -225,7 +225,7 @@ function SupervisorDrawer({ task, projectId, companyId, profileName, onClose, on
             photo_category: 'progress',
             uploaded_by_name: profileName,
           })).error, 'save your changes')
-        }
+        } else writeFailed(error, `upload ${file.name}`)
       }
       const { data: updatedPhotos } = await supabase
         .from('task_media')

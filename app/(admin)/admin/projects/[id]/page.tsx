@@ -406,15 +406,17 @@ export default function ProjectDetailPage() {
       const path = `${projectId}/misc-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const { error } = await supabase.storage.from('project-photos').upload(path, file, { contentType: file.type, upsert: true })
       if (!error) {
-        const { data: row } = await supabase
+        const { data: row, error: insertErr } = await supabase
           .from('project_photos')
           .insert({ project_id: projectId, company_id: companyId, storage_path: path, tag: 'progress' })
           .select().single()
         if (row) newRows.push(row as Photo)
-      }
+        if (insertErr) console.error('[photo-upload]', insertErr.message)
+      } else console.error('[photo-upload]', error.message)
       setUploadProgress({ done: i + 1, total: files.length })
     }
     if (newRows.length > 0) setPhotos(prev => [...newRows.reverse(), ...prev])
+    if (newRows.length < files.length) window.alert(`${files.length - newRows.length} of ${files.length} photo(s) could not be uploaded. Please try again.`)
     setUploadProgress(null)
     setUploadingPhoto(false)
   }

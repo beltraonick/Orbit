@@ -255,7 +255,7 @@ function TaskDrawer({
               photo_category: 'progress',
               uploaded_by_name: currentUser.name,
             })).error, 'save your changes')
-          }
+          } else writeFailed(error, `upload ${file.name}`)
         }
       }
       setUploading(false)

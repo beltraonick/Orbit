@@ -345,8 +345,8 @@ export default function TasksPage() {
               media_type: 'photo',
               photo_category: 'progress',
             })
-            if (mediaErr) console.error('[task_media insert]', mediaErr.message)
-          }
+            writeFailed(mediaErr, `attach ${file.name}`)
+          } else writeFailed(upErr, `upload ${file.name}`)
         }
       }
       setUploadingPhotos(false)

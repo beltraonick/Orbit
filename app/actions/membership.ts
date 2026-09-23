@@ -67,10 +67,11 @@ export async function approveMember(requestId: string): Promise<{ error?: string
   if (profileErr) return { error: profileErr.message }
 
   // Mark request as approved.
-  await supabase
+  const { error: requestErr } = await supabase
     .from('membership_requests')
     .update({ status: 'approved', reviewed_by: UUID_RE.test(user.id) ? user.id : null, reviewed_at: new Date().toISOString() })
     .eq('id', requestId)
+  if (requestErr) return { error: requestErr.message }
 
   return {}
 }
@@ -93,10 +94,12 @@ export async function rejectMember(requestId: string): Promise<{ error?: string 
   if (!req) return { error: 'Request not found.' }
 
   // Disassociate the profile from the company (they keep their account).
-  await supabase
+  const { error: profileErr } = await supabase
     .from('profiles')
     .update({ company_id: null })
     .eq('id', req.profile_id)
+    .eq('company_id', user.company_id)
+  if (profileErr) return { error: profileErr.message }
 
   // Mark request as rejected.
   const { error: rejectErr } = await supabase

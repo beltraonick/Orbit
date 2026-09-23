@@ -69,22 +69,26 @@ export default function PhotosPage() {
     setUploadProgress({ done: 0, total: files.length })
     const supabase = createClient()
 
+    let failed = 0
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
       const ext = file.name.split('.').pop()
       const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file)
-      if (!uploadErr) {
-        await supabase.from('project_photos').insert({
+      if (uploadErr) { failed++; console.error('[photo-upload]', uploadErr.message) }
+      else {
+        const { error: insertErr } = await supabase.from('project_photos').insert({
           company_id: companyId,
           project_id: selectedProject || null,
           storage_path: path,
         })
+        if (insertErr) { failed++; console.error('[photo-upload]', insertErr.message) }
       }
       setUploadProgress({ done: i + 1, total: files.length })
     }
 
     setUploadProgress(null)
+    if (failed > 0) window.alert(`${failed} of ${files.length} photo(s) could not be uploaded. Please try again.`)
     load()
   }
 

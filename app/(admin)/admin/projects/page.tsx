@@ -1,5 +1,6 @@
 'use client'
 
+import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
@@ -277,7 +278,7 @@ export default function ProjectsPage() {
       const { error: upErr } = await supabase.storage.from('project-photos').upload(path, coverFile, { upsert: true })
       if (!upErr) {
         coverImagePath = path
-      }
+      } else writeFailed(upErr, 'upload the cover photo (the project will be saved without it)')
     }
 
     const payload: Record<string, unknown> = {
@@ -477,7 +478,7 @@ export default function ProjectsPage() {
                       label={t('admin.projects.budget')}
                       type="number"
                       min="0"
-                      step="100"
+                      step="any"
                       placeholder={t('admin.projects.budgetPlaceholder')}
                       value={form.budget}
                       onChange={e => setForm(f => ({ ...f, budget: e.target.value }))}

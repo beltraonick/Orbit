@@ -169,7 +169,7 @@ export default function MileagePage() {
     if (!r || r <= 0) return
     setSavingRate(true)
     const res = await updateMileageRate(r)
-    if (!res.error) { setRate(r); setEditingRate(false) }
+    if (!actionFailed(res)) { setRate(r); setEditingRate(false) }
     setSavingRate(false)
   }
 
@@ -330,7 +330,7 @@ export default function MileagePage() {
                     {trip.approval_status === 'draft' && (
                       <>
                         <Button size="sm" variant="ghost" onClick={() => openEdit(trip)}>{m('editTrip')}</Button>
-                        <Button size="sm" variant="ghost" onClick={() => submitMileageTrip(trip.id).then(load)}>{m('submitForReview')}</Button>
+                        <Button size="sm" variant="ghost" onClick={async () => { actionFailed(await submitMileageTrip(trip.id)); load() }}>{m('submitForReview')}</Button>
                         <Button size="sm" variant="ghost" onClick={() => handleDelete(trip.id)}>✕</Button>
                       </>
                     )}

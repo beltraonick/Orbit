@@ -154,28 +154,35 @@ export async function createMileageTrip(data: {
   const rate = rateRow?.mileage_rate_per_mile ?? 0.67
   const reimbursement = Math.round(data.distance_miles * rate * 100) / 100
 
-  const { data: trip, error } = await supabase
+  const row = {
+    company_id: user.company_id,
+    employee_profile_id: profile_id,
+    trip_date: data.trip_date,
+    origin: data.origin.trim(),
+    destination: data.destination.trim(),
+    purpose: data.purpose?.trim() || null,
+    distance_miles: data.distance_miles,
+    trip_type: data.trip_type,
+    vehicle_id: data.vehicle_id ?? null,
+    project_id: data.project_id ?? null,
+    reimbursement_amount: reimbursement,
+    approval_status: 'draft',
+    gps_start_lat: data.gps_start_lat ?? null,
+    gps_start_lng: data.gps_start_lng ?? null,
+    gps_end_lat: data.gps_end_lat ?? null,
+    gps_end_lng: data.gps_end_lng ?? null,
+    }
+  // Databases created from migration 029 still have the legacy NOT NULL
+  // employee_id column; fill it too. If a database doesn't have that column,
+  // PostgREST rejects the unknown column (PGRST204) — retry without it.
+  let { data: trip, error } = await supabase
     .from('mileage_trips')
-    .insert({
-      company_id: user.company_id,
-      employee_profile_id: profile_id,
-      trip_date: data.trip_date,
-      origin: data.origin.trim(),
-      destination: data.destination.trim(),
-      purpose: data.purpose?.trim() || null,
-      distance_miles: data.distance_miles,
-      trip_type: data.trip_type,
-      vehicle_id: data.vehicle_id ?? null,
-      project_id: data.project_id ?? null,
-      reimbursement_amount: reimbursement,
-      approval_status: 'draft',
-      gps_start_lat: data.gps_start_lat ?? null,
-      gps_start_lng: data.gps_start_lng ?? null,
-      gps_end_lat: data.gps_end_lat ?? null,
-      gps_end_lng: data.gps_end_lng ?? null,
-    })
+    .insert({ ...row, employee_id: profile_id })
     .select('id')
     .maybeSingle()
+  if (error?.code === 'PGRST204') {
+    ({ data: trip, error } = await supabase.from('mileage_trips').insert(row).select('id').maybeSingle())
+  }
 
   if (error) return { error: error.message }
   revalidatePath('/admin/mileage')

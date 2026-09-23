@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input'
 export function ForgotPasswordForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [resetUrl, setResetUrl] = useState('')
+  const [delivery, setDelivery] = useState<'email' | 'admin'>('email')
   const [submitted, setSubmitted] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -22,7 +22,7 @@ export function ForgotPasswordForm() {
         setLoading(false)
         return
       }
-      setResetUrl(result.resetUrl ?? '')
+      setDelivery(result.delivery ?? 'email')
       setSubmitted(true)
     } catch {
       setError('Something went wrong. Please try again.')
@@ -31,32 +31,26 @@ export function ForgotPasswordForm() {
     }
   }
 
+  if (submitted && delivery === 'admin') {
+    return (
+      <div className="bg-amber/5 border border-amber/20 rounded-card p-4 text-center">
+        <p className="text-sm font-medium text-primary">Ask your company admin</p>
+        <p className="text-xs text-secondary mt-1">
+          Password reset by email isn&apos;t available yet. Your company admin can set a new password
+          for you in Employees; then sign in and change it under Profile.
+        </p>
+      </div>
+    )
+  }
+
   if (submitted) {
     return (
-      <div className="space-y-4">
-        <div className="bg-green/10 border border-green/20 rounded-card p-4 text-center">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-8 h-8 text-green mx-auto mb-2">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-          </svg>
-          <p className="text-sm font-medium text-primary">Check your email</p>
-          <p className="text-xs text-secondary mt-1">If an account exists, a reset link was generated.</p>
-        </div>
-
-        {resetUrl && (
-          <div className="bg-amber/5 border border-amber/20 rounded-card p-4">
-            <p className="text-xs font-semibold text-amber mb-2">
-              Email not configured — share this link directly:
-            </p>
-            <p className="text-xs font-mono text-secondary break-all select-all">{resetUrl}</p>
-            <button
-              type="button"
-              onClick={() => navigator.clipboard.writeText(resetUrl)}
-              className="mt-2 text-xs text-brand hover:text-brand-hover font-medium transition-colors"
-            >
-              Copy link
-            </button>
-          </div>
-        )}
+      <div className="bg-green/10 border border-green/20 rounded-card p-4 text-center">
+        <svg viewBox="0 0 20 20" fill="currentColor" className="w-8 h-8 text-green mx-auto mb-2">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+        </svg>
+        <p className="text-sm font-medium text-primary">Check your email</p>
+        <p className="text-xs text-secondary mt-1">If an account exists for that address, we sent a reset link. It expires in 1 hour.</p>
       </div>
     )
   }
