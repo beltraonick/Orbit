@@ -6,7 +6,7 @@ import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { createClient } from '@/lib/supabase/server'
 import { t } from '@/lib/i18n/translate'
 import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
-import { getPeriodRange, type PeriodType } from '@/lib/employee-period'
+import { getPeriodRange, loadCompanyPeriodSettings, type PeriodType } from '@/lib/employee-period'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -71,7 +71,9 @@ export default async function PontoPage() {
 
         // Same calcEntryPay() Home and Pay use, over the same period Home
         // shows — so Days can't disagree with either.
-        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, new Date())
+        const periodSettings = await loadCompanyPeriodSettings(supabase, user.company_id)
+        homePeriodType = periodSettings.periodType
+        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, new Date(), periodSettings.anchor)
         periodStartDate = periodStart
         periodEndDate = periodEnd
         for (const e of entries) {

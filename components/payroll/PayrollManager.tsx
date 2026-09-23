@@ -6,6 +6,13 @@ import { useCompanyId } from '@/lib/company-context'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
 import { finalizePayrollPeriod, getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
+import {
+  getPeriodRange,
+  getPreviousPeriodRange,
+  loadCompanyPeriodSettings,
+  toDateStr,
+  type CompanyPeriodSettings,
+} from '@/lib/employee-period'
 import { createManualCompensation, deleteManualCompensation, listManualCompensations, type CompensationCategory } from '@/app/actions/manualCompensationActions'
 
 const fmt$ = (n: number) =>
@@ -97,36 +104,6 @@ interface Summary {
   overtimePay: number
 }
 
-function getQuinzenaDates(which: 'current' | 'last'): { start: string; end: string } {
-  const now = new Date()
-  const day = now.getDate()
-  const year = now.getFullYear()
-  const month = now.getMonth()
-
-  let start: Date, end: Date
-  if (which === 'current') {
-    if (day <= 15) {
-      start = new Date(year, month, 1)
-      end = new Date(year, month, 15)
-    } else {
-      start = new Date(year, month, 16)
-      end = new Date(year, month + 1, 0)
-    }
-  } else {
-    if (day <= 15) {
-      start = new Date(year, month - 1, 16)
-      end = new Date(year, month, 0)
-    } else {
-      start = new Date(year, month, 1)
-      end = new Date(year, month, 15)
-    }
-  }
-  return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
-  }
-}
-
 function toISO(dateStr: string) {
   return new Date(dateStr + 'T00:00:00').toISOString()
 }
@@ -168,8 +145,59 @@ export function PayrollManager() {
   const [finalizing, setFinalizing] = useState(false)
   const [finalizeError, setFinalizeError] = useState('')
 
-  const periodStart = preset === 'custom' ? customStart : getQuinzenaDates(preset as 'current' | 'last').start
-  const periodEnd   = preset === 'custom' ? customEnd   : getQuinzenaDates(preset as 'current' | 'last').end
+  // The company's saved pay period (Settings → Pay Period, or "Save as pay
+  // period" below) drives Last/Current Pay Period, the same range employees
+  // see on Home / Days / Pay.
+  const [periodSettings, setPeriodSettings] = useState<CompanyPeriodSettings | null>(null)
+  const [periodSaving, setPeriodSaving] = useState(false)
+  const [periodSaveMsg, setPeriodSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    if (!companyId) return
+    loadCompanyPeriodSettings(createClient(), companyId).then(setPeriodSettings)
+  }, [companyId])
+
+  const presetRange = (() => {
+    if (!periodSettings || preset === 'custom') return null
+    const r = preset === 'current'
+      ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
+      : getPreviousPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor)
+    return { start: toDateStr(r.start), end: toDateStr(r.end) }
+  })()
+  const periodStart = preset === 'custom' ? customStart : (presetRange?.start ?? '')
+  const periodEnd   = preset === 'custom' ? customEnd   : (presetRange?.end ?? '')
+
+  // Saves the custom range as the company's recurring pay period: a 7-day
+  // range becomes Weekly and a 14-day range Bi-weekly, both starting on the
+  // chosen start date and repeating from there.
+  async function savePeriodAsDefault() {
+    setPeriodSaveMsg(null)
+    if (!customStart || !customEnd || !companyId) return
+    const days = Math.round(
+      (new Date(customEnd + 'T00:00:00').getTime() - new Date(customStart + 'T00:00:00').getTime()) / 86400000,
+    ) + 1
+    const periodType = days === 7 ? 'weekly' : days === 14 ? 'biweekly' : null
+    if (!periodType) {
+      setPeriodSaveMsg({ ok: false, text: `A recurring pay period must be 7 or 14 days long (this range is ${days} days).` })
+      return
+    }
+    setPeriodSaving(true)
+    const supabase = createClient()
+    const values = { home_period_type: periodType, pay_period_anchor: customStart }
+    const { data: existing } = await supabase
+      .from('company_document_settings').select('id').eq('company_id', companyId).maybeSingle()
+    const { error } = existing
+      ? await supabase.from('company_document_settings').update(values).eq('company_id', companyId)
+      : await supabase.from('company_document_settings').insert({ company_id: companyId, ...values })
+    setPeriodSaving(false)
+    if (error) {
+      setPeriodSaveMsg({ ok: false, text: 'Could not save the pay period. Please try again.' })
+      return
+    }
+    setPeriodSettings({ periodType, anchor: customStart })
+    setPreset('current')
+    setPeriodSaveMsg({ ok: true, text: `Saved: ${periodType === 'weekly' ? 'weekly' : 'every 2 weeks'}, starting ${fmtDateLong(customStart)}.` })
+  }
 
   const load = useCallback(async () => {
     if (!periodStart || !periodEnd) return
@@ -387,7 +415,7 @@ export function PayrollManager() {
           overtimePay: 0,
         }
       }
-      acc[row.personId].totalDays   += 1
+      acc[row.personId].totalDays   += row.payMode === 'daily' ? (row.fullDay ? 1 : 0.5) : 1
       acc[row.personId].fullDays    += row.fullDay ? 1 : 0
       acc[row.personId].partialDays += row.fullDay ? 0 : 1
       acc[row.personId].totalHours  += row.hoursWorked ?? 0
@@ -734,7 +762,18 @@ ${manualOnlySections}
               onChange={e => setCustomEnd(e.target.value)}
               className="text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
             />
+            <button
+              type="button"
+              onClick={savePeriodAsDefault}
+              disabled={periodSaving || !customStart || !customEnd}
+              className="px-3 py-2 rounded-button bg-brand text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {periodSaving ? 'Saving…' : 'Save as pay period'}
+            </button>
           </div>
+        )}
+        {periodSaveMsg && (
+          <p className={`w-full text-xs ${periodSaveMsg.ok ? 'text-green' : 'text-danger'}`}>{periodSaveMsg.text}</p>
         )}
       </div>
 
@@ -747,7 +786,7 @@ ${manualOnlySections}
           </div>
           <div className="bg-surface border border-[var(--border)] rounded-card p-4">
             <p className="text-xs text-secondary uppercase tracking-wide mb-1.5">{t('admin.payroll.totalDays')}</p>
-            <p className="text-2xl font-bold text-primary">{rows.length}</p>
+            <p className="text-2xl font-bold text-primary">{summaries.reduce((s, x) => s + x.totalDays, 0)}</p>
           </div>
           <div className="bg-surface border border-[var(--border)] rounded-card p-4">
             <p className="text-xs text-secondary uppercase tracking-wide mb-1.5">{t('admin.payroll.payrollTotal')}</p>

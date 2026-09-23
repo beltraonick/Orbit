@@ -112,7 +112,9 @@ function statusBadge(status: string) {
   if (status === 'rejected') return <Badge variant="red">Rejected</Badge>
   if (status === 'needs_review') return <Badge variant="amber">Needs Review</Badge>
   if (status === 'submitted') return <Badge variant="blue">Submitted</Badge>
-  return <Badge variant="default">Draft</Badge>
+  if (status === 'paid') return <Badge variant="green">Paid</Badge>
+  if (status === 'draft') return <Badge variant="default">Draft</Badge>
+  return <Badge variant="default">{status || 'Unknown'}</Badge>
 }
 
 // ─── Payroll Tab ──────────────────────────────────────────────────────────────

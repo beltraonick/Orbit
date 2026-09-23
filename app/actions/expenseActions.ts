@@ -354,6 +354,28 @@ export async function deleteExpense(expenseId: string) {
   return { ok: true }
 }
 
+// Admin-only: delete an expense in any status (a draft, a rejected one, or
+// one entered by mistake). Scoped to the admin's own company.
+export async function adminDeleteExpense(expenseId: string) {
+  const user = getCurrentUser()
+  if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
+
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('expenses')
+    .delete()
+    .eq('id', expenseId)
+    .eq('company_id', user.company_id)
+    .select('id')
+
+  if (error) return { error: 'Could not delete this expense. Please try again.' }
+  if (!data || data.length === 0) return { error: 'Expense not found.' }
+  revalidatePath('/admin/expenses')
+  revalidatePath('/admin/reports')
+  revalidatePath('/expenses')
+  return { ok: true }
+}
+
 export async function markExpensePaid(expenseId: string) {
   const user = getCurrentUser()
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
