@@ -96,11 +96,12 @@ BEGIN
   END LOOP;
 END $$;
 
--- task_audit_log has no migration file in this repo (see 040's note) — its
--- anon policy, if any, has whatever name was used when it was created
--- directly against the database. Confirm and drop it manually:
---   SELECT policyname FROM pg_policies WHERE tablename = 'task_audit_log';
---   DROP POLICY "<name>" ON task_audit_log;
+-- task_audit_log and project_members both have no migration file in this
+-- repo (see 040/047's notes) — whatever anon policy each has, if any, has
+-- whatever name was used when it was created directly against the
+-- database. Confirm and drop it manually for each:
+--   SELECT tablename, policyname FROM pg_policies WHERE tablename IN ('task_audit_log', 'project_members');
+--   DROP POLICY "<name>" ON <table>;
 
 DROP POLICY IF EXISTS anon_all_project_photos ON storage.objects;
 DROP POLICY IF EXISTS anon_all_task_photos ON storage.objects;
