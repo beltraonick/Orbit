@@ -254,37 +254,20 @@ export async function getProjectTeamStatus(projectId?: string) {
   let workerMembers: { worker: Record<string, unknown> }[] = []
 
   if (projectId) {
-    const [membersRes, workerMembersRes] = await Promise.all([
-      supabase
-        .from('project_members')
-        .select('profile:profile_id(id, full_name, daily_rate, hourly_rate)')
-        .eq('project_id', projectId),
-      supabase
-        .from('worker_projects')
-        .select('worker:worker_id(id, full_name, daily_rate, hourly_rate)')
-        .eq('project_id', projectId)
-        .eq('company_id', user.company_id),
-    ])
+    const membersRes = await supabase
+      .from('project_members')
+      .select('profile:profile_id(id, full_name, daily_rate, hourly_rate)')
+      .eq('project_id', projectId)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     members = (membersRes.data ?? []) as any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    workerMembers = (workerMembersRes.data ?? []) as any
   } else {
-    const [profilesRes, workersRes] = await Promise.all([
-      supabase
-        .from('profiles')
-        .select('id, full_name, daily_rate, hourly_rate')
-        .eq('company_id', user.company_id)
-        .eq('role', 'employee')
-        .eq('status', 'active'),
-      supabase
-        .from('workers')
-        .select('id, full_name, daily_rate, hourly_rate')
-        .eq('company_id', user.company_id)
-        .eq('status', 'active'),
-    ])
+    const profilesRes = await supabase
+      .from('profiles')
+      .select('id, full_name, daily_rate, hourly_rate')
+      .eq('company_id', user.company_id)
+      .eq('role', 'employee')
+      .eq('status', 'active')
     members = (profilesRes.data ?? []).map(p => ({ profile: p }))
-    workerMembers = (workersRes.data ?? []).map(w => ({ worker: w }))
   }
 
   // Active (open) entries — for one project's team, or company-wide when
@@ -318,16 +301,6 @@ export async function getProjectTeamStatus(projectId?: string) {
       daily_rate: p.daily_rate ?? p.hourly_rate * 8,
       entry: entries.find(e => e.employee_id === p.id) ?? null,
     })),
-    ...workerList.map(w => {
-      const isDailyWorker = w.daily_rate != null && Number(w.daily_rate) > 0
-      return {
-        kind: 'worker' as const,
-        id: w.id,
-        full_name: w.full_name,
-        daily_rate: isDailyWorker ? Number(w.daily_rate) : (w.hourly_rate != null ? Number(w.hourly_rate) * STANDARD_DAY_HOURS : 0),
-        entry: entries.find(e => e.worker_id === w.id) ?? null,
-      }
-    }),
   ].sort((a, b) => a.full_name.localeCompare(b.full_name))
 
   return { ok: true, team }

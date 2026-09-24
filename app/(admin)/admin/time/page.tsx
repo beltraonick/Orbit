@@ -823,27 +823,15 @@ export default function TimePage() {
           <div className="bg-[var(--surface)] rounded-card w-full max-w-sm shadow-xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-base font-semibold text-primary">Add Time Entry</h2>
             <p className="text-xs text-secondary -mt-2">Manual entries are saved as approved.</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setAddType('profile'); setAddPersonId(employees[0]?.id ?? '') }}
-                className={`flex-1 py-1.5 text-sm rounded-button border transition-colors ${addType === 'profile' ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary'}`}
-              >Employee</button>
-              <button
-                onClick={() => { setAddType('worker'); setAddPersonId(workers[0]?.id ?? '') }}
-                className={`flex-1 py-1.5 text-sm rounded-button border transition-colors ${addType === 'worker' ? 'bg-brand text-white border-brand' : 'border-[var(--border)] text-secondary'}`}
-              >Worker</button>
-            </div>
             <div>
-              <label className="block text-xs font-medium text-secondary mb-1">
-                {addType === 'profile' ? 'Employee' : 'Worker'}
-              </label>
+              <label className="block text-xs font-medium text-secondary mb-1">Employee</label>
               <select
                 value={addPersonId}
                 onChange={e => setAddPersonId(e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-input border border-[var(--border)] bg-[var(--surface)] text-primary"
               >
                 <option value="">— select —</option>
-                {(addType === 'profile' ? employees : workers).map(p => (
+                {employees.map(p => (
                   <option key={p.id} value={p.id}>{p.full_name}</option>
                 ))}
               </select>

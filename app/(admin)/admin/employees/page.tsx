@@ -489,48 +489,6 @@ export default function EmployeesPage() {
         )}
       </Card>
 
-      {/* Workers Section */}
-      <div className="mt-8">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-primary">{t('admin.employees.workersTitle')}</h2>
-          <Button size="sm" onClick={openAddWorker}>{t('admin.employees.addWorker')}</Button>
-        </div>
-        <Card padding="none">
-          {workers.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-secondary text-center">{t('admin.employees.noWorkersYet')}</p>
-          ) : (
-            <div className="divide-y divide-[var(--border)]">
-              {workers.map(w => (
-                <div key={w.id} className="flex items-center gap-3 px-5 py-4">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-primary">{w.full_name}</p>
-                    <p className="text-xs text-secondary mt-0.5">
-                      {w.position ?? t('admin.employees.noPosition')}
-                      {w.status === 'archived' && ` · ${t('admin.employees.statusArchived')}`}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0 mr-4">
-                    <p className="text-sm font-semibold text-primary">
-                      {w.daily_rate != null && Number(w.daily_rate) > 0
-                        ? `$${Number(w.daily_rate).toFixed(2)}${t('admin.employees.perDay')}`
-                        : `$${Number(w.hourly_rate ?? 0).toFixed(2)}${t('admin.employees.perHour')}`}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => openEditWorker(w)}
-                    className="p-1.5 rounded-button text-secondary hover:text-primary hover:bg-surface-elevated transition-colors"
-                    title={t('admin.employees.editTooltip')}
-                  >
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
 
       {/* Bulk Pay Modal */}
       {showBulkModal && (
