@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { revalidatePath } from 'next/cache'
+import { getAttendanceStatus } from './scheduleActions'
 
 
 // ─── Worker CRUD (admin only) ─────────────────────────────────────────────────
@@ -299,7 +300,19 @@ export async function getProjectTeamStatus(projectId?: string) {
     })),
   ].sort((a, b) => a.full_name.localeCompare(b.full_name))
 
-  return { ok: true, team }
+  // Days off and "didn't clock in by 9" — null if it can't be worked out,
+  // in which case the screen just shows everyone as before.
+  const attendance = await getAttendanceStatus()
+
+  return {
+    ok: true,
+    team,
+    today: attendance?.today ?? null,
+    cutoff: attendance?.cutoff ?? null,
+    offTodayIds: attendance?.offTodayIds ?? [],
+    lateIds: attendance?.missing.map(m => m.id) ?? [],
+    canGiveDayOff: user.role === 'admin',
+  }
 }
 
 // ─── Admin: manual time entry ─────────────────────────────────────────────────

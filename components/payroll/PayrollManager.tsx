@@ -15,6 +15,8 @@ import {
   type CompanyPeriodSettings,
 } from '@/lib/employee-period'
 import { createManualCompensation, deleteManualCompensation, listManualCompensations, type CompensationCategory } from '@/app/actions/manualCompensationActions'
+import { getPayApprovals, type PayApproval } from '@/app/actions/payApprovalActions'
+import { PayApprovalsPanel, approvalStatus, type ApprovalPerson } from './PayApprovalsPanel'
 
 const fmt$ = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -52,6 +54,7 @@ function escapeCSV(v: string | number | null | undefined): string {
 interface DayRow {
   entryId: string
   personId: string
+  personType: 'employee' | 'worker'
   personName: string
   date: string
   projectName: string
@@ -147,6 +150,9 @@ export function PayrollManager() {
   const [finalizeError, setFinalizeError] = useState('')
   // Shown right after "Mark as Paid": which period employees see next.
   const [nextPeriodNote, setNextPeriodNote] = useState('')
+  // Employee approvals (Pay screen -> Approve payment) for this period.
+  const [approvals, setApprovals] = useState<PayApproval[]>([])
+  const [approvalsSetupNeeded, setApprovalsSetupNeeded] = useState(false)
 
   // The company's saved pay period (Settings → Pay Period, or "Save as pay
   // period" below) drives Last/Current Pay Period, the same range employees
@@ -249,6 +255,7 @@ export function PayrollManager() {
       setRows(snapshot.entries.filter(e => e.pay_mode !== 'manual').map((e): DayRow => ({
         entryId: e.id,
         personId: e.person_id,
+        personType: e.person_type === 'worker' ? 'worker' : 'employee',
         personName: e.person_name,
         date: e.entry_date,
         projectName: e.project_name ?? '—',
@@ -339,6 +346,7 @@ export function PayrollManager() {
       return {
         entryId: e.id as string,
         personId,
+        personType: e.employee_id ? 'employee' : 'worker',
         personName,
         date,
         projectName: project?.name ?? '—',
@@ -360,6 +368,19 @@ export function PayrollManager() {
   }, [companyId, periodStart, periodEnd])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    setApprovals([])
+    setApprovalsSetupNeeded(false)
+    if (!periodStart || !periodEnd) return
+    let cancelled = false
+    getPayApprovals(periodStart, periodEnd).then(res => {
+      if (cancelled) return
+      if ('setupNeeded' in res) setApprovalsSetupNeeded(true)
+      else if ('approvals' in res && res.approvals) setApprovals(res.approvals)
+    })
+    return () => { cancelled = true }
+  }, [periodStart, periodEnd])
 
   useEffect(() => {
     if (!companyId) return
@@ -421,8 +442,11 @@ export function PayrollManager() {
   async function handleFinalize() {
     if (!periodStart || !periodEnd) return
     const label = `${fmtDateLong(periodStart)} – ${fmtDateLong(periodEnd)}`
+    const approvalWarning = notApproved.length > 0
+      ? `⚠️ ${t('schedule.payroll.confirmUnapproved').replace('{n}', String(notApproved.length)).replace('{names}', notApproved.map(p => p.name).join(', '))}\n\n`
+      : ''
     const confirmed = window.confirm(
-      `Mark ${label} as PAID?\n\n• Locks this period's numbers forever (later rate or Pay System changes won't affect it). This cannot be undone.\n• Employees will see it under Payroll History as Paid.\n• Home, Hours and Pay move on to the next pay period.\n\nOnly do this once you've actually paid this period.`
+      `${approvalWarning}Mark ${label} as PAID?\n\n• Locks this period's numbers forever (later rate or Pay System changes won't affect it). This cannot be undone.\n• Employees will see it under Payroll History as Paid.\n• Home, Hours and Pay move on to the next pay period.\n\nOnly do this once you've actually paid this period.`
     )
     if (!confirmed) return
 
@@ -475,6 +499,31 @@ export function PayrollManager() {
   const manualCompTotal = manualRows.reduce((s, r) => s + r.amount, 0)
   const grandTotal      = calculatedTotal + manualCompTotal
   const hasAnyData      = rows.length > 0 || manualRows.length > 0
+
+  // Everyone with an employee login who has pay in this period — the people
+  // who can approve it on their Pay screen. Total = days/hours pay + manual
+  // compensation, the same total they see there.
+  const approvalPeople: ApprovalPerson[] = (() => {
+    const byId = new Map<string, ApprovalPerson>()
+    for (const r of rows) {
+      if (r.personType !== 'employee') continue
+      const p = byId.get(r.personId) ?? { id: r.personId, name: r.personName, total: 0 }
+      p.total += r.totalPay + r.overtimePay
+      byId.set(r.personId, p)
+    }
+    for (const m of manualRows) {
+      if (m.personType !== 'employee') continue
+      const p = byId.get(m.personId) ?? { id: m.personId, name: m.personName, total: 0 }
+      p.total += m.amount
+      byId.set(m.personId, p)
+    }
+    return Array.from(byId.values())
+      .map(p => ({ ...p, total: Math.round(p.total * 100) / 100 }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  })()
+  const notApproved = approvalsSetupNeeded
+    ? []
+    : approvalPeople.filter(p => approvalStatus(p, approvals).status !== 'approved')
 
   function exportDetailCSV() {
     const header = ['EMPLOYEE NAME', 'PAY TYPE', 'WORKED?', 'DATE', 'PRICE $', 'FULL DAY?', 'HOURS', 'TOTAL $', 'NOTES', 'JOB NAME']
@@ -772,6 +821,15 @@ ${manualOnlySections}
             {nextPeriodNote ? ` ${nextPeriodNote}` : ''}
           </p>
         </div>
+      )}
+
+      {!loading && !finalized && hasAnyData && (
+        <PayApprovalsPanel
+          people={approvalPeople}
+          approvals={approvals}
+          setupNeeded={approvalsSetupNeeded}
+          periodEnded={!!periodEnd && periodEnd < toDateStr(new Date())}
+        />
       )}
 
       {/* Period controls */}

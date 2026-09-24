@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { supervisorClockIn, supervisorClockOut, getProjectTeamStatus } from '@/app/actions/workerActions'
+import { setDayOff } from '@/app/actions/scheduleActions'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 
 interface TeamMember {
@@ -120,16 +121,29 @@ function ClockInSheet({
   onClose,
   onDone,
   projectId,
+  dayOff,
 }: {
   member: TeamMember
   onClose: () => void
   onDone: () => void
   projectId?: string
+  /** Only for admins: give / remove a day off today for this person. */
+  dayOff?: { today: string; isOff: boolean }
 }) {
   const { t } = useTranslation()
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  async function handleDayOff() {
+    if (!dayOff) return
+    setSaving(true)
+    setError('')
+    const res = await setDayOff(member.id, dayOff.today, !dayOff.isOff)
+    setSaving(false)
+    if ('error' in res && res.error) { setError(res.error.includes('migration 048') ? t('schedule.admin.setupNeeded') : t('schedule.admin.error')); return }
+    onDone()
+  }
 
   async function handleClockIn() {
     setSaving(true)
@@ -185,6 +199,15 @@ function ClockInSheet({
           >
             {saving ? t('common.saving') : t('supervisor.clockIn.clockIn')}
           </button>
+          {dayOff && member.kind === 'profile' && (
+            <button
+              onClick={handleDayOff}
+              disabled={saving}
+              className="w-full py-3 mt-2 bg-amber/10 text-amber border border-amber/30 rounded-button font-semibold text-sm disabled:opacity-50"
+            >
+              {dayOff.isOff ? t('schedule.clock.removeDayOff') : t('schedule.clock.giveDayOff')}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -198,6 +221,9 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
   const [error, setError] = useState('')
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
   const [sheetMode, setSheetMode] = useState<'in' | 'out' | null>(null)
+  const [attendance, setAttendance] = useState<{
+    today: string | null; cutoff: string | null; offTodayIds: string[]; lateIds: string[]; canGiveDayOff: boolean
+  }>({ today: null, cutoff: null, offTodayIds: [], lateIds: [], canGiveDayOff: false })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -205,6 +231,15 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
     setLoading(false)
     if (res.error) { setError(res.error); return }
     setTeam(res.team ?? [])
+    if ('offTodayIds' in res) {
+      setAttendance({
+        today: res.today ?? null,
+        cutoff: res.cutoff ?? null,
+        offTodayIds: res.offTodayIds ?? [],
+        lateIds: res.lateIds ?? [],
+        canGiveDayOff: !!res.canGiveDayOff,
+      })
+    }
   }, [projectId])
 
   useEffect(() => { load() }, [load])
@@ -224,8 +259,21 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
     await load()
   }
 
+  // Someone on a day off who clocks in anyway shows up as clocked in.
+  const isOff = (m: TeamMember) => attendance.offTodayIds.includes(m.id)
+  const isLate = (m: TeamMember) => attendance.lateIds.includes(m.id)
   const clockedIn  = team.filter(m => m.entry)
-  const clockedOut = team.filter(m => !m.entry)
+  const clockedOut = team.filter(m => !m.entry && !isOff(m))
+    // Late ones first, so they're what you see at the top of the list.
+    .sort((a, b) => Number(isLate(b)) - Number(isLate(a)))
+  const offToday   = team.filter(m => !m.entry && isOff(m))
+  const lateCount  = clockedOut.filter(isLate).length
+  const fmtCutoff = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number)
+    const d = new Date()
+    d.setHours(h, m, 0, 0)
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  }
 
   if (loading) {
     return (
@@ -252,6 +300,12 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
   return (
     <>
       <div className="px-4 pb-6">
+        {lateCount > 0 && attendance.cutoff && (
+          <div className="mb-4 px-4 py-3 rounded-[14px] bg-brand/10 border border-brand/25 text-sm font-semibold text-brand">
+            ⚠️ {t(lateCount === 1 ? 'schedule.clock.notClockedInOne' : 'schedule.clock.notClockedIn').replace('{n}', String(lateCount)).replace('{time}', fmtCutoff(attendance.cutoff))}
+          </div>
+        )}
+
         {clockedIn.length > 0 && (
           <div className="mb-5">
             <p className="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
@@ -290,12 +344,16 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
                 <button
                   key={member.id}
                   onClick={() => openSheet(member)}
-                  className="flex items-center justify-between w-full bg-surface border border-[var(--border)] rounded-[14px] px-4 py-3 text-left"
+                  className={`flex items-center justify-between w-full bg-surface border rounded-[14px] px-4 py-3 text-left ${
+                    isLate(member) ? 'border-brand/40' : 'border-[var(--border)]'
+                  }`}
                 >
                   <div>
                     <p className="text-sm font-medium text-primary">{member.full_name}</p>
                     <p className="text-xs text-secondary mt-0.5">
-                      ${member.daily_rate.toFixed(2)}{t('supervisor.clockIn.perDay')}
+                      {isLate(member)
+                        ? <span className="font-semibold text-brand">{t('schedule.clock.late')}</span>
+                        : <>${member.daily_rate.toFixed(2)}{t('supervisor.clockIn.perDay')}</>}
                     </p>
                   </div>
                   <span className="text-xs font-medium text-brand border border-brand px-2.5 py-1 rounded-full">
@@ -307,6 +365,28 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
           </div>
         )}
       </div>
+
+      {offToday.length > 0 && (
+        <div className="px-4 pb-6 -mt-2">
+          <p className="text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
+            {t('schedule.clock.offToday')} · {offToday.length}
+          </p>
+          <div className="flex flex-col gap-2">
+            {offToday.map(member => (
+              <button
+                key={member.id}
+                onClick={() => openSheet(member)}
+                className="flex items-center justify-between w-full bg-amber/5 border border-amber/20 rounded-[14px] px-4 py-3 text-left"
+              >
+                <p className="text-sm font-medium text-secondary">{member.full_name}</p>
+                <span className="text-xs font-medium text-amber bg-amber/10 px-2.5 py-1 rounded-full">
+                  {t('schedule.clock.offBadge')}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {selectedMember && sheetMode === 'out' && (
         <ClockOutSheet
@@ -321,6 +401,9 @@ export function TeamClockIn({ projectId }: { projectId?: string }) {
           onClose={closeSheet}
           onDone={handleDone}
           projectId={projectId}
+          dayOff={attendance.canGiveDayOff && attendance.today
+            ? { today: attendance.today, isOff: isOff(selectedMember) }
+            : undefined}
         />
       )}
     </>

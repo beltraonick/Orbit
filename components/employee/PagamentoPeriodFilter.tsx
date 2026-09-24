@@ -8,7 +8,8 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay } from '@/lib/payroll-calc'
 import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 import { useCompanyId } from '@/lib/company-context'
-import { getPayPeriodRange, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
+import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
+import { PayApprovalCard } from './PayApprovalCard'
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -120,7 +121,8 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
         notes: null,
         hours: calc.hoursWorked,
         fullDay: isDailyRate ? calc.fullDay : null,
-        amount: calc.totalPay,
+        // Same total Payroll uses (overtime is 0 unless hours were logged).
+        amount: calc.totalPay + calc.overtimePay,
       }
     })
     // Also fetch manual compensations (production pay, bonuses, corrections)
@@ -240,6 +242,19 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
           )}
         </Card>
       </div>
+
+      {/* Employee confirms the period being paid (can't be undone). Only
+          for the company's pay period, and only while it isn't paid yet. */}
+      {!loading && !finalized && preset === 'current' && currentRange && entries.length > 0 && (
+        <PayApprovalCard
+          periodStart={periodStart}
+          periodEnd={periodEnd}
+          amount={Math.round(totalEarnings * 100) / 100}
+          quantity={isDailyRate ? totalDays : Math.round(totalHours * 10) / 10}
+          isDailyRate={isDailyRate}
+          periodEnded={isAwaitingPayment(currentRange)}
+        />
+      )}
 
       {/* Entry list */}
       {!loading && entries.length > 0 && (

@@ -6,6 +6,7 @@ import { OrbitAIHub } from '@/components/OrbitAIHub'
 import { QuickActionsWidget } from '@/components/admin/QuickActionsWidget'
 import { getCurrentUser } from '@/lib/auth/session'
 import { t } from '@/lib/i18n/translate'
+import { getAttendanceStatus } from '@/app/actions/scheduleActions'
 
 function StatCard({ label, value, sub, color = 'default' }: {
   label: string
@@ -63,7 +64,9 @@ export default async function AdminDashboardPage() {
   const user = getCurrentUser()
   const locale = user?.language ?? 'en'
   const companyId = user?.company_id ?? ''
-  const stats = companyId ? await fetchStats(companyId) : null
+  const [stats, attendance] = companyId
+    ? await Promise.all([fetchStats(companyId), getAttendanceStatus()])
+    : [null, null]
   const today = new Date()
   const weeklyPayroll = stats?.pendingPayroll?.reduce((s, r) => s + Number(r.total_amount), 0) ?? 0
 
@@ -126,6 +129,51 @@ export default async function AdminDashboardPage() {
             className="flex-shrink-0 text-xs font-semibold text-brand hover:text-brand-hover transition-colors whitespace-nowrap mt-0.5"
           >
             {t(locale, 'admin.dashboard.reviewRequests')}
+          </a>
+        </div>
+      )}
+
+      {/* Didn't clock in by the cutoff (9 AM) — people on a day off are left out */}
+      {attendance && attendance.missing.length > 0 && (
+        <div className="mb-5 md:mb-6 bg-brand/5 border border-brand/20 rounded-card px-4 py-3 md:px-5 md:py-4 flex items-start gap-3">
+          <div className="flex-shrink-0 w-9 h-9 rounded-full bg-brand/10 flex items-center justify-center mt-0.5">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-brand">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-primary">
+              {t(locale, attendance.missing.length === 1 ? 'schedule.alert.notClockedInTitleOne' : 'schedule.alert.notClockedInTitle')
+                .replace('{n}', String(attendance.missing.length))
+                .replace('{time}', (() => {
+                  const [h, m] = attendance.cutoff.split(':').map(Number)
+                  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
+                })())}
+            </p>
+            <p className="text-xs text-secondary mt-0.5 line-clamp-2">
+              {attendance.missing.map(p => p.full_name).join(', ')}
+            </p>
+          </div>
+          <a
+            href="/admin/team-clock"
+            className="flex-shrink-0 text-xs font-semibold text-brand hover:text-brand-hover transition-colors whitespace-nowrap mt-0.5"
+          >
+            {t(locale, 'schedule.alert.seeTeamClock')}
+          </a>
+        </div>
+      )}
+
+      {/* Day-off requests waiting for an answer */}
+      {attendance && attendance.pendingRequests > 0 && (
+        <div className="mb-5 md:mb-6 bg-amber/5 border border-amber/20 rounded-card px-4 py-3 md:px-5 md:py-4 flex items-center gap-3">
+          <p className="flex-1 text-sm font-semibold text-primary">
+            {t(locale, 'schedule.alert.requestsTitle').replace('{n}', String(attendance.pendingRequests))}
+          </p>
+          <a
+            href="/admin/schedule"
+            className="flex-shrink-0 text-xs font-semibold text-amber whitespace-nowrap"
+          >
+            {t(locale, 'schedule.alert.review')}
           </a>
         </div>
       )}
