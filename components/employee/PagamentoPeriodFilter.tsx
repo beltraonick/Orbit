@@ -25,6 +25,7 @@ interface DisplayEntry {
   id: string
   date: string
   projectName: string | null
+  notes: string | null
   hours: number | null
   fullDay: boolean | null
   amount: number
@@ -77,6 +78,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
             id: e.id,
             date: e.entry_date,
             projectName: e.project_name,
+            notes: null,
             hours: e.hours_worked != null ? Number(e.hours_worked) : null,
             fullDay: e.pay_mode === 'daily' ? e.full_day : null,
             amount: Number(e.total_pay) + Number(e.overtime_pay),
@@ -115,6 +117,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
         id: e.id,
         date: e.clock_in.slice(0, 10),
         projectName: e.project?.name ?? null,
+        notes: null,
         hours: calc.hoursWorked,
         fullDay: isDailyRate ? calc.fullDay : null,
         amount: calc.totalPay,
@@ -134,7 +137,8 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
     const manualEntries: DisplayEntry[] = ((manualData ?? []) as any[]).map(mc => ({
       id: `mc-${mc.id}`,
       date: mc.compensation_date,
-      projectName: mc.project?.name ?? mc.description ?? mc.category,
+      projectName: mc.project?.name ?? null,
+      notes: mc.description ?? null,
       hours: null,
       fullDay: null,
       amount: Number(mc.amount),
@@ -253,9 +257,12 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-primary">{fmtDate(e.date)}</p>
                     <p className="text-xs text-secondary mt-0.5 truncate">
-                      {e.projectName ?? '—'}
-                      {dayLabel ? '' : ` · ${(e.hours ?? 0).toFixed(1)}h`}
+                      {e.projectName ?? (e.notes ? '' : '—')}
+                      {!dayLabel && e.hours !== null ? ` · ${e.hours.toFixed(1)}h` : ''}
                     </p>
+                    {e.notes && (
+                      <p className="text-xs text-secondary mt-0.5 truncate italic">{e.notes}</p>
+                    )}
                   </div>
                   {dayLabel ? (
                     <div className={`flex flex-col items-end px-2.5 py-1 rounded-lg flex-shrink-0 ${e.fullDay ? 'bg-green/10' : 'bg-purple/10'}`}>
