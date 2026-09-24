@@ -79,7 +79,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
             id: e.id,
             date: e.entry_date,
             projectName: e.project_name,
-            notes: null,
+            notes: e.pay_mode === 'manual' ? (e.notes ?? null) : null,
             hours: e.hours_worked != null ? Number(e.hours_worked) : null,
             fullDay: e.pay_mode === 'daily' ? e.full_day : null,
             amount: Number(e.total_pay) + Number(e.overtime_pay),
@@ -135,6 +135,18 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
       .lte('compensation_date', periodEnd)
       .order('compensation_date', { ascending: false })
 
+    // Also fetch approved reimbursement expenses not yet locked into a payroll period
+    const { data: reimbData } = await supabase
+      .from('expenses')
+      .select('id, expense_date, amount, description, project:project_id(name)')
+      .eq('submitted_by_profile_id', profileId)
+      .eq('expense_type', 'reimbursement')
+      .eq('approval_status', 'approved')
+      .is('payroll_period_id', null)
+      .gte('expense_date', periodStart)
+      .lte('expense_date', periodEnd)
+      .order('expense_date', { ascending: false })
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const manualEntries: DisplayEntry[] = ((manualData ?? []) as any[]).map(mc => ({
       id: `mc-${mc.id}`,
@@ -146,7 +158,18 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
       amount: Number(mc.amount),
     }))
 
-    setEntries([...built, ...manualEntries].sort((a, b) => b.date.localeCompare(a.date)))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reimbEntries: DisplayEntry[] = ((reimbData ?? []) as any[]).map(exp => ({
+      id: `exp-${exp.id}`,
+      date: exp.expense_date,
+      projectName: exp.project?.name ?? null,
+      notes: exp.description ?? null,
+      hours: null,
+      fullDay: null,
+      amount: Number(exp.amount),
+    }))
+
+    setEntries([...built, ...manualEntries, ...reimbEntries].sort((a, b) => b.date.localeCompare(a.date)))
     setLoading(false)
   }, [profileId, periodStart, periodEnd, dailyRate, hourlyRate, isDailyRate])
 

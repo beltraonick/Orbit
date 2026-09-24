@@ -83,6 +83,17 @@ interface ManualCompRow {
   locked: boolean
 }
 
+interface ReimbRow {
+  id: string
+  personId: string
+  personName: string
+  amount: number
+  date: string
+  description: string
+  projectName: string | null
+  locked: boolean
+}
+
 interface Person {
   id: string
   type: 'employee' | 'worker'
@@ -120,7 +131,7 @@ export function PayrollManager() {
   const companyId = useCompanyId()
   const printRef = useRef<HTMLDivElement>(null)
 
-  const [tab, setTab] = usePersistentState<'detail' | 'summary' | 'overtime' | 'manual'>('payroll.tab', 'detail', oneOf(['detail', 'summary', 'overtime', 'manual'] as const))
+  const [tab, setTab] = usePersistentState<'detail' | 'summary' | 'overtime' | 'manual' | 'reimbursements'>('payroll.tab', 'detail', oneOf(['detail', 'summary', 'overtime', 'manual', 'reimbursements'] as const))
   const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('current')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
@@ -131,6 +142,8 @@ export function PayrollManager() {
   // production-paid subcontractor pay. Kept in its own list, separate from
   // and auditable against the calculated Daily/Hourly rows above.
   const [manualRows, setManualRows] = useState<ManualCompRow[]>([])
+  // Expense Reimbursements — approved reimbursement-type expenses owed to employees.
+  const [reimbRows, setReimbRows] = useState<ReimbRow[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [showAddManual, setShowAddManual] = useState(false)
   const [manualForm, setManualForm] = useState({
@@ -270,7 +283,8 @@ export function PayrollManager() {
         overtimeHours: Number(e.overtime_hours),
         overtimePay: Number(e.overtime_pay),
       })))
-      setManualRows(snapshot.entries.filter(e => e.pay_mode === 'manual').map((e): ManualCompRow => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setManualRows(snapshot.entries.filter((e: any) => e.pay_mode === 'manual' && e.source_type !== 'expense_reimbursement').map((e): ManualCompRow => ({
         id: e.id,
         personType: e.person_type,
         personId: e.person_id,
@@ -278,6 +292,17 @@ export function PayrollManager() {
         amount: Number(e.total_pay),
         date: e.entry_date,
         category: (e.category ?? 'extra_work') as CompensationCategory,
+        description: e.notes ?? '',
+        projectName: e.project_name,
+        locked: true,
+      })))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setReimbRows(snapshot.entries.filter((e: any) => e.source_type === 'expense_reimbursement').map((e): ReimbRow => ({
+        id: e.id,
+        personId: e.person_id,
+        personName: e.person_name,
+        amount: Number(e.total_pay),
+        date: e.entry_date,
         description: e.notes ?? '',
         projectName: e.project_name,
         locked: true,
@@ -307,19 +332,43 @@ export function PayrollManager() {
 
     const supabase = createClient()
 
-    const { data: entries } = await supabase
-      .from('time_entries')
-      .select(`
-        id, clock_in, clock_out, is_full_day, notes, employee_id, worker_id,
-        project:project_id(name),
-        profile:employee_id(full_name, daily_rate, hourly_rate),
-        worker:worker_id(full_name, daily_rate, hourly_rate)
-      `)
-      .eq('company_id', companyId)
-      .not('clock_out', 'is', null)
-      .gte('clock_in', toISO(periodStart))
-      .lte('clock_in', toISOEnd(periodEnd))
-      .order('clock_in', { ascending: true })
+    const [{ data: entries }, { data: expenseReimbs }] = await Promise.all([
+      supabase
+        .from('time_entries')
+        .select(`
+          id, clock_in, clock_out, is_full_day, notes, employee_id, worker_id,
+          project:project_id(name),
+          profile:employee_id(full_name, daily_rate, hourly_rate),
+          worker:worker_id(full_name, daily_rate, hourly_rate)
+        `)
+        .eq('company_id', companyId)
+        .not('clock_out', 'is', null)
+        .gte('clock_in', toISO(periodStart))
+        .lte('clock_in', toISOEnd(periodEnd))
+        .order('clock_in', { ascending: true }),
+      supabase
+        .from('expenses')
+        .select('id, submitted_by_profile_id, submitted_by:submitted_by_profile_id(full_name), amount, expense_date, description, project:project_id(name), payroll_period_id')
+        .eq('company_id', companyId)
+        .eq('expense_type', 'reimbursement')
+        .eq('approval_status', 'approved')
+        .is('payroll_period_id', null)
+        .gte('expense_date', periodStart)
+        .lte('expense_date', periodEnd)
+        .order('expense_date', { ascending: true }),
+    ])
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setReimbRows(((expenseReimbs ?? []) as any[]).map((e): ReimbRow => ({
+      id: e.id,
+      personId: e.submitted_by_profile_id,
+      personName: (e.submitted_by as { full_name: string } | null)?.full_name ?? 'Unknown',
+      amount: Number(e.amount),
+      date: e.expense_date,
+      description: e.description ?? '',
+      projectName: (e.project as { name: string } | null)?.name ?? null,
+      locked: e.payroll_period_id != null,
+    })))
 
     const built: DayRow[] = (entries ?? []).map((e: Record<string, unknown>) => {
       type Profile = { full_name: string; daily_rate: number | null; hourly_rate: number }
@@ -497,8 +546,9 @@ export function PayrollManager() {
   const calculatedTotal = summaries.reduce((s, r) => s + r.totalPay, 0)
   const overtimeTotal   = summaries.reduce((s, r) => s + r.overtimePay, 0)
   const manualCompTotal = manualRows.reduce((s, r) => s + r.amount, 0)
-  const grandTotal      = calculatedTotal + manualCompTotal
-  const hasAnyData      = rows.length > 0 || manualRows.length > 0
+  const reimbTotal      = reimbRows.reduce((s, r) => s + r.amount, 0)
+  const grandTotal      = calculatedTotal + manualCompTotal + reimbTotal
+  const hasAnyData      = rows.length > 0 || manualRows.length > 0 || reimbRows.length > 0
 
   // Everyone with an employee login who has pay in this period — the people
   // who can approve it on their Pay screen. Total = days/hours pay + manual
@@ -516,6 +566,11 @@ export function PayrollManager() {
       const p = byId.get(m.personId) ?? { id: m.personId, name: m.personName, total: 0 }
       p.total += m.amount
       byId.set(m.personId, p)
+    }
+    for (const r of reimbRows) {
+      const p = byId.get(r.personId) ?? { id: r.personId, name: r.personName, total: 0 }
+      p.total += r.amount
+      byId.set(r.personId, p)
     }
     return Array.from(byId.values())
       .map(p => ({ ...p, total: Math.round(p.total * 100) / 100 }))
@@ -551,7 +606,19 @@ export function PayrollManager() {
       `${CATEGORY_LABELS[m.category]}: ${m.description}`,
       m.projectName ?? '',
     ])
-    const csv = [header, ...dataRows, ...manualDataRows].map(row => row.map(escapeCSV).join(',')).join('\n')
+    const reimbDataRows = reimbRows.map(r => [
+      r.personName,
+      'Reimbursement',
+      '—',
+      fmtDate(r.date),
+      '—',
+      '—',
+      '—',
+      r.amount.toFixed(2),
+      r.description,
+      r.projectName ?? '',
+    ])
+    const csv = [header, ...dataRows, ...manualDataRows, ...reimbDataRows].map(row => row.map(escapeCSV).join(',')).join('\n')
     const label = periodStart && periodEnd ? `${periodStart}_to_${periodEnd}` : 'payroll'
     downloadCSV(`Payroll_${label}.csv`, csv)
   }
@@ -562,8 +629,10 @@ export function PayrollManager() {
     const perPerson = summaries.map(s => {
       const personRows = rows.filter(r => r.personId === s.personId)
       const personManual = manualRows.filter(m => m.personId === s.personId)
+      const personReimbs = reimbRows.filter(r => r.personId === s.personId)
       const hasOvertime = s.overtimePay > 0
       const manualTotal = personManual.reduce((sum, m) => sum + m.amount, 0)
+      const reimbPersonTotal = personReimbs.reduce((sum, r) => sum + r.amount, 0)
 
       const payrollRows = personRows.map(r =>
         `<tr>
@@ -593,6 +662,14 @@ export function PayrollManager() {
         </tr>`
       ).join('')
 
+      const reimbExpRows = personReimbs.map(r =>
+        `<tr>
+          <td class="tag reimb">REIMB</td>
+          <td class="desc">${fmtDate(r.date)}${r.projectName ? ' · ' + r.projectName : ''} · ${r.description}</td>
+          <td class="amount">${fmt$(r.amount)}</td>
+        </tr>`
+      ).join('')
+
       return `
         <div class="section">
           <h2 class="name">${s.personName} <span class="pay-type">${s.payMode === 'daily' ? 'Daily Rate' : 'Hourly Rate'}</span></h2>
@@ -606,27 +683,31 @@ export function PayrollManager() {
               ${payrollRows}
               ${overtimeRow}
               ${manualCompRows}
+              ${reimbExpRows}
             </tbody>
             <tfoot>
               <tr class="subtotal">
                 <td colspan="2">SUBTOTAL</td>
-                <td class="amount">${fmt$(s.totalPay + s.overtimePay + manualTotal)}</td>
+                <td class="amount">${fmt$(s.totalPay + s.overtimePay + manualTotal + reimbPersonTotal)}</td>
               </tr>
             </tfoot>
           </table>
         </div>`
     }).join('')
 
-    // People who ONLY have manual compensation (e.g. a production-paid
-    // subcontractor with no clock-in at all) get their own section, since
-    // they never appear in `summaries`.
-    const manualOnlyPeople = Array.from(new Set(
-      manualRows.filter(m => !summaries.some(s => s.personId === m.personId)).map(m => m.personId)
-    ))
+    // People who ONLY have manual compensation or reimbursements get their own
+    // section, since they never appear in `summaries`.
+    const extraPeopleIds = Array.from(new Set([
+      ...manualRows.filter(m => !summaries.some(s => s.personId === m.personId)).map(m => m.personId),
+      ...reimbRows.filter(r => !summaries.some(s => s.personId === r.personId)).map(r => r.personId),
+    ]))
+    const manualOnlyPeople = extraPeopleIds
     const manualOnlySections = manualOnlyPeople.map(personId => {
       const personManual = manualRows.filter(m => m.personId === personId)
-      const personName = personManual[0]?.personName ?? 'Unknown'
+      const personReimbs2 = reimbRows.filter(r => r.personId === personId)
+      const personName = personManual[0]?.personName ?? personReimbs2[0]?.personName ?? 'Unknown'
       const manualTotal = personManual.reduce((sum, m) => sum + m.amount, 0)
+      const reimbPersonTotal2 = personReimbs2.reduce((sum, r) => sum + r.amount, 0)
       const manualCompRows = personManual.map(m =>
         `<tr>
           <td class="tag manual">MANUAL</td>
@@ -634,20 +715,27 @@ export function PayrollManager() {
           <td class="amount">${fmt$(m.amount)}</td>
         </tr>`
       ).join('')
+      const reimbExpRows2 = personReimbs2.map(r =>
+        `<tr>
+          <td class="tag reimb">REIMB</td>
+          <td class="desc">${fmtDate(r.date)}${r.projectName ? ' · ' + r.projectName : ''} · ${r.description}</td>
+          <td class="amount">${fmt$(r.amount)}</td>
+        </tr>`
+      ).join('')
       return `
         <div class="section">
-          <h2 class="name">${personName} <span class="pay-type">Manual Compensation</span></h2>
+          <h2 class="name">${personName} <span class="pay-type">Manual / Reimbursement</span></h2>
           <table>
             <thead>
               <tr class="th-row">
                 <th>TYPE</th><th>DESCRIPTION</th><th>AMOUNT</th>
               </tr>
             </thead>
-            <tbody>${manualCompRows}</tbody>
+            <tbody>${manualCompRows}${reimbExpRows2}</tbody>
             <tfoot>
               <tr class="subtotal">
                 <td colspan="2">SUBTOTAL</td>
-                <td class="amount">${fmt$(manualTotal)}</td>
+                <td class="amount">${fmt$(manualTotal + reimbPersonTotal2)}</td>
               </tr>
             </tfoot>
           </table>
@@ -681,6 +769,7 @@ export function PayrollManager() {
   .tag.payroll { background: #e5f0ff; color: #0066cc; }
   .tag.overtime { background: #fff3e0; color: #e65100; }
   .tag.manual { background: #f0e5ff; color: #6600cc; }
+  .tag.reimb { background: #e5ffe5; color: #006600; }
   .subtotal td { font-weight: 700; background: #f5f5f7; }
   .subtotal td:first-child { text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6e6e73; }
   .grand-total { margin-top: 20px; text-align: right; font-size: 18px; font-weight: 700; border-top: 2px solid #1c1c1e; padding-top: 12px; }
@@ -709,6 +798,10 @@ export function PayrollManager() {
     <div class="label">Manual Comp Total</div>
     <div class="value">${fmt$(manualCompTotal)}</div>
   </div>
+  ${reimbTotal > 0 ? `<div class="total-box">
+    <div class="label">Reimbursements</div>
+    <div class="value">${fmt$(reimbTotal)}</div>
+  </div>` : ''}
   <div class="total-box">
     <div class="label">Invoice Total</div>
     <div class="value">${fmt$(grandTotal + overtimeTotal)}</div>
@@ -913,22 +1006,28 @@ ${manualOnlySections}
               {fmt$(manualCompTotal)}
             </p>
           </div>
+          {reimbTotal > 0 && (
+            <div className="bg-surface border border-[var(--border)] rounded-card p-4">
+              <p className="text-xs text-secondary uppercase tracking-wide mb-1.5">Reimbursements</p>
+              <p className="text-2xl font-bold text-green">{fmt$(reimbTotal)}</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-[var(--border)] mb-5 print:hidden">
-        {(['detail', 'summary', 'overtime', 'manual'] as const).map(tabKey => (
+      <div className="flex border-b border-[var(--border)] mb-5 print:hidden overflow-x-auto">
+        {(['detail', 'summary', 'overtime', 'manual', 'reimbursements'] as const).map(tabKey => (
           <button
             key={tabKey}
             onClick={() => setTab(tabKey)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
               tab === tabKey
                 ? 'border-brand text-primary'
                 : 'border-transparent text-secondary hover:text-primary'
             }`}
           >
-            {tabKey === 'manual' ? 'Manual Comp' : t(`admin.payroll.tab_${tabKey}`)}
+            {tabKey === 'manual' ? 'Manual Comp' : tabKey === 'reimbursements' ? 'Reimbursements' : t(`admin.payroll.tab_${tabKey}`)}
             {tabKey === 'overtime' && overtimeRows.length > 0 && (
               <span className="ml-1.5 bg-amber/15 text-amber text-xs px-1.5 py-0.5 rounded-full font-semibold">
                 {overtimeRows.length}
@@ -937,6 +1036,11 @@ ${manualOnlySections}
             {tabKey === 'manual' && manualRows.length > 0 && (
               <span className="ml-1.5 bg-brand/15 text-brand text-xs px-1.5 py-0.5 rounded-full font-semibold">
                 {manualRows.length}
+              </span>
+            )}
+            {tabKey === 'reimbursements' && reimbRows.length > 0 && (
+              <span className="ml-1.5 bg-green/15 text-green text-xs px-1.5 py-0.5 rounded-full font-semibold">
+                {reimbRows.length}
               </span>
             )}
           </button>
@@ -1216,6 +1320,58 @@ ${manualOnlySections}
                       </td>
                       <td className="px-3 py-2.5 text-right font-bold text-primary tabular-nums">{fmt$(manualCompTotal)}</td>
                       <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Reimbursements tab ─── */}
+      {!loading && tab === 'reimbursements' && (
+        <div>
+          {reimbRows.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed border-[var(--border)] rounded-card">
+              <p className="text-sm text-secondary">No approved expense reimbursements for this period.</p>
+              <p className="text-xs text-tertiary mt-1">Approved reimbursement-type expenses appear here and are included in the payroll total.</p>
+            </div>
+          ) : (
+            <div className="border border-[var(--border)] rounded-card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-[var(--color-surface-elevated)] border-b border-[var(--border)]">
+                      <th className={TH}>{t('admin.payroll.col_employee')}</th>
+                      <th className={TH}>{t('admin.payroll.col_date')}</th>
+                      <th className={TH}>Description</th>
+                      <th className={TH}>{t('admin.payroll.col_job')}</th>
+                      <th className={TH_R}>{t('admin.payroll.col_total')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {reimbRows.map(row => (
+                      <tr key={row.id} className="hover:bg-[var(--color-surface-elevated)] transition-colors">
+                        <td className="px-3 py-2.5 font-medium text-primary whitespace-nowrap">
+                          {row.personName}
+                          {row.locked && (
+                            <span className="ml-1.5 text-[10px] text-tertiary" title="Part of a finalized payroll period">🔒</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-secondary whitespace-nowrap">{fmtDate(row.date)}</td>
+                        <td className="px-3 py-2.5 text-secondary max-w-[240px] truncate text-xs">{row.description}</td>
+                        <td className="px-3 py-2.5 text-secondary whitespace-nowrap text-xs">{row.projectName ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-primary tabular-nums">{fmt$(row.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-[var(--color-surface-elevated)] border-t border-[var(--border)]">
+                      <td colSpan={4} className="px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-secondary">
+                        {t('admin.payroll.grandTotal')}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold text-primary tabular-nums">{fmt$(reimbTotal)}</td>
                     </tr>
                   </tfoot>
                 </table>
