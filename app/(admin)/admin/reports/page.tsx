@@ -456,19 +456,12 @@ function PayrollReport({ period }: { period: string }) {
                   <tr className="border-b border-[var(--border)]">
                     <th className="text-left px-5 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.tableEmployee')}</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.date')}</th>
-                    <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.time')}</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.location')}</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.dayType')}</th>
-                    <th className="text-right px-5 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.hours')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
                   {entries.map(e => {
-                    const hours = e.hours_worked != null
-                      ? Number(e.hours_worked)
-                      : e.clock_out
-                        ? (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
-                        : null
                     const rates = e.profile ?? e.worker
                     const calc = rates && e.clock_out
                       ? calcEntryPay({
@@ -488,10 +481,6 @@ function PayrollReport({ period }: { period: string }) {
                         <td className="px-4 py-3 text-secondary whitespace-nowrap">
                           {new Date(e.clock_in).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </td>
-                        <td className="px-4 py-3 text-secondary whitespace-nowrap tabular-nums">
-                          {new Date(e.clock_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                          {e.clock_out && ` → ${new Date(e.clock_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
-                        </td>
                         <td className="px-4 py-3 text-secondary text-xs">
                           {[e.city, e.state].filter(Boolean).join(', ') || '—'}
                         </td>
@@ -504,11 +493,6 @@ function PayrollReport({ period }: { period: string }) {
                           ) : (
                             <span className="text-tertiary text-xs">—</span>
                           )}
-                        </td>
-                        <td className="text-right px-5 py-3 tabular-nums">
-                          {hours != null
-                            ? <span className="font-semibold text-primary">{hours.toFixed(2)}h</span>
-                            : <span className="text-green text-xs">{t('common.active')}</span>}
                         </td>
                       </tr>
                     )
