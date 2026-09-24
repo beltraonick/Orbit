@@ -104,6 +104,16 @@ function useNav() {
     ),
   },
   {
+    label: t('schedule.admin.nav'),
+    mobileLabel: t('schedule.admin.nav'),
+    href: '/admin/schedule',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-[18px] h-[18px]">
+        <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+      </svg>
+    ),
+  },
+  {
     label: t('common.nav.payroll'),
     mobileLabel: t('common.nav.payrollMobile'),
     href: '/admin/payroll',
@@ -207,6 +217,7 @@ const OPERATIONS_HREFS = [
   '/admin/tasks',
   '/admin/members',
   '/admin/team-clock',
+  '/admin/schedule',
   '/admin/time',
   '/admin/photos',
   '/admin/change-orders',
@@ -223,7 +234,16 @@ const TOOLS_HREFS = ['/admin/ai', '/admin/settings']
 
 const SHEET_HREFS = [...OPERATIONS_HREFS, ...FINANCIAL_HREFS, ...TOOLS_HREFS]
 
-export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: SessionUser; pendingCount?: number; auditCount?: number }) {
+export interface SidebarAlerts {
+  /** Employees working today who didn't clock in by the cutoff (9 AM). */
+  notClockedIn?: number
+  /** Day-off requests waiting for an answer. */
+  dayOffRequests?: number
+  /** Pay approvals the admin hasn't looked at yet. */
+  newPayApprovals?: number
+}
+
+export function Sidebar({ user, pendingCount = 0, auditCount = 0, alerts = {} }: { user: SessionUser; pendingCount?: number; auditCount?: number; alerts?: SidebarAlerts }) {
   const pathname = usePathname()
   const { t } = useTranslation()
   const NAV = useNav()
@@ -261,12 +281,18 @@ export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: Sess
   ]
 
   const sheetActive = SHEET_HREFS.some(h => pathname === h || pathname.startsWith(h + '/'))
-  const moreHasBadge = (pendingCount > 0 || auditCount > 0)
+  const notClockedIn = alerts.notClockedIn ?? 0
+  const dayOffRequests = alerts.dayOffRequests ?? 0
+  const newPayApprovals = alerts.newPayApprovals ?? 0
+  const moreHasBadge = (pendingCount > 0 || auditCount > 0 || notClockedIn > 0 || dayOffRequests > 0 || newPayApprovals > 0)
 
   const getBadge = (href: string) => {
     if (href === '/admin/members' && pendingCount > 0) return { count: pendingCount, color: 'brand' }
     if (href === '/admin/approvals' && pendingCount > 0) return { count: pendingCount, color: 'amber' }
     if (href === '/admin/tasks' && auditCount > 0) return { count: auditCount, color: 'amber' }
+    if (href === '/admin/team-clock' && notClockedIn > 0) return { count: notClockedIn, color: 'brand' }
+    if (href === '/admin/schedule' && dayOffRequests > 0) return { count: dayOffRequests, color: 'amber' }
+    if (href === '/admin/payroll' && newPayApprovals > 0) return { count: newPayApprovals, color: 'green' }
     return null
   }
 
@@ -291,6 +317,7 @@ export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: Sess
             const isMembersItem = item.href === '/admin/members'
             const isTasksItem = item.href === '/admin/tasks'
             const isApprovalsItem = item.href === '/admin/approvals'
+            const alertBadge = ['/admin/team-clock', '/admin/schedule', '/admin/payroll'].includes(item.href) ? getBadge(item.href) : null
             return (
               <Link
                 key={item.href}
@@ -318,6 +345,13 @@ export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: Sess
                 {isApprovalsItem && pendingCount > 0 && (
                   <span className="ml-auto min-w-[18px] h-[18px] rounded-full bg-amber text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none">
                     {pendingCount > 99 ? '99+' : pendingCount}
+                  </span>
+                )}
+                {alertBadge && (
+                  <span className={`ml-auto min-w-[18px] h-[18px] rounded-full text-white text-[10px] font-bold flex items-center justify-center px-1 leading-none ${
+                    alertBadge.color === 'brand' ? 'bg-brand' : alertBadge.color === 'green' ? 'bg-green' : 'bg-amber'
+                  }`}>
+                    {alertBadge.count > 99 ? '99+' : alertBadge.count}
                   </span>
                 )}
               </Link>
@@ -489,7 +523,7 @@ export function Sidebar({ user, pendingCount = 0, auditCount = 0 }: { user: Sess
                         {badge && (
                           <span className={[
                             'absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border border-surface',
-                            badge.color === 'brand' ? 'bg-brand' : 'bg-amber',
+                            badge.color === 'brand' ? 'bg-brand' : badge.color === 'green' ? 'bg-green' : 'bg-amber',
                           ].join(' ')} />
                         )}
                       </span>

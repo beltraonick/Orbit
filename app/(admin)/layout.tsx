@@ -10,6 +10,8 @@ import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { SupabaseAuthBridge } from '@/components/SupabaseAuthBridge'
 import { getPendingRequests } from '@/app/actions/membership'
 import { createClient } from '@/lib/supabase/server'
+import { getAttendanceStatus } from '@/app/actions/scheduleActions'
+import { countUnseenPayApprovals } from '@/app/actions/payApprovalActions'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = getCurrentUser()
@@ -24,8 +26,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // browsing would masquerade as this account's real activity.
   if (!getImpersonatorToken()) await touchAccess(user.id, user.company_id)
 
-  const { requests } = await getPendingRequests()
+  const [{ requests }, attendance, newPayApprovals] = await Promise.all([
+    getPendingRequests(),
+    getAttendanceStatus(),
+    countUnseenPayApprovals(),
+  ])
   const pendingCount = requests?.length ?? 0
+  const alerts = {
+    notClockedIn: attendance?.missing.length ?? 0,
+    dayOffRequests: attendance?.pendingRequests ?? 0,
+    newPayApprovals,
+  }
 
   let auditCount = 0
   try {
@@ -49,7 +60,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex h-screen bg-background overflow-hidden">
             <SupabaseAuthBridge />
             <OfflineBanner />
-            <Sidebar user={user} pendingCount={pendingCount} auditCount={auditCount} />
+            <Sidebar user={user} pendingCount={pendingCount} auditCount={auditCount} alerts={alerts} />
             {/* mobile top = 3.5rem + safe-area-top via .pt-safe-header; resets at md */}
             <main className="flex-1 md:ml-[240px] overflow-y-auto pt-safe-header pb-20 md:pb-0">
               {children}
