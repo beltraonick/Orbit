@@ -120,7 +120,27 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
         amount: calc.totalPay,
       }
     })
-    setEntries(built)
+    // Also fetch manual compensations (production pay, bonuses, corrections)
+    const { data: manualData } = await supabase
+      .from('manual_compensations')
+      .select('id, compensation_date, amount, description, category, project:project_id(name)')
+      .eq('person_type', 'employee')
+      .eq('person_id', profileId)
+      .gte('compensation_date', periodStart)
+      .lte('compensation_date', periodEnd)
+      .order('compensation_date', { ascending: false })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const manualEntries: DisplayEntry[] = ((manualData ?? []) as any[]).map(mc => ({
+      id: `mc-${mc.id}`,
+      date: mc.compensation_date,
+      projectName: mc.project?.name ?? mc.description ?? mc.category,
+      hours: null,
+      fullDay: null,
+      amount: Number(mc.amount),
+    }))
+
+    setEntries([...built, ...manualEntries].sort((a, b) => b.date.localeCompare(a.date)))
     setLoading(false)
   }, [profileId, periodStart, periodEnd, dailyRate, hourlyRate, isDailyRate])
 
