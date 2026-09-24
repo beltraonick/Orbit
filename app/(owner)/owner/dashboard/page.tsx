@@ -55,6 +55,11 @@ export default async function OwnerDashboardPage() {
   let totalUsers = 0
   let totalProjects = 0
   let recentActivity: ActivityRow[] = []
+  // Distinguishes "genuinely zero companies" from "the query itself failed"
+  // (e.g. a misconfigured service-role key) — both used to render as the
+  // same silent "No companies yet" empty state, which is exactly what made
+  // an actual configuration problem look like empty data.
+  let loadError = false
 
   if (supabaseReady) {
     try {
@@ -97,8 +102,9 @@ export default async function OwnerDashboardPage() {
         .reduce((sum, c) => sum + (c.plan?.price_cents ?? 0), 0)
       totalUsers = (profileRows ?? []).length
       totalProjects = (projectRows ?? []).length
-    } catch {
-      // silent — falls back to empty state
+    } catch (err) {
+      loadError = true
+      console.error('[owner-dashboard] failed to load companies:', err)
     }
   }
 
@@ -153,6 +159,8 @@ export default async function OwnerDashboardPage() {
       <Card padding="none">
         {!supabaseReady ? (
           <p className="px-5 py-10 text-sm text-secondary text-center">{t(locale, 'owner.dashboard.noSupabase')}</p>
+        ) : loadError ? (
+          <p className="px-5 py-10 text-sm text-danger text-center">{t(locale, 'owner.dashboard.loadError')}</p>
         ) : companies.length === 0 ? (
           <p className="px-5 py-10 text-sm text-secondary text-center">{t(locale, 'owner.dashboard.noCompanies')}</p>
         ) : (
