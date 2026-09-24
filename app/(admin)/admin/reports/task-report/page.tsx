@@ -55,7 +55,7 @@ export default async function TaskReportPage({
   // Fetch all projects for this company so user can select one
   const { data: projects } = await supabase
     .from('projects')
-    .select('id, name, address, description, start_date, end_date, status, cover_photo_path, client_name, progress')
+    .select('id, name, address, description, start_date, end_date, status, cover_photo_path:cover_image_path, client_name, progress')
     .eq('company_id', user.company_id)
     .order('name') as { data: ProjectRow[] | null }
 

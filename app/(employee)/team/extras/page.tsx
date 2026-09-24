@@ -34,9 +34,9 @@ export default async function TeamExtrasPage() {
       profileId = profile.id
 
       const { data: assignments } = await supabase
-        .from('project_employees')
+        .from('project_members')
         .select('project_id, project:project_id(id, name)')
-        .eq('employee_id', profileId)
+        .eq('profile_id', profileId)
 
       projects = (assignments ?? [])
         .map((a: { project: unknown }) => a.project as ExtraProject | null)
