@@ -37,6 +37,16 @@ type RawManualComp = {
   project: { name: string } | null
 }
 
+type RawExpenseReimb = {
+  id: string
+  submitted_by_profile_id: string
+  submitted_by: { full_name: string } | null
+  amount: number
+  expense_date: string
+  description: string
+  project: { name: string } | null
+}
+
 // Freezes a pay period so its numbers can never change again, even if rates,
 // the company Pay System, or the underlying time_entries rows change later.
 // There is deliberately no "un-finalize" — once paid, a period stays exactly
@@ -61,7 +71,7 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
     return { error: 'This period has already been finalized and cannot be finalized again.' }
   }
 
-  const [{ data: entries }, { data: manualComps }] = await Promise.all([
+  const [{ data: entries }, { data: manualComps }, { data: expenseReimbs }] = await Promise.all([
     supabase
       .from('time_entries')
       .select(`
@@ -81,11 +91,21 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
       .is('payroll_period_id', null)
       .gte('compensation_date', periodStart)
       .lte('compensation_date', periodEnd),
+    supabase
+      .from('expenses')
+      .select('id, submitted_by_profile_id, submitted_by:submitted_by_profile_id(full_name), amount, expense_date, description, project:project_id(name)')
+      .eq('company_id', companyId)
+      .eq('expense_type', 'reimbursement')
+      .eq('approval_status', 'approved')
+      .is('payroll_period_id', null)
+      .gte('expense_date', periodStart)
+      .lte('expense_date', periodEnd),
   ])
 
   const rawEntries = (entries ?? []) as unknown as RawEntry[]
   const rawManualComps = (manualComps ?? []) as unknown as RawManualComp[]
-  if (rawEntries.length === 0 && rawManualComps.length === 0) {
+  const rawExpenseReimbs = (expenseReimbs ?? []) as unknown as RawExpenseReimb[]
+  if (rawEntries.length === 0 && rawManualComps.length === 0 && rawExpenseReimbs.length === 0) {
     return { error: 'No time entries or manual compensation found in this period — nothing to finalize.' }
   }
 
@@ -103,6 +123,7 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
       source_type: 'time_entry' as const,
       source_time_entry_id: e.id,
       source_manual_compensation_id: null,
+      source_expense_id: null,
       person_type: e.employee_id ? 'employee' as const : 'worker' as const,
       person_id: (e.employee_id ?? e.worker_id) as string,
       person_name: e.profile?.full_name ?? e.worker?.full_name ?? 'Unknown',
@@ -126,6 +147,7 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
     source_type: 'manual_compensation' as const,
     source_time_entry_id: null,
     source_manual_compensation_id: m.id,
+    source_expense_id: null,
     person_type: m.person_type,
     person_id: m.person_id,
     person_name: m.person_name,
@@ -144,7 +166,31 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
     overtime_pay: 0,
   }))
 
-  const snapshotRows = [...timeEntrySnapshotRows, ...manualCompSnapshotRows]
+  const expenseReimbSnapshotRows = rawExpenseReimbs.map(e => ({
+    company_id: companyId,
+    source_type: 'expense_reimbursement' as const,
+    source_time_entry_id: null,
+    source_manual_compensation_id: null,
+    source_expense_id: e.id,
+    person_type: 'employee' as const,
+    person_id: e.submitted_by_profile_id,
+    person_name: (e.submitted_by as unknown as { full_name: string } | null)?.full_name ?? 'Unknown',
+    entry_date: e.expense_date,
+    project_name: (e.project as unknown as { name: string } | null)?.name ?? null,
+    pay_mode: 'manual' as const,
+    category: null,
+    daily_rate: 0,
+    hourly_rate: 0,
+    hours_worked: null,
+    is_full_day: null,
+    full_day: false,
+    notes: e.description,
+    total_pay: Number(e.amount),
+    overtime_hours: 0,
+    overtime_pay: 0,
+  }))
+
+  const snapshotRows = [...timeEntrySnapshotRows, ...manualCompSnapshotRows, ...expenseReimbSnapshotRows]
   const grandTotal = snapshotRows.reduce((s, r) => s + r.total_pay + r.overtime_pay, 0)
 
   const { data: period, error: periodError } = await supabase
@@ -180,9 +226,18 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
       .in('id', rawManualComps.map(m => m.id))
       .eq('company_id', companyId)
     if (lockErr) {
-      // The period and its snapshot are saved; only the lock on the live
-      // manual-compensation rows failed. Surface it instead of claiming success.
       return { error: 'Payroll was finalized, but manual compensation entries could not be locked. Please contact support.' }
+    }
+  }
+
+  if (rawExpenseReimbs.length > 0) {
+    const { error: lockErr } = await supabase
+      .from('expenses')
+      .update({ payroll_period_id: period.id })
+      .in('id', rawExpenseReimbs.map(e => e.id))
+      .eq('company_id', companyId)
+    if (lockErr) {
+      return { error: 'Payroll was finalized, but expense reimbursement entries could not be locked. Please contact support.' }
     }
   }
 

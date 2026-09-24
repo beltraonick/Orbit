@@ -114,7 +114,25 @@ export async function GET(req: Request) {
   if (start) frozenManualQuery = frozenManualQuery.gte('entry_date', start.toISOString().slice(0, 10))
   if (end) frozenManualQuery = frozenManualQuery.lte('entry_date', end.toISOString().slice(0, 10))
 
-  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }] =
+  let liveReimbQuery = supabase
+    .from('expenses')
+    .select('submitted_by_profile_id, submitted_by:submitted_by_profile_id(full_name), amount, expense_date, description, project:project_id(name)')
+    .eq('company_id', cid)
+    .eq('expense_type', 'reimbursement')
+    .eq('approval_status', 'approved')
+    .is('payroll_period_id', null)
+  if (start) liveReimbQuery = liveReimbQuery.gte('expense_date', start.toISOString().slice(0, 10))
+  if (end) liveReimbQuery = liveReimbQuery.lte('expense_date', end.toISOString().slice(0, 10))
+
+  let frozenReimbQuery = supabase
+    .from('payroll_period_entries')
+    .select('person_name, total_pay, entry_date, notes, project_name')
+    .eq('company_id', cid)
+    .eq('source_type', 'expense_reimbursement')
+  if (start) frozenReimbQuery = frozenReimbQuery.gte('entry_date', start.toISOString().slice(0, 10))
+  if (end) frozenReimbQuery = frozenReimbQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }, { data: liveReimb }, { data: frozenReimb }] =
     await Promise.all([
       supabase.from('companies').select('name').eq('id', cid).single(),
       teQuery,
@@ -123,6 +141,8 @@ export async function GET(req: Request) {
       finalizedQuery,
       liveManualQuery,
       frozenManualQuery,
+      liveReimbQuery,
+      frozenReimbQuery,
     ])
 
   type RawEntry = {
@@ -234,6 +254,21 @@ export async function GET(req: Request) {
     notes: string | null
     project_name: string | null
   }
+  type LiveReimb = {
+    submitted_by_profile_id: string
+    submitted_by: { full_name: string } | null
+    amount: number
+    expense_date: string
+    description: string
+    project: { name: string } | null
+  }
+  type FrozenReimb = {
+    person_name: string
+    total_pay: number
+    entry_date: string
+    notes: string | null
+    project_name: string | null
+  }
   const manualCompensations = [
     ...((liveManual ?? []) as unknown as LiveManual[]).map(m => ({
       full_name: m.person_name,
@@ -250,6 +285,22 @@ export async function GET(req: Request) {
       description: m.notes ?? '',
       project: m.project_name,
       amount: Number(m.total_pay),
+    })),
+    ...((liveReimb ?? []) as unknown as LiveReimb[]).map(r => ({
+      full_name: r.submitted_by?.full_name ?? '—',
+      date: r.expense_date,
+      category: 'reimbursement',
+      description: r.description,
+      project: r.project?.name ?? null,
+      amount: Number(r.amount),
+    })),
+    ...((frozenReimb ?? []) as unknown as FrozenReimb[]).map(r => ({
+      full_name: r.person_name,
+      date: r.entry_date,
+      category: 'reimbursement',
+      description: r.notes ?? '',
+      project: r.project_name,
+      amount: Number(r.total_pay),
     })),
   ]
 

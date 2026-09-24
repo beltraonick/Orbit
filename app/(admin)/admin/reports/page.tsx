@@ -190,8 +190,25 @@ function PayrollReport({ period }: { period: string }) {
     if (start) frozenManualQuery = frozenManualQuery.gte('entry_date', start.toISOString().slice(0, 10))
     if (end) frozenManualQuery = frozenManualQuery.lte('entry_date', end.toISOString().slice(0, 10))
 
-    const [{ data: ents }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }] =
-      await Promise.all([query, frozenQuery, liveManualQuery, frozenManualQuery])
+    let liveReimbQuery = supabase
+      .from('expenses')
+      .select('submitted_by_profile_id, submitted_by:submitted_by_profile_id(full_name), amount')
+      .eq('company_id', companyId)
+      .eq('expense_type', 'reimbursement')
+      .eq('approval_status', 'approved')
+      .is('payroll_period_id', null)
+    if (start) liveReimbQuery = liveReimbQuery.gte('expense_date', start.toISOString().slice(0, 10))
+    if (end) liveReimbQuery = liveReimbQuery.lte('expense_date', end.toISOString().slice(0, 10))
+    let frozenReimbQuery = supabase
+      .from('payroll_period_entries')
+      .select('person_id, person_name, total_pay')
+      .eq('company_id', companyId)
+      .eq('source_type', 'expense_reimbursement')
+    if (start) frozenReimbQuery = frozenReimbQuery.gte('entry_date', start.toISOString().slice(0, 10))
+    if (end) frozenReimbQuery = frozenReimbQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+    const [{ data: ents }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }, { data: liveReimb }, { data: frozenReimb }] =
+      await Promise.all([query, frozenQuery, liveManualQuery, frozenManualQuery, liveReimbQuery, frozenReimbQuery])
     const fetchedEntries = (ents ?? []) as unknown as EntryRow[]
     setEntries(fetchedEntries)
 
@@ -266,6 +283,36 @@ function PayrollReport({ period }: { period: string }) {
       const row = empMap.get(m.person_id)!
       row.manualPay += m.value
       row.totalPay += m.value
+    }
+
+    type ReimbRow = { submitted_by_profile_id?: string; person_id?: string; person_name?: string; submitted_by?: { full_name: string } | null; amount?: number; total_pay?: number }
+    const reimbRows = [
+      ...((liveReimb ?? []) as unknown as ReimbRow[]).map(r => ({
+        person_id: r.submitted_by_profile_id!,
+        person_name: (r.submitted_by as { full_name: string } | null)?.full_name ?? '—',
+        value: Number(r.amount),
+      })),
+      ...((frozenReimb ?? []) as unknown as ReimbRow[]).map(r => ({
+        person_id: r.person_id!,
+        person_name: r.person_name ?? '—',
+        value: Number(r.total_pay),
+      })),
+    ]
+    for (const r of reimbRows) {
+      if (!r.person_id || !Number.isFinite(r.value)) continue
+      if (!empMap.has(r.person_id)) {
+        empMap.set(r.person_id, {
+          personId: r.person_id,
+          full_name: r.person_name || '—',
+          email: '',
+          payMode: 'daily',
+          totalEntries: 0, totalHours: 0, regularHours: 0,
+          overtimeHours: 0, totalDays: 0, totalPay: 0, overtimePay: 0, manualPay: 0,
+        })
+      }
+      const row = empMap.get(r.person_id)!
+      row.manualPay += r.value
+      row.totalPay += r.value
     }
 
     setRows(Array.from(empMap.values()).sort((a, b) => b.totalPay - a.totalPay))
