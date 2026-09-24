@@ -12,7 +12,7 @@ import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
-import { getPeriodRange, loadCompanyPeriodSettings, type PeriodType } from '@/lib/employee-period'
+import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings } from '@/lib/employee-period'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -46,9 +46,9 @@ export default async function EmployeeHomePage() {
   let isDailyMode = false
   let dailyRate = 0
   let hourlyRate = 0
-  let homePeriodType: PeriodType = 'biweekly'
   let periodStartDate: Date | null = null
   let periodEndDate: Date | null = null
+  let awaitingPayment = false
 
   if (supabaseReady) {
     try {
@@ -105,9 +105,6 @@ export default async function EmployeeHomePage() {
             clock_in_window_end: docSettings.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: docSettings.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
           }
-          if (docSettings.home_period_type) {
-            homePeriodType = docSettings.home_period_type as PeriodType
-          }
         }
 
         if (openEntry) {
@@ -117,16 +114,19 @@ export default async function EmployeeHomePage() {
 
         // Same company pay period Admin Payroll uses (type + optional start date).
         const periodSettings = await loadCompanyPeriodSettings(supabase, user.company_id)
-        homePeriodType = periodSettings.periodType
-        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, today, periodSettings.anchor, periodSettings.lag)
+        // The period being paid: an ended, not-yet-finalized cycle comes
+        // first, so Home shows what the employee is about to receive.
+        const { start: periodStart, end: periodEnd } = getPayPeriodRange(periodSettings, today)
         periodStartDate = periodStart
         periodEndDate = periodEnd
+        awaitingPayment = isAwaitingPayment({ end: periodEnd }, today)
 
         const { data: periodEntries } = await supabase
           .from('time_entries')
           .select('clock_in, clock_out, is_full_day')
           .eq('employee_id', profile.id)
           .gte('clock_in', periodStart.toISOString())
+          .lte('clock_in', periodEnd.toISOString())
           .not('clock_out', 'is', null)
 
         const closed = periodEntries ?? []
@@ -322,7 +322,7 @@ export default async function EmployeeHomePage() {
           <p className="text-base font-bold text-primary leading-snug">
             {payPeriodLabel ?? '—'}
           </p>
-          <p className="text-[11px] text-secondary mt-0.5">{t(locale, 'employee.home.currentPeriod')}</p>
+          <p className="text-[11px] text-secondary mt-0.5">{t(locale, awaitingPayment ? 'employee.home.awaitingPayment' : 'employee.home.currentPeriod')}</p>
         </Card>
         <Card padding="sm">
           <p className="text-[10px] text-secondary uppercase tracking-wide mb-1">{daysLabel}</p>

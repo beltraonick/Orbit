@@ -8,8 +8,8 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
 import { finalizePayrollPeriod, getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 import {
-  getPeriodRange,
-  getPreviousPeriodRange,
+  getPayPeriodRange,
+  getPreviousPayPeriodRange,
   loadCompanyPeriodSettings,
   toDateStr,
   type CompanyPeriodSettings,
@@ -118,7 +118,7 @@ export function PayrollManager() {
   const printRef = useRef<HTMLDivElement>(null)
 
   const [tab, setTab] = usePersistentState<'detail' | 'summary' | 'overtime' | 'manual'>('payroll.tab', 'detail', oneOf(['detail', 'summary', 'overtime', 'manual'] as const))
-  const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('last')
+  const [preset, setPreset] = useState<'current' | 'last' | 'custom'>('current')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [rows, setRows] = useState<DayRow[]>([])
@@ -145,6 +145,8 @@ export function PayrollManager() {
   const [finalizedByName, setFinalizedByName] = useState<string | null>(null)
   const [finalizing, setFinalizing] = useState(false)
   const [finalizeError, setFinalizeError] = useState('')
+  // Shown right after "Mark as Paid": which period employees see next.
+  const [nextPeriodNote, setNextPeriodNote] = useState('')
 
   // The company's saved pay period (Settings → Pay Period, or "Save as pay
   // period" below) drives Last/Current Pay Period, the same range employees
@@ -160,15 +162,19 @@ export function PayrollManager() {
 
   const presetRange = (() => {
     if (!periodSettings || preset === 'custom') return null
+    // 'current' = the period being paid (oldest ended, not yet marked paid);
+    // 'last' = the one before it. Same rule employees see on Home/Hours/Pay.
     const r = preset === 'current'
-      ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor, periodSettings.lag)
-      : getPreviousPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor, periodSettings.lag)
+      ? getPayPeriodRange(periodSettings)
+      : getPreviousPayPeriodRange(periodSettings)
     return { start: toDateStr(r.start), end: toDateStr(r.end) }
   })()
   // Remember the last range the admin picked (Last / Current / Custom and the
   // custom dates) so leaving Payroll and coming back keeps it, instead of
   // snapping back to the default. Per browser, per company; best-effort.
-  const rangeKey = `orbit.payroll.range.${companyId}`
+  // v2: "current" now means the period being paid, so a range remembered
+  // under the old meanings (where Bruna used "Last" to reach it) is dropped once.
+  const rangeKey = `orbit.payroll.range.v2.${companyId}`
   const [rangeRestored, setRangeRestored] = useState(false)
   useEffect(() => {
     try {
@@ -196,6 +202,7 @@ export function PayrollManager() {
   // doesn't flash the default period first.
   const periodStart = !rangeRestored ? '' : preset === 'custom' ? customStart : (presetRange?.start ?? '')
   const periodEnd   = !rangeRestored ? '' : preset === 'custom' ? customEnd   : (presetRange?.end ?? '')
+  useEffect(() => { setNextPeriodNote('') }, [periodStart, periodEnd])
 
   // Saves the custom range as the company's recurring pay period: a 7-day
   // range becomes Weekly and a 14-day range Bi-weekly, both starting on the
@@ -224,7 +231,7 @@ export function PayrollManager() {
       setPeriodSaveMsg({ ok: false, text: 'Could not save the pay period. Please try again.' })
       return
     }
-    setPeriodSettings(prev => ({ periodType, anchor: customStart, lag: prev?.lag ?? 0 }))
+    setPeriodSettings(prev => ({ periodType, anchor: customStart, lag: prev?.lag ?? 0, paid: prev?.paid ?? [] }))
     setPreset('current')
     setPeriodSaveMsg({ ok: true, text: `Saved: ${periodType === 'weekly' ? 'weekly' : 'every 2 weeks'}, starting ${fmtDateLong(customStart)}.` })
   }
@@ -415,7 +422,7 @@ export function PayrollManager() {
     if (!periodStart || !periodEnd) return
     const label = `${fmtDateLong(periodStart)} – ${fmtDateLong(periodEnd)}`
     const confirmed = window.confirm(
-      `Finalize payroll for ${label}?\n\nThis locks in today's numbers for this period FOREVER. Later changes to anyone's rate, or to the company's Pay System, will never affect this period again. This cannot be undone.\n\nOnly do this once you've actually paid this period.`
+      `Mark ${label} as PAID?\n\n• Locks this period's numbers forever (later rate or Pay System changes won't affect it). This cannot be undone.\n• Employees will see it under Payroll History as Paid.\n• Home, Hours and Pay move on to the next pay period.\n\nOnly do this once you've actually paid this period.`
     )
     if (!confirmed) return
 
@@ -426,6 +433,13 @@ export function PayrollManager() {
     if (result.error) {
       setFinalizeError(result.error)
       return
+    }
+    if (periodSettings) {
+      // Deliberately not applied to this screen's own range (that would jump
+      // away from the period that was just paid); it takes effect on the
+      // next visit here, and immediately on the employees' screens.
+      const next = getPayPeriodRange({ ...periodSettings, paid: [...periodSettings.paid, { start: periodStart, end: periodEnd }] })
+      setNextPeriodNote(`Employees now see ${fmtDateLong(toDateStr(next.start))} – ${fmtDateLong(toDateStr(next.end))} as their pay period.`)
     }
     await load()
   }
@@ -667,8 +681,8 @@ ${manualOnlySections}
   }
 
   const PRESET_OPTIONS = [
-    { value: 'last',    label: t('admin.payroll.lastQuinzena') },
     { value: 'current', label: t('admin.payroll.currentQuinzena') },
+    { value: 'last',    label: t('admin.payroll.lastQuinzena') },
     { value: 'custom',  label: t('admin.payroll.customPeriod') },
   ]
 
@@ -733,7 +747,7 @@ ${manualOnlySections}
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 flex-shrink-0">
                     <path fillRule="evenodd" d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z" clipRule="evenodd" />
                   </svg>
-                  {finalizing ? 'Finalizing…' : 'Finalize Payroll'}
+                  {finalizing ? 'Saving…' : 'Mark as Paid'}
                 </button>
               )}
             </>
@@ -754,7 +768,8 @@ ${manualOnlySections}
           </svg>
           <p className="text-sm text-green">
             Finalized{finalizedAt ? ` on ${new Date(finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
-            {finalizedByName ? ` by ${finalizedByName}` : ''} — these numbers are locked and will not change even if rates or the Pay System change later.
+            {finalizedByName ? ` by ${finalizedByName}` : ''} — marked as paid. These numbers are locked and will not change even if rates or the Pay System change later.
+            {nextPeriodNote ? ` ${nextPeriodNote}` : ''}
           </p>
         </div>
       )}

@@ -8,7 +8,7 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { calcEntryPay } from '@/lib/payroll-calc'
 import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 import { useCompanyId } from '@/lib/company-context'
-import { getPeriodRange, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
+import { getPayPeriodRange, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -58,7 +58,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
     loadCompanyPeriodSettings(createClient(), companyId).then(setPeriodSettings)
   }, [companyId])
   const currentRange = periodSettings
-    ? getPeriodRange(periodSettings.periodType, new Date(), periodSettings.anchor, periodSettings.lag)
+    ? getPayPeriodRange(periodSettings)
     : null
   const periodStart = preset === 'custom' ? customStart : (currentRange ? toDateStr(currentRange.start) : '')
   const periodEnd = preset === 'custom' ? customEnd : (currentRange ? toDateStr(currentRange.end) : '')
