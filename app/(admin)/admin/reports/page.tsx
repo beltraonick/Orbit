@@ -25,6 +25,8 @@ interface ReportRow {
   totalDays: number
   totalPay: number
   overtimePay: number
+  /** Manual compensation (extra work, bonus, correction, production) — already included in totalPay. */
+  manualPay: number
 }
 
 interface EntryRow {
@@ -171,7 +173,25 @@ function PayrollReport({ period }: { period: string }) {
     if (start) frozenQuery = frozenQuery.gte('entry_date', start.toISOString().slice(0, 10))
     if (end) frozenQuery = frozenQuery.lte('entry_date', end.toISOString().slice(0, 10))
 
-    const [{ data: ents }, { data: frozenEntries }] = await Promise.all([query, frozenQuery])
+    // Manual compensation, same sources as the XLSX export and Payroll:
+    // the live table for unpaid periods, the frozen snapshot once paid.
+    let liveManualQuery = supabase
+      .from('manual_compensations')
+      .select('person_id, person_name, amount')
+      .eq('company_id', companyId)
+      .is('payroll_period_id', null)
+    if (start) liveManualQuery = liveManualQuery.gte('compensation_date', start.toISOString().slice(0, 10))
+    if (end) liveManualQuery = liveManualQuery.lte('compensation_date', end.toISOString().slice(0, 10))
+    let frozenManualQuery = supabase
+      .from('payroll_period_entries')
+      .select('person_id, person_name, total_pay')
+      .eq('company_id', companyId)
+      .eq('source_type', 'manual_compensation')
+    if (start) frozenManualQuery = frozenManualQuery.gte('entry_date', start.toISOString().slice(0, 10))
+    if (end) frozenManualQuery = frozenManualQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+    const [{ data: ents }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }] =
+      await Promise.all([query, frozenQuery, liveManualQuery, frozenManualQuery])
     const fetchedEntries = (ents ?? []) as unknown as EntryRow[]
     setEntries(fetchedEntries)
 
@@ -211,7 +231,7 @@ function PayrollReport({ period }: { period: string }) {
           email: e.profile?.email ?? '',
           payMode: calc.payMode,
           totalEntries: 0, totalHours: 0, regularHours: 0,
-          overtimeHours: 0, totalDays: 0, totalPay: 0, overtimePay: 0,
+          overtimeHours: 0, totalDays: 0, totalPay: 0, overtimePay: 0, manualPay: 0,
         })
       }
       const row = empMap.get(personId)!
@@ -223,6 +243,29 @@ function PayrollReport({ period }: { period: string }) {
       row.totalDays += calc.payMode === 'daily' ? (calc.fullDay ? 1 : 0.5) : 0
       row.totalPay += calc.totalPay + calc.overtimePay
       row.overtimePay += calc.overtimePay
+    }
+
+    type ManualRow = { person_id: string; person_name: string; amount?: number; total_pay?: number }
+    const manualRows = [
+      ...((liveManual ?? []) as unknown as ManualRow[]).map(m => ({ ...m, value: Number(m.amount) })),
+      ...((frozenManual ?? []) as unknown as ManualRow[]).map(m => ({ ...m, value: Number(m.total_pay) })),
+    ]
+    for (const m of manualRows) {
+      if (!m.person_id || !Number.isFinite(m.value)) continue
+      if (!empMap.has(m.person_id)) {
+        // Someone paid only by manual compensation in this period.
+        empMap.set(m.person_id, {
+          personId: m.person_id,
+          full_name: m.person_name || '—',
+          email: '',
+          payMode: 'daily',
+          totalEntries: 0, totalHours: 0, regularHours: 0,
+          overtimeHours: 0, totalDays: 0, totalPay: 0, overtimePay: 0, manualPay: 0,
+        })
+      }
+      const row = empMap.get(m.person_id)!
+      row.manualPay += m.value
+      row.totalPay += m.value
     }
 
     setRows(Array.from(empMap.values()).sort((a, b) => b.totalPay - a.totalPay))
@@ -238,6 +281,7 @@ function PayrollReport({ period }: { period: string }) {
   const grandHours = rows.reduce((s, r) => s + (r.payMode === 'hourly' ? r.totalHours : 0), 0)
   const grandPay = rows.reduce((s, r) => s + r.totalPay, 0)
   const allDaily = rows.length > 0 && rows.every(r => r.payMode === 'daily')
+  const hasManual = rows.some(r => r.manualPay !== 0)
 
   return (
     <>
@@ -312,6 +356,9 @@ function PayrollReport({ period }: { period: string }) {
                       {allDaily ? t('admin.reports.days') : t('admin.reports.regular')}
                     </th>
                     <th className="text-right px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.overtime')}</th>
+                    {hasManual && (
+                      <th className="text-right px-4 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.manual')}</th>
+                    )}
                     <th className="text-right px-5 py-3 text-xs font-medium text-tertiary uppercase tracking-wide">{t('admin.reports.estPay')}</th>
                   </tr>
                 </thead>
@@ -333,6 +380,11 @@ function PayrollReport({ period }: { period: string }) {
                           ? <span className="text-amber">{r.overtimeHours.toFixed(1)}h</span>
                           : <span className="text-tertiary">—</span>}
                       </td>
+                      {hasManual && (
+                        <td className="text-right px-4 py-3 tabular-nums text-secondary">
+                          {r.manualPay !== 0 ? fmt(r.manualPay) : <span className="text-tertiary">—</span>}
+                        </td>
+                      )}
                       <td className="text-right px-5 py-3 font-semibold text-primary tabular-nums">{fmt(r.totalPay)}</td>
                     </tr>
                   ))}
