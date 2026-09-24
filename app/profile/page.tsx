@@ -24,11 +24,15 @@ export default async function ProfilePage() {
   return (
     <LocaleProvider locale={locale}>
       <div className="min-h-screen bg-background">
+        {/* The notch padding sits ABOVE the 56px bar, not inside it: with a
+            fixed h-14 the iPhone safe-area inset (~47px) left ~9px for the
+            buttons, pushing Back under the status bar where it can't be tapped. */}
         <header
-          className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)] flex items-center justify-between px-4 h-14"
+          className="fixed top-0 left-0 right-0 z-40 bg-surface border-b border-[var(--border)]"
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
-          <a href={backHref} className="flex items-center gap-2 text-sm text-secondary hover:text-primary transition-colors">
+          <div className="flex items-center justify-between px-4 h-14">
+          <a href={backHref} className="flex items-center gap-2 text-sm font-medium text-primary min-h-[44px] pr-3">
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
               <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
             </svg>
@@ -36,8 +40,9 @@ export default async function ProfilePage() {
           </a>
           <p className="text-sm font-semibold text-primary">{t(locale, 'profile.header')}</p>
           <LogoutForm>
-            <button type="submit" className="text-xs text-secondary hover:text-danger transition-colors">{t(locale, 'profile.signOut')}</button>
+            <button type="submit" className="text-xs text-secondary hover:text-danger transition-colors min-h-[44px] pl-3">{t(locale, 'profile.signOut')}</button>
           </LogoutForm>
+          </div>
         </header>
 
         <main className="max-w-lg mx-auto px-4 py-6 md:py-8" style={{ paddingTop: 'calc(3.5rem + env(safe-area-inset-top, 0px))' }}>
