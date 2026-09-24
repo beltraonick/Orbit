@@ -121,13 +121,25 @@ export default async function EmployeeHomePage() {
         periodEndDate = periodEnd
         awaitingPayment = isAwaitingPayment({ end: periodEnd }, today)
 
-        const { data: periodEntries } = await supabase
-          .from('time_entries')
-          .select('clock_in, clock_out, is_full_day')
-          .eq('employee_id', profile.id)
-          .gte('clock_in', periodStart.toISOString())
-          .lte('clock_in', periodEnd.toISOString())
-          .not('clock_out', 'is', null)
+        const periodStartISO = periodStart.toISOString().slice(0, 10)
+        const periodEndISO = periodEnd.toISOString().slice(0, 10)
+
+        const [{ data: periodEntries }, { data: manualComps }] = await Promise.all([
+          supabase
+            .from('time_entries')
+            .select('clock_in, clock_out, is_full_day')
+            .eq('employee_id', profile.id)
+            .gte('clock_in', periodStart.toISOString())
+            .lte('clock_in', periodEnd.toISOString())
+            .not('clock_out', 'is', null),
+          supabase
+            .from('manual_compensations')
+            .select('amount')
+            .eq('person_type', 'employee')
+            .eq('person_id', profile.id)
+            .gte('compensation_date', periodStartISO)
+            .lte('compensation_date', periodEndISO),
+        ])
 
         const closed = periodEntries ?? []
         isDailyMode = isDailyPayMode({ daily_rate: profile.daily_rate, hourly_rate: profile.hourly_rate })
@@ -150,6 +162,11 @@ export default async function EmployeeHomePage() {
           periodDays += calc.fullDay ? 1 : 0.5
           periodHours += calc.hoursWorked ?? 0
           periodEarnings += calc.totalPay
+        }
+
+        // Add manual compensations (production pay, bonuses, corrections)
+        for (const mc of manualComps ?? []) {
+          periodEarnings += Number(mc.amount)
         }
       }
     } catch {
