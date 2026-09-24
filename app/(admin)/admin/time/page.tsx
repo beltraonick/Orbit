@@ -13,7 +13,7 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { createManualTimeEntry, supervisorClockOut } from '@/app/actions/workerActions'
 import { TeamClockIn } from '@/app/(employee)/projects/[id]/TeamClockIn'
 import { calcEntryPay } from '@/lib/payroll-calc'
-import { getPeriodRange, getPreviousPeriodRange, loadCompanyPeriodSettings, type CompanyPeriodSettings } from '@/lib/employee-period'
+import { getPayPeriodRange, getPreviousPayPeriodRange, loadCompanyPeriodSettings, type CompanyPeriodSettings } from '@/lib/employee-period'
 import { DEFAULT_CLOCK_WINDOW, zonedTimeToUtc, type ClockWindowSettings } from '@/lib/clock-window'
 import type { Locale } from '@/lib/i18n/translate'
 
@@ -66,8 +66,8 @@ function entryCalc(e: TimeEntry) {
 function filterOptions(t: (key: string) => string) {
   return [
     { value: 'all', label: t('admin.time.allTime') },
-    { value: 'current_period', label: 'Current pay period' },
-    { value: 'last_period', label: 'Last pay period' },
+    { value: 'current_period', label: 'Pay period (to pay)' },
+    { value: 'last_period', label: 'Previous pay period' },
     { value: 'today', label: t('common.today') },
     { value: 'week', label: t('common.thisWeek') },
     { value: 'month', label: t('common.thisMonth') },
@@ -127,8 +127,8 @@ function getRange(filter: string, period: CompanyPeriodSettings | null): { start
   // Same company pay period as Payroll and the employee screens.
   if ((filter === 'current_period' || filter === 'last_period') && period) {
     return filter === 'current_period'
-      ? getPeriodRange(period.periodType, now, period.anchor, period.lag)
-      : getPreviousPeriodRange(period.periodType, now, period.anchor, period.lag)
+      ? getPayPeriodRange(period, now)
+      : getPreviousPayPeriodRange(period, now)
   }
   return null
 }

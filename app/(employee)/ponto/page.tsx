@@ -6,7 +6,7 @@ import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { createClient } from '@/lib/supabase/server'
 import { t } from '@/lib/i18n/translate'
 import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
-import { getPeriodRange, loadCompanyPeriodSettings, type PeriodType } from '@/lib/employee-period'
+import { getPayPeriodRange, loadCompanyPeriodSettings } from '@/lib/employee-period'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -31,29 +31,17 @@ export default async function PontoPage() {
   let isDailyMode = false
   let profileDailyRate: number | null = null
   let profileHourlyRate: number | null = null
-  let homePeriodType: PeriodType = 'biweekly'
   let periodStartDate: Date | null = null
   let periodEndDate: Date | null = null
 
   if (supabaseReady) {
     try {
       const supabase = createClient()
-      const [{ data: profile }, { data: docSettings }] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, daily_rate, hourly_rate')
-          .eq('email', user.email)
-          .maybeSingle(),
-        supabase
-          .from('company_document_settings')
-          .select('home_period_type')
-          .eq('company_id', user.company_id)
-          .maybeSingle(),
-      ])
-
-      if (docSettings?.home_period_type) {
-        homePeriodType = docSettings.home_period_type as PeriodType
-      }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, daily_rate, hourly_rate')
+        .eq('email', user.email)
+        .maybeSingle()
 
       if (profile) {
         isDailyMode = isDailyPayMode({ daily_rate: profile.daily_rate, hourly_rate: profile.hourly_rate })
@@ -72,12 +60,11 @@ export default async function PontoPage() {
         // Same calcEntryPay() Home and Pay use, over the same period Home
         // shows — so Days can't disagree with either.
         const periodSettings = await loadCompanyPeriodSettings(supabase, user.company_id)
-        homePeriodType = periodSettings.periodType
-        const { start: periodStart, end: periodEnd } = getPeriodRange(homePeriodType, new Date(), periodSettings.anchor, periodSettings.lag)
+        const { start: periodStart, end: periodEnd } = getPayPeriodRange(periodSettings)
         periodStartDate = periodStart
         periodEndDate = periodEnd
         for (const e of entries) {
-          if (!e.clock_out || new Date(e.clock_in) < periodStart) continue
+          if (!e.clock_out || new Date(e.clock_in) < periodStart || new Date(e.clock_in) > periodEnd) continue
           const calc = calcEntryPay({
             clock_in: e.clock_in,
             clock_out: e.clock_out,
