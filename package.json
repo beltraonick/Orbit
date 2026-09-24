@@ -22,6 +22,7 @@
     "react-email": "^6.6.5",
     "resend": "^6.16.0",
     "stripe": "^22.3.2",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
@@ -29,6 +30,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/web-push": "^3.6.4",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "playwright": "^1.61.1",

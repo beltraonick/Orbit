@@ -1,5 +1,7 @@
 'use client'
 
+import { notifyTaskAssigned, notifyTasksAssignedBulk } from '@/app/actions/notifications'
+
 import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -311,9 +313,15 @@ export default function TasksPage() {
     if (savedTaskId) {
       writeFailed((await supabase.from('task_assignments').delete().eq('task_id', savedTaskId)).error, 'save your changes')
       if (editAssignees.length > 0) {
-        writeFailed((await supabase.from('task_assignments').insert(
+        const { error: assignErr } = await supabase.from('task_assignments').insert(
           editAssignees.map(a => ({ task_id: savedTaskId, profile_id: a.id }))
-        )).error, 'save your changes')
+        )
+        if (!writeFailed(assignErr, 'save your changes')) {
+          // Only people newly put on this task get a notification.
+          const before = new Set((assigneesMap[savedTaskId] ?? []).map(a => a.id))
+          const added = editAssignees.map(a => a.id).filter(id => !before.has(id))
+          if (added.length > 0) notifyTaskAssigned(savedTaskId, added).catch(() => {})
+        }
       }
     }
 
@@ -397,10 +405,11 @@ export default function TasksPage() {
     const supabase = createClient()
     const projectTaskIds = tasks.filter(t => t.project_id === bulkAssignProject.id).map(t => t.id)
     if (projectTaskIds.length > 0 && bulkAssignEmpId) {
-      writeFailed((await supabase.from('task_assignments').upsert(
+      const { error: bulkErr } = await supabase.from('task_assignments').upsert(
         projectTaskIds.map(tid => ({ task_id: tid, profile_id: bulkAssignEmpId })),
         { onConflict: 'task_id,profile_id' }
-      )).error, 'save your changes')
+      )
+      if (!writeFailed(bulkErr, 'save your changes')) notifyTasksAssignedBulk(bulkAssignEmpId, projectTaskIds).catch(() => {})
     }
     setBulkAssigning(false)
     setBulkAssignProject(null)
@@ -463,10 +472,11 @@ export default function TasksPage() {
     setBulkOperating(true)
     const supabase = createClient()
     if (bulkTargetEmpId) {
-      writeFailed((await supabase.from('task_assignments').upsert(
+      const { error: bulkErr } = await supabase.from('task_assignments').upsert(
         ids.map(id => ({ task_id: id, profile_id: bulkTargetEmpId })),
         { onConflict: 'task_id,profile_id' }
-      )).error, 'save your changes')
+      )
+      if (!writeFailed(bulkErr, 'save your changes')) notifyTasksAssignedBulk(bulkTargetEmpId, ids).catch(() => {})
     }
     setBulkOperating(false)
     setBulkAction(null)

@@ -1,5 +1,7 @@
 'use client'
 
+import { notifyTaskAssigned } from '@/app/actions/notifications'
+
 import { writeFailed } from '@/lib/write-feedback'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -216,12 +218,15 @@ function TaskDrawer({
         .eq('task_id', taskId)
         .in('profile_id', toRemove)).error, 'save your changes')
     }
+    const assignedNow: string[] = []
     for (const profileId of toAdd) {
-      writeFailed((await supabase.from('task_assignments').upsert(
+      const { error: assignErr } = await supabase.from('task_assignments').upsert(
         { task_id: taskId, profile_id: profileId },
         { onConflict: 'task_id,profile_id' }
-      )).error, 'save your changes')
+      )
+      if (!writeFailed(assignErr, 'save your changes')) assignedNow.push(profileId)
     }
+    if (assignedNow.length > 0) notifyTaskAssigned(taskId, assignedNow).catch(() => {})
     setCurrentAssignmentIds(form.assignedIds)
 
     // Upload new photos

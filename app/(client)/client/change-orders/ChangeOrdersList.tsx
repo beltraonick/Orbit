@@ -1,5 +1,7 @@
 'use client'
 
+import { notifyChangeOrderDecision } from '@/app/actions/notifications'
+
 import { writeFailed } from '@/lib/write-feedback'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -49,6 +51,7 @@ export function ChangeOrdersList({
 
     if (!writeFailed(error, status === 'approved' ? 'approve this change order' : 'decline this change order')) {
       setOrders(prev => prev.map(o => (o.id === id ? { ...o, status, client_comment: comment } : o)))
+      notifyChangeOrderDecision(id).catch(() => {})
     }
     setBusyId(null)
   }

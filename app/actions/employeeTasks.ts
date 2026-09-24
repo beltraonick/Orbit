@@ -1,5 +1,6 @@
 'use server'
 
+import { notifyProfiles, companyAdminIds } from '@/lib/push'
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
@@ -93,6 +94,14 @@ export async function updateEmployeeTask(
     task_title: currentTask.title,
     changes,
   })
+
+  if (payload.status === 'completed' && user.company_id) {
+    await notifyProfiles(await companyAdminIds(user.company_id), 'tasks', {
+      title: 'Task completed ✅',
+      body: `${profile.full_name} completed "${currentTask.title}"`,
+      url: `/admin/projects/${currentTask.project_id}`,
+    })
+  }
 
   revalidatePath(`/projects/${currentTask.project_id}`)
   revalidatePath(`/admin/projects/${currentTask.project_id}`)
@@ -248,6 +257,14 @@ export async function updateSupervisorTask(
       changed_by_name: profile.full_name,
       task_title: currentTask.title,
       changes,
+    })
+  }
+
+  if (payload.status === 'completed' && user.company_id) {
+    await notifyProfiles(await companyAdminIds(user.company_id), 'tasks', {
+      title: 'Task completed ✅',
+      body: `${profile.full_name} completed "${currentTask.title}"`,
+      url: `/admin/projects/${currentTask.project_id}`,
     })
   }
 

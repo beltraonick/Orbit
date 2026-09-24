@@ -1,5 +1,7 @@
 'use client'
 
+import { notifyAddedToProjects } from '@/app/actions/notifications'
+
 import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -70,6 +72,8 @@ export default function EmployeesPage() {
   const [resetSuccess, setResetSuccess] = useState(false)
   const [allProjects, setAllProjects] = useState<Project[]>([])
   const [memberProjectIds, setMemberProjectIds] = useState<string[]>([])
+  // Projects the person already had when the form opened — only newly added ones notify.
+  const [origMemberProjectIds, setOrigMemberProjectIds] = useState<string[]>([])
 
   // Bulk pay state
   const [showBulkModal, setShowBulkModal] = useState(false)
@@ -173,6 +177,7 @@ export default function EmployeesPage() {
       .select('project_id')
       .eq('profile_id', emp.id)
     setMemberProjectIds((members ?? []).map((m: { project_id: string }) => m.project_id))
+    setOrigMemberProjectIds((members ?? []).map((m: { project_id: string }) => m.project_id))
     setShowModal(true)
   }
 
@@ -304,6 +309,8 @@ export default function EmployeesPage() {
         load()
         return
       }
+      const newProjects = memberProjectIds.filter(id => !origMemberProjectIds.includes(id))
+      if (newProjects.length > 0) notifyAddedToProjects(editing.id, newProjects).catch(() => {})
     } else {
       const result = await createProfileWithPassword({
         full_name: form.full_name,

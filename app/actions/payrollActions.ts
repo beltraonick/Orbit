@@ -1,5 +1,6 @@
 'use server'
 
+import { notifyProfiles } from '@/lib/push'
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { calcEntryPay } from '@/lib/payroll-calc'
@@ -185,6 +186,20 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
       return { error: 'Payroll was finalized, but manual compensation entries could not be locked. Please contact support.' }
     }
   }
+
+  // Tell each employee (people with a login — not workers) what was paid.
+  const perEmployee = new Map<string, number>()
+  for (const r of snapshotRows) {
+    if (r.person_type === 'employee') perEmployee.set(r.person_id, (perEmployee.get(r.person_id) ?? 0) + r.total_pay + r.overtime_pay)
+  }
+  const fmtDay = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  await Promise.all(Array.from(perEmployee.entries()).map(([personId, amount]) =>
+    notifyProfiles([personId], 'payroll', {
+      title: 'Payment marked as paid 💵',
+      body: `${fmtDay(periodStart)} – ${fmtDay(periodEnd)}: ${amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`,
+      url: '/pagamento',
+    })
+  ))
 
   return { success: true, finalizedAt: period.finalized_at as string, entryCount: snapshotRows.length, grandTotal }
 }

@@ -1,4 +1,4 @@
-const CACHE = 'orbit-v3'
+const CACHE = 'orbit-v4'
 const OFFLINE_ASSETS = ['/', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', e => {
@@ -62,4 +62,35 @@ self.addEventListener('message', e => {
   if (e.data?.type === 'TRIGGER_SYNC') {
     processPhotoQueue()
   }
+})
+
+// ── Push notifications (lib/push.ts sends { title, body, url }) ──────────
+self.addEventListener('push', e => {
+  let data = {}
+  try { data = e.data ? e.data.json() : {} } catch { data = { body: e.data && e.data.text() } }
+  const title = data.title || 'OrbitOps'
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: data.url || '/' },
+    })
+  )
+})
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close()
+  const url = new URL((e.notification.data && e.notification.data.url) || '/', self.location.origin).href
+  e.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const w of wins) {
+      if ('focus' in w) {
+        await w.focus()
+        if ('navigate' in w) return w.navigate(url)
+        return
+      }
+    }
+    return self.clients.openWindow(url)
+  })())
 })
