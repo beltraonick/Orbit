@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { calcEntryPay } from '@/lib/payroll-calc'
 
 const fmt$ = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -68,7 +69,7 @@ export default async function PayrollReceiptPage({
   let teQuery = supabase
     .from('time_entries')
     .select(
-      'employee_id, clock_in, clock_out, profile:employee_id(full_name, daily_rate), project:project_id(name)',
+      'id, employee_id, clock_in, clock_out, is_full_day, profile:employee_id(full_name, daily_rate, hourly_rate), project:project_id(name)',
     )
     .eq('company_id', cid)
     .not('clock_out', 'is', null)
@@ -99,19 +100,56 @@ export default async function PayrollReceiptPage({
   if (start) milQuery = milQuery.gte('trip_date', start.toISOString().slice(0, 10))
   if (end) milQuery = milQuery.lte('trip_date', end.toISOString().slice(0, 10))
 
-  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }] =
+  // Paid (finalized) periods use their frozen rate/day type, same as Reports.
+  let frozenQuery = supabase
+    .from('payroll_period_entries')
+    .select('source_time_entry_id, daily_rate, hourly_rate, hours_worked, is_full_day')
+    .eq('company_id', cid)
+  if (start) frozenQuery = frozenQuery.gte('entry_date', start.toISOString().slice(0, 10))
+  if (end) frozenQuery = frozenQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+  // Manual compensation (extra work, bonus, correction, production): live
+  // table for unpaid periods, frozen snapshot once paid — same as Reports/XLSX.
+  let liveManualQuery = supabase
+    .from('manual_compensations')
+    .select('person_name, amount, description')
+    .eq('company_id', cid)
+    .is('payroll_period_id', null)
+  if (start) liveManualQuery = liveManualQuery.gte('compensation_date', start.toISOString().slice(0, 10))
+  if (end) liveManualQuery = liveManualQuery.lte('compensation_date', end.toISOString().slice(0, 10))
+  let frozenManualQuery = supabase
+    .from('payroll_period_entries')
+    .select('person_name, total_pay, notes')
+    .eq('company_id', cid)
+    .eq('source_type', 'manual_compensation')
+  if (start) frozenManualQuery = frozenManualQuery.gte('entry_date', start.toISOString().slice(0, 10))
+  if (end) frozenManualQuery = frozenManualQuery.lte('entry_date', end.toISOString().slice(0, 10))
+
+  const [{ data: company }, { data: rawEntries }, { data: rawExpenses }, { data: rawMileage }, { data: frozenEntries }, { data: liveManual }, { data: frozenManual }] =
     await Promise.all([
       supabase.from('companies').select('name').eq('id', cid).single(),
       teQuery,
       expQuery,
       milQuery,
+      frozenQuery,
+      liveManualQuery,
+      frozenManualQuery,
     ])
 
   type RawEntry = {
+    id: string
     clock_in: string
     clock_out: string
-    profile: { full_name: string; daily_rate: number } | null
+    is_full_day: boolean | null
+    profile: { full_name: string; daily_rate: number | null; hourly_rate: number | null } | null
     project: { name: string } | null
+  }
+  type FrozenEntry = {
+    source_time_entry_id: string | null
+    daily_rate: number
+    hourly_rate: number
+    hours_worked: number | null
+    is_full_day: boolean | null
   }
   type RawExpense = {
     description: string
@@ -125,14 +163,41 @@ export default async function PayrollReceiptPage({
     employee: { full_name: string } | null
   }
 
-  // Build per-employee payroll map
+  // Build per-employee payroll map — same calcEntryPay() as Payroll,
+  // Reports and the employee Pay screen, so the receipt matches them.
+  const frozenById = new Map(
+    ((frozenEntries ?? []) as unknown as FrozenEntry[])
+      .filter(f => f.source_time_entry_id)
+      .map(f => [f.source_time_entry_id as string, f]),
+  )
   const empPayMap = new Map<string, number>()
   for (const e of (rawEntries ?? []) as unknown as RawEntry[]) {
     const name = e.profile?.full_name ?? '—'
-    const hours = (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 3600000
-    const rate = Number(e.profile?.daily_rate ?? 0)
-    const pay = hours >= 7 ? rate : Math.round((hours / 8) * rate * 100) / 100
-    empPayMap.set(name, (empPayMap.get(name) ?? 0) + pay)
+    const frozen = frozenById.get(e.id)
+    const calc = calcEntryPay({
+      clock_in: e.clock_in,
+      clock_out: e.clock_out,
+      hours_worked: frozen ? frozen.hours_worked : null,
+      is_full_day: frozen ? frozen.is_full_day : e.is_full_day,
+      daily_rate: frozen ? frozen.daily_rate : (e.profile?.daily_rate ?? null),
+      hourly_rate: frozen ? frozen.hourly_rate : (e.profile?.hourly_rate ?? null),
+    })
+    empPayMap.set(name, (empPayMap.get(name) ?? 0) + calc.totalPay + calc.overtimePay)
+  }
+
+  // Per-employee manual compensation lines
+  type ManualLine = { description: string; amount: number }
+  const empManualMap = new Map<string, ManualLine[]>()
+  const manualLines = [
+    ...((liveManual ?? []) as unknown as { person_name: string; amount: number; description: string | null }[])
+      .map(m => ({ name: m.person_name, description: m.description ?? '', amount: Number(m.amount) })),
+    ...((frozenManual ?? []) as unknown as { person_name: string; total_pay: number; notes: string | null }[])
+      .map(m => ({ name: m.person_name, description: m.notes ?? '', amount: Number(m.total_pay) })),
+  ]
+  for (const m of manualLines) {
+    const name = m.name || '—'
+    if (!empManualMap.has(name)) empManualMap.set(name, [])
+    empManualMap.get(name)!.push({ description: m.description, amount: m.amount })
   }
 
   // Build per-employee expense list
@@ -157,11 +222,13 @@ export default async function PayrollReceiptPage({
   // All employee names across payroll + expenses + mileage
   const allNames = Array.from(
     new Set(
-      [...Array.from(empPayMap.keys()), ...Array.from(empExpMap.keys()), ...Array.from(empMilMap.keys())],
+      [...Array.from(empPayMap.keys()), ...Array.from(empManualMap.keys()), ...Array.from(empExpMap.keys()), ...Array.from(empMilMap.keys())],
     ),
   ).sort()
 
-  const totalPayroll = Array.from(empPayMap.values()).reduce((s, v) => s + v, 0)
+  const totalPayroll =
+    Array.from(empPayMap.values()).reduce((s, v) => s + v, 0) +
+    Array.from(empManualMap.values()).flat().reduce((s, m) => s + m.amount, 0)
   const totalReimb =
     Array.from(empExpMap.values()).flat().reduce((s, e) => s + e.amount, 0) +
     Array.from(empMilMap.values()).flat().reduce((s, m) => s + m.amount, 0)
@@ -235,10 +302,12 @@ export default async function PayrollReceiptPage({
         {/* Per-employee sections */}
         {allNames.map(name => {
           const payroll = empPayMap.get(name) ?? 0
+          const manuals = empManualMap.get(name) ?? []
           const exps = empExpMap.get(name) ?? []
           const mils = empMilMap.get(name) ?? []
           const subtotal =
             payroll +
+            manuals.reduce((s, m) => s + m.amount, 0) +
             exps.reduce((s, e) => s + e.amount, 0) +
             mils.reduce((s, m) => s + m.amount, 0)
 
@@ -271,6 +340,14 @@ export default async function PayrollReceiptPage({
                       <td className="px-2 py-1.5" />
                     </tr>
                   )}
+                  {manuals.map((m, i) => (
+                    <tr key={`man-${i}`} className="border-b border-gray-100">
+                      <td className="px-2 py-1.5 text-gray-600">PAYROLL (MANUAL)</td>
+                      <td className="px-2 py-1.5">{m.description || 'Manual compensation'}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{fmt$(m.amount)}</td>
+                      <td className="px-2 py-1.5" />
+                    </tr>
+                  ))}
                   {exps.map((exp, i) => (
                     <tr key={`exp-${i}`} className="border-b border-gray-100">
                       <td className="px-2 py-1.5 text-gray-600">REIMBURSEMENT</td>
