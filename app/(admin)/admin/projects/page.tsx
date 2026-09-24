@@ -2,6 +2,7 @@
 
 import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
 import { checkProjectLimit } from '@/lib/plan-limits'
@@ -156,7 +157,8 @@ function ProjectCard({
         <span className="text-[11px] text-tertiary">
           {new Date(project.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </span>
-        <div className="flex items-center gap-1">
+        {/* relative z-10 keeps the pencil and arrow above the whole-card link below */}
+        <div className="relative z-10 flex items-center gap-1">
           <button
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(project) }}
             className="p-1.5 rounded-button text-tertiary hover:text-primary hover:bg-surface-elevated transition-colors"
@@ -166,7 +168,7 @@ function ProjectCard({
               <path d="M11.013 2.508a1.75 1.75 0 012.475 2.474L5.87 12.6l-3.371.749.749-3.371 7.765-7.47z"/>
             </svg>
           </button>
-          <a
+          <Link
             href={`/admin/projects/${project.id}`}
             className="p-1.5 rounded-button text-tertiary hover:text-brand hover:bg-brand/10 transition-colors"
             title={t('admin.projects.viewDetailTooltip')}
@@ -174,9 +176,16 @@ function ProjectCard({
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
               <path fillRule="evenodd" d="M5.293 2.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L9.586 8 5.293 3.707a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
-          </a>
+          </Link>
         </div>
       </div>
+
+      {/* Makes the whole card open the project, not just the small arrow */}
+      <Link
+        href={`/admin/projects/${project.id}`}
+        aria-label={project.name}
+        className="absolute inset-0 rounded-card"
+      />
     </div>
   )
 }
