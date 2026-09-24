@@ -4,7 +4,6 @@ import { writeFailed } from '@/lib/write-feedback'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createProfileWithPassword, adminSetPassword } from '@/app/actions/admin-users'
-import { createWorker, updateWorker } from '@/app/actions/workerActions'
 import { PERMISSION_KEYS, type EmployeePermissions } from '@/lib/permissions'
 import { useCompanyId } from '@/lib/company-context'
 import { Card } from '@/components/ui/Card'
@@ -38,16 +37,6 @@ const BLANK: Omit<Employee, 'id' | 'created_at'> & { password: string; pay_mode:
 
 interface Project { id: string; name: string }
 
-interface Worker {
-  id: string
-  full_name: string
-  daily_rate: number | null
-  hourly_rate: number | null
-  position: string | null
-  status: string
-}
-
-const WORKER_BLANK = { full_name: '', pay_mode: 'daily' as 'daily' | 'hourly', daily_rate: 0, hourly_rate: 0, position: '', status: 'active' }
 
 export default function EmployeesPage() {
   const { t } = useTranslation()
@@ -80,15 +69,6 @@ export default function EmployeesPage() {
   const [bulkError, setBulkError] = useState('')
   const [bulkSuccess, setBulkSuccess] = useState('')
 
-  // Workers state
-  const [workers, setWorkers] = useState<Worker[]>([])
-  const [showWorkerModal, setShowWorkerModal] = useState(false)
-  const [editingWorker, setEditingWorker] = useState<Worker | null>(null)
-  const [workerForm, setWorkerForm] = useState({ ...WORKER_BLANK })
-  const [workerProjectIds, setWorkerProjectIds] = useState<string[]>([])
-  const [workerSaving, setWorkerSaving] = useState(false)
-  const [workerError, setWorkerError] = useState('')
-
   // Company-level Pay System (Settings → Payroll & Compensation). When set,
   // new employees/workers default to it and skip the per-person Daily/Hourly
   // choice — existing people keep whatever mode they were already saved
@@ -108,17 +88,15 @@ export default function EmployeesPage() {
 
   const load = useCallback(async () => {
     const supabase = createClient()
-    const [{ data: emps }, { data: open }, { data: projs }, { data: wrks }, { data: settings }] = await Promise.all([
+    const [{ data: emps }, { data: open }, { data: projs }, { data: settings }] = await Promise.all([
       supabase.from('profiles').select('*').eq('company_id', companyId).order('full_name'),
       supabase.from('time_entries').select('employee_id').eq('company_id', companyId).is('clock_out', null),
       supabase.from('projects').select('id, name').eq('company_id', companyId).order('name'),
-      supabase.from('workers').select('*').eq('company_id', companyId).order('full_name'),
       supabase.from('company_document_settings').select('pay_system').eq('company_id', companyId).maybeSingle(),
     ])
     setEmployees(emps ?? [])
     setOpenIds(new Set((open ?? []).map((e: { employee_id: string }) => e.employee_id)))
     setAllProjects(projs ?? [])
-    setWorkers(wrks ?? [])
     setPaySystem((settings?.pay_system as 'daily' | 'hourly' | null) ?? null)
     setLoading(false)
   }, [companyId])
@@ -190,71 +168,6 @@ export default function EmployeesPage() {
     setResetPasswordValue('')
   }
 
-  function openAddWorker() {
-    setEditingWorker(null)
-    setWorkerForm({ ...WORKER_BLANK, pay_mode: paySystem ?? WORKER_BLANK.pay_mode })
-    setWorkerProjectIds([])
-    setWorkerError('')
-    setShowWorkerModal(true)
-  }
-
-  async function openEditWorker(w: Worker) {
-    setEditingWorker(w)
-    const isDailyWorker = w.daily_rate != null && Number(w.daily_rate) > 0
-    setWorkerForm({
-      full_name: w.full_name,
-      pay_mode: isDailyWorker ? 'daily' : 'hourly',
-      daily_rate: Number(w.daily_rate ?? 0),
-      hourly_rate: Number(w.hourly_rate ?? 0),
-      position: w.position ?? '',
-      status: w.status,
-    })
-    setWorkerError('')
-    const supabase = createClient()
-    const { data: wp } = await supabase.from('worker_projects').select('project_id').eq('worker_id', w.id)
-    setWorkerProjectIds((wp ?? []).map((r: { project_id: string }) => r.project_id))
-    setShowWorkerModal(true)
-  }
-
-  async function handleWorkerSave(e: React.FormEvent) {
-    e.preventDefault()
-    setWorkerError('')
-    setWorkerSaving(true)
-
-    const workerRate = workerForm.pay_mode === 'daily' ? Number(workerForm.daily_rate) : Number(workerForm.hourly_rate)
-    if (!workerRate || workerRate <= 0) {
-      setWorkerError('Please enter a rate greater than 0.')
-      setWorkerSaving(false)
-      return
-    }
-
-    if (editingWorker) {
-      const res = await updateWorker(editingWorker.id, {
-        full_name: workerForm.full_name,
-        pay_mode: workerForm.pay_mode,
-        daily_rate: workerForm.pay_mode === 'daily' ? Number(workerForm.daily_rate) : null,
-        hourly_rate: workerForm.pay_mode === 'hourly' ? Number(workerForm.hourly_rate) : null,
-        position: workerForm.position || undefined,
-        status: workerForm.status,
-        project_ids: workerProjectIds,
-      })
-      if (res.error) { setWorkerError(res.error); setWorkerSaving(false); return }
-    } else {
-      const res = await createWorker({
-        full_name: workerForm.full_name,
-        pay_mode: workerForm.pay_mode,
-        daily_rate: workerForm.pay_mode === 'daily' ? Number(workerForm.daily_rate) : null,
-        hourly_rate: workerForm.pay_mode === 'hourly' ? Number(workerForm.hourly_rate) : null,
-        position: workerForm.position || undefined,
-        project_ids: workerProjectIds,
-      })
-      if (res.error) { setWorkerError(res.error); setWorkerSaving(false); return }
-    }
-
-    setWorkerSaving(false)
-    setShowWorkerModal(false)
-    load()
-  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -647,159 +560,6 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      {/* Worker Modal */}
-      {showWorkerModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setShowWorkerModal(false)}
-        >
-          <div
-            className="bg-surface rounded-card border border-[var(--border)] w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <h2 className="text-base font-semibold text-primary mb-5">
-                {editingWorker ? t('admin.employees.editWorker') : t('admin.employees.addWorkerTitle')}
-              </h2>
-              <form onSubmit={handleWorkerSave} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <Input
-                      label={t('admin.employees.fullName')}
-                      required
-                      value={workerForm.full_name}
-                      onChange={e => setWorkerForm(f => ({ ...f, full_name: e.target.value }))}
-                    />
-                  </div>
-                  {/* Pay Type toggle — hidden when adding a new worker if the company
-                      already has a Pay System set, so it just follows the org default.
-                      Still shown when editing an existing worker, so an existing
-                      record's mode is never silently changed. */}
-                  {paySystem && !editingWorker ? (
-                    <div className="col-span-2">
-                      <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
-                      <p className="text-sm text-primary">
-                        {paySystem === 'daily' ? t('admin.employees.payTypeDaily') : t('admin.employees.payTypeHourly')}
-                        <span className="text-tertiary text-xs ml-1.5">(company Pay System)</span>
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="col-span-2">
-                      <p className="text-xs font-medium text-secondary mb-2">{t('admin.employees.payTypeLabel')}</p>
-                      <div className="flex rounded-button border border-[var(--border)] overflow-hidden w-full">
-                        <button
-                          type="button"
-                          onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'hourly', daily_rate: 0 }))}
-                          className={`flex-1 px-3 py-2 text-sm transition-colors ${
-                            workerForm.pay_mode === 'hourly'
-                              ? 'bg-brand text-white'
-                              : 'text-secondary hover:text-primary bg-surface'
-                          }`}
-                        >
-                          {t('admin.employees.payTypeHourly')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWorkerForm(f => ({ ...f, pay_mode: 'daily', hourly_rate: 0 }))}
-                          className={`flex-1 px-3 py-2 text-sm transition-colors ${
-                            workerForm.pay_mode === 'daily'
-                              ? 'bg-brand text-white'
-                              : 'text-secondary hover:text-primary bg-surface'
-                          }`}
-                        >
-                          {t('admin.employees.payTypeDaily')}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  {workerForm.pay_mode === 'daily' ? (
-                    <Input
-                      label={t('admin.employees.workerDailyRate')}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      required
-                      placeholder={t('admin.employees.dailyRatePlaceholder')}
-                      value={workerForm.daily_rate || ''}
-                      onChange={e => setWorkerForm(f => ({ ...f, daily_rate: Number(e.target.value) }))}
-                    />
-                  ) : (
-                    <Input
-                      label={t('admin.employees.hourlyRateLabel')}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      required
-                      placeholder="0.00"
-                      value={workerForm.hourly_rate || ''}
-                      onChange={e => setWorkerForm(f => ({ ...f, hourly_rate: Number(e.target.value) }))}
-                    />
-                  )}
-                  <Input
-                    label={t('admin.employees.workerPosition')}
-                    placeholder={t('admin.employees.positionPlaceholder')}
-                    value={workerForm.position}
-                    onChange={e => setWorkerForm(f => ({ ...f, position: e.target.value }))}
-                  />
-                  {editingWorker && (
-                    <div className="col-span-2">
-                      <Select
-                        label={t('admin.employees.status')}
-                        options={[
-                          { value: 'active', label: t('common.active') },
-                          { value: 'archived', label: t('admin.employees.statusArchived') },
-                        ]}
-                        value={workerForm.status}
-                        onChange={e => setWorkerForm(f => ({ ...f, status: e.target.value }))}
-                      />
-                    </div>
-                  )}
-                  <div className="col-span-2 bg-surface-elevated border border-[var(--border)] rounded-input p-3">
-                    <p className="text-xs font-semibold text-secondary mb-1">{t('admin.employees.workerProjects')}</p>
-                    <p className="text-xs text-tertiary mb-2.5">{t('admin.employees.workerProjectsHint')}</p>
-                    {allProjects.length === 0 ? (
-                      <p className="text-xs text-tertiary">{t('admin.employees.noProjectsAvailable')}</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {allProjects.map(proj => (
-                          <label key={proj.id} className="flex items-center gap-2.5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={workerProjectIds.includes(proj.id)}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setWorkerProjectIds(ids => [...ids, proj.id])
-                                } else {
-                                  setWorkerProjectIds(ids => ids.filter(id => id !== proj.id))
-                                }
-                              }}
-                              className="w-4 h-4 rounded accent-brand flex-shrink-0"
-                            />
-                            <span className="text-sm text-primary">{proj.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {workerError && (
-                  <div className="bg-danger/10 border border-danger/20 rounded-input px-4 py-3 text-sm text-danger">
-                    {workerError}
-                  </div>
-                )}
-                <div className="flex gap-3 pt-2">
-                  <Button type="button" variant="secondary" onClick={() => setShowWorkerModal(false)} className="flex-1">
-                    {t('common.cancel')}
-                  </Button>
-                  <Button type="submit" loading={workerSaving} className="flex-1">
-                    {editingWorker ? t('admin.employees.saveChanges') : t('admin.employees.addWorkerTitle')}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Employee Modal */}
       {showModal && (

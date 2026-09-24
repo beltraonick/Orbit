@@ -147,7 +147,6 @@ export default function TimePage() {
   const [clockWindow, setClockWindow] = useState<ClockWindowSettings>(DEFAULT_CLOCK_WINDOW)
   const [empFilter, setEmpFilter] = useState('')
   const [employees, setEmployees] = useState<{ id: string; full_name: string }[]>([])
-  const [workers, setWorkers] = useState<{ id: string; full_name: string }[]>([])
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
   const [now, setNow] = useState(() => new Date())
 
@@ -232,7 +231,7 @@ export default function TimePage() {
     if (range?.end) closedQuery = closedQuery.lte('clock_in', range.end.toISOString())
     if (empFilter) closedQuery = closedQuery.eq('employee_id', empFilter)
 
-    const [activeRes, closedRes, empsRes, wkrsRes, projsRes] = await Promise.all([
+    const [activeRes, closedRes, empsRes, projsRes] = await Promise.all([
       supabase
         .from('time_entries')
         .select(ENTRY_SELECT)
@@ -241,14 +240,12 @@ export default function TimePage() {
         .order('clock_in', { ascending: false }),
       closedQuery,
       supabase.from('profiles').select('id, full_name').eq('company_id', companyId).eq('status', 'active').eq('role', 'employee').order('full_name'),
-      supabase.from('workers').select('id, full_name').eq('company_id', companyId).eq('status', 'active').order('full_name'),
       supabase.from('projects').select('id, name').eq('company_id', companyId).eq('status', 'active').order('name'),
     ])
 
     setActiveEntries((activeRes.data ?? []) as unknown as TimeEntry[])
     setClosedEntries((closedRes.data ?? []) as unknown as TimeEntry[])
     setEmployees(empsRes.data ?? [])
-    setWorkers(wkrsRes.data ?? [])
     setProjects(projsRes.data ?? [])
     setLoading(false)
   }, [filter, empFilter, companyId, periodSettings])

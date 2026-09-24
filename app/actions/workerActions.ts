@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/server'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { revalidatePath } from 'next/cache'
 
-const STANDARD_DAY_HOURS = 8
 
 // ─── Worker CRUD (admin only) ─────────────────────────────────────────────────
 
@@ -248,10 +247,9 @@ export async function getProjectTeamStatus(projectId?: string) {
   if (!isSupervisor && !canCheckinTeam) return { error: 'Not authorized' }
 
   // With no projectId, this is the general company-wide "Team Clock" (the
-  // /team/checkin hub) — every active employee and worker in the company,
+  // /team/checkin hub) — every active employee in the company,
   // not scoped to one job site.
   let members: { profile: Record<string, unknown> }[] = []
-  let workerMembers: { worker: Record<string, unknown> }[] = []
 
   if (projectId) {
     const membersRes = await supabase
@@ -286,11 +284,9 @@ export async function getProjectTeamStatus(projectId?: string) {
   const { data: openEntries } = await openEntriesQuery
 
   type ProfileMember = { id: string; full_name: string; daily_rate: number | null; hourly_rate: number }
-  type WorkerMember  = { id: string; full_name: string; daily_rate: number | null; hourly_rate: number | null }
   type OpenEntry     = { id: string; employee_id: string | null; worker_id: string | null; clock_in: string; notes: string | null }
 
   const profileList: ProfileMember[] = (members ?? []).map((m: Record<string, unknown>) => m.profile as ProfileMember).filter(Boolean)
-  const workerList:  WorkerMember[]  = (workerMembers ?? []).map((m: Record<string, unknown>) => m.worker as WorkerMember).filter(Boolean)
   const entries: OpenEntry[] = (openEntries ?? []) as OpenEntry[]
 
   const team = [
