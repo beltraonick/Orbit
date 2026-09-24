@@ -1,7 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth/session'
-import { createClient } from '@/lib/supabase/server'
+// Legitimately cross-company: the platform owner can open any company's
+// project, so this can't be scoped by the single-company_id JWT claim the
+// regular bridged client sends (null for an owner, so the company-scoped
+// RLS policy silently returns zero rows for every table).
+import { createServiceRoleClient as createClient } from '@/lib/supabase/service-role'
 import { t } from '@/lib/i18n/translate'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
