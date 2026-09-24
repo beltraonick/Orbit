@@ -9,19 +9,13 @@ import { createServiceRoleClient as createClient } from '@/lib/supabase/service-
 import { t } from '@/lib/i18n/translate'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { PhotoThumb } from '../../PhotoThumb'
+import { PhotoGrid } from './PhotoGrid'
 
 const DATE_LOCALE: Record<string, string> = { en: 'en-US', pt: 'pt-BR', es: 'es-ES' }
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
 function photoUrl(path: string) {
   return `${SUPABASE_URL}/storage/v1/object/public/project-photos/${path}`
-}
-
-function photoTagVariant(tag: string): 'green' | 'blue' | 'gray' {
-  if (tag === 'before') return 'gray'
-  if (tag === 'after') return 'green'
-  return 'blue'
 }
 
 function projectStatusVariant(status: string): 'green' | 'blue' | 'gray' | 'amber' {
@@ -131,22 +125,15 @@ export default async function OwnerProjectDetailPage({ params }: { params: { id:
         {!photos || photos.length === 0 ? (
           <p className="px-5 py-8 text-sm text-secondary text-center">{t(locale, 'owner.projectDetail.noPhotos')}</p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 px-5 pb-5">
-            {photos.map(photo => (
-              <a
-                key={photo.id}
-                href={photoUrl(photo.storage_path)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative aspect-square rounded-input overflow-hidden bg-surface-elevated border border-[var(--border)]"
-              >
-                <PhotoThumb src={photoUrl(photo.storage_path)} alt={photo.caption ?? photo.tag} className="w-full h-full object-cover group-hover:opacity-90 transition-opacity" />
-                <span className="absolute bottom-1 left-1">
-                  <Badge variant={photoTagVariant(photo.tag)} className="text-[9px] px-1.5 py-0">{photo.tag}</Badge>
-                </span>
-              </a>
-            ))}
-          </div>
+          <PhotoGrid
+            photos={photos.map(p => ({
+              id: p.id,
+              url: photoUrl(p.storage_path),
+              tag: p.tag,
+              caption: p.caption,
+              createdAt: p.created_at,
+            }))}
+          />
         )}
       </Card>
 
