@@ -298,6 +298,7 @@ export async function updateExpense(
     category_id?: string | null
     project_id?: string | null
     receipt_id?: string | null
+    for_profile_id?: string
   }
 ) {
   const user = getCurrentUser()
@@ -313,13 +314,24 @@ export async function updateExpense(
   if (data.category_id !== undefined) payload.category_id = data.category_id
   if (data.project_id !== undefined) payload.project_id = data.project_id
   if (data.receipt_id !== undefined) payload.receipt_id = data.receipt_id
+  // Admin can reassign an existing reimbursement to the correct employee
+  if ((user.role === 'admin' || user.role === 'owner') && data.for_profile_id) {
+    payload.submitted_by = data.for_profile_id
+    payload.submitted_by_profile_id = data.for_profile_id
+  }
+
+  // Admin reassigning an expense can bypass the draft/needs_review guard —
+  // only the submitted_by fields are changing, not financial data.
+  const statusFilter = (user.role === 'admin' || user.role === 'owner') && data.for_profile_id
+    ? ['draft', 'needs_review', 'submitted', 'approved', 'rejected', 'paid']
+    : ['draft', 'needs_review']
 
   let query = supabase
     .from('expenses')
     .update(payload)
     .eq('id', expenseId)
     .eq('company_id', user.company_id)
-    .in('approval_status', ['draft', 'needs_review'])
+    .in('approval_status', statusFilter)
 
   if (user.role === 'employee') {
     const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
