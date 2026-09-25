@@ -124,7 +124,7 @@ export default async function EmployeeHomePage() {
         const periodStartISO = periodStart.toISOString().slice(0, 10)
         const periodEndISO = periodEnd.toISOString().slice(0, 10)
 
-        const [{ data: periodEntries }, { data: manualComps }] = await Promise.all([
+        const [{ data: periodEntries }, { data: manualComps }, { data: reimbExpenses }] = await Promise.all([
           supabase
             .from('time_entries')
             .select('clock_in, clock_out, is_full_day')
@@ -139,6 +139,16 @@ export default async function EmployeeHomePage() {
             .eq('person_id', profile.id)
             .gte('compensation_date', periodStartISO)
             .lte('compensation_date', periodEndISO),
+          supabase
+            .from('expenses')
+            .select('amount')
+            .eq('company_id', user.company_id)
+            .eq('expense_type', 'reimbursement')
+            .eq('approval_status', 'approved')
+            .eq('submitted_by_profile_id', profile.id)
+            .is('payroll_period_id', null)
+            .gte('expense_date', periodStartISO)
+            .lte('expense_date', periodEndISO),
         ])
 
         const closed = periodEntries ?? []
@@ -167,6 +177,11 @@ export default async function EmployeeHomePage() {
         // Add manual compensations (production pay, bonuses, corrections)
         for (const mc of manualComps ?? []) {
           periodEarnings += Number(mc.amount)
+        }
+
+        // Add approved expense reimbursements
+        for (const r of reimbExpenses ?? []) {
+          periodEarnings += Number(r.amount)
         }
       }
     } catch {

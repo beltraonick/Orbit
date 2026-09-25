@@ -30,6 +30,7 @@ const RECEIPT_BUCKET = 'receipts'
 
 interface Category { id: string; name: string; color: string | null }
 interface Project { id: string; name: string }
+interface Employee { id: string; full_name: string }
 interface Expense {
   id: string
   description: string
@@ -54,6 +55,7 @@ const BLANK_FORM = {
   expense_type: 'reimbursement' as 'company' | 'reimbursement',
   category_id: '',
   project_id: '',
+  for_profile_id: '',
 }
 
 const fmt$ = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -78,6 +80,7 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [filter, setFilter] = usePersistentState<Filter>('expenses.filter', 'all', oneOf(['all', 'pending', 'approved', 'rejected'] as const))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -106,12 +109,20 @@ export default function ExpensesPage() {
     getExpenseCategories().then(r => { if (r.ok) setCategories((r.categories ?? []) as Category[]) })
 
     if (!companyId) return
-    createClient()
+    const supabase = createClient()
+    supabase
       .from('projects')
       .select('id, name')
       .eq('company_id', companyId)
       .order('name')
       .then(({ data }) => setProjects(data ?? []))
+    supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('company_id', companyId)
+      .eq('status', 'active')
+      .order('full_name')
+      .then(({ data }) => setEmployees(data ?? []))
   }, [companyId])
 
   function openAdd() {
@@ -132,6 +143,7 @@ export default function ExpensesPage() {
       expense_type: exp.expense_type,
       category_id: exp.category?.id ?? '',
       project_id: exp.project?.id ?? '',
+      for_profile_id: exp.submitted_by?.id ?? '',
     })
     setErr('')
     setReceiptId(exp.receipt?.id ?? null)
@@ -154,6 +166,7 @@ export default function ExpensesPage() {
       category_id: form.category_id || undefined,
       project_id: form.project_id || undefined,
       receipt_id: receiptId ?? undefined,
+      for_profile_id: form.for_profile_id || undefined,
     }
 
     const res = editing
@@ -467,6 +480,20 @@ export default function ExpensesPage() {
                   ))}
                 </div>
               </div>
+
+              {form.expense_type === 'reimbursement' && employees.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Employee</label>
+                  <select
+                    value={form.for_profile_id}
+                    onChange={ev => setForm(f => ({ ...f, for_profile_id: ev.target.value }))}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="">— Select employee —</option>
+                    {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.full_name}</option>)}
+                  </select>
+                </div>
+              )}
 
               {categories.length > 0 && (
                 <div className="space-y-1.5">

@@ -133,6 +133,7 @@ export async function createExpense(data: {
   category_id?: string
   project_id?: string
   receipt_id?: string
+  for_profile_id?: string
 }) {
   const user = getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
@@ -140,7 +141,7 @@ export async function createExpense(data: {
   const supabase = createClient()
 
   let profile_id: string
-  if (user.role === 'admin') {
+  if (user.role === 'admin' || user.role === 'owner') {
     const profile = await getCallerProfile(supabase, user.email!, user.company_id!)
     if (!profile) return { error: 'Profile not found' }
     profile_id = profile.id
@@ -152,12 +153,19 @@ export async function createExpense(data: {
     profile_id = profile.id
   }
 
+  // When admin creates a reimbursement for a specific employee, use that
+  // employee's profile ID so the expense shows up in their pay history.
+  const targetProfileId =
+    (user.role === 'admin' || user.role === 'owner') && data.for_profile_id
+      ? data.for_profile_id
+      : profile_id
+
   const { data: expense, error } = await supabase
     .from('expenses')
     .insert({
       company_id: user.company_id,
-      submitted_by: profile_id,
-      submitted_by_profile_id: profile_id,
+      submitted_by: targetProfileId,
+      submitted_by_profile_id: targetProfileId,
       description: data.description.trim(),
       amount: data.amount,
       expense_date: data.expense_date,
