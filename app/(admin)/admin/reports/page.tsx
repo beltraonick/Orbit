@@ -79,10 +79,16 @@ function usePeriodOptions() {
     { value: 'month', label: t('common.thisMonth') },
     { value: 'last_month', label: t('admin.reports.periodLastMonth') },
     { value: 'all', label: t('admin.reports.periodAllTime') },
+    { value: 'custom', label: 'Período Personalizado' },
   ]
 }
 
-function getPeriodStart(p: string): Date | null {
+function getPeriodStart(p: string, customStart?: string): Date | null {
+  if (p === 'custom') {
+    if (!customStart) return null
+    const d = new Date(customStart + 'T00:00:00')
+    return isNaN(d.getTime()) ? null : d
+  }
   const now = new Date()
   if (p === 'week') {
     const d = new Date(now); d.setDate(now.getDate() - now.getDay()); d.setHours(0, 0, 0, 0); return d
@@ -99,7 +105,12 @@ function getPeriodStart(p: string): Date | null {
   return null
 }
 
-function getPeriodEnd(p: string): Date | null {
+function getPeriodEnd(p: string, customEnd?: string): Date | null {
+  if (p === 'custom') {
+    if (!customEnd) return null
+    const d = new Date(customEnd + 'T23:59:59')
+    return isNaN(d.getTime()) ? null : d
+  }
   const now = new Date()
   if (p === 'last_week') {
     const d = new Date(now); d.setDate(now.getDate() - now.getDay() - 1); d.setHours(23, 59, 59, 999); return d
@@ -122,7 +133,7 @@ function statusBadge(status: string) {
 
 // ─── Payroll Tab ──────────────────────────────────────────────────────────────
 
-function PayrollReport({ period }: { period: string }) {
+function PayrollReport({ period, customStart, customEnd }: { period: string; customStart?: string; customEnd?: string }) {
   const { t } = useTranslation()
   const companyId = useCompanyId()
   const [rows, setRows] = useState<ReportRow[]>([])
@@ -132,10 +143,11 @@ function PayrollReport({ period }: { period: string }) {
   const [homePeriodType, setHomePeriodType] = useState<PeriodType>('biweekly')
 
   const load = useCallback(async () => {
+    if (period === 'custom' && (!customStart || !customEnd)) return
     setLoading(true)
     const supabase = createClient()
-    const start = getPeriodStart(period)
-    const end = getPeriodEnd(period)
+    const start = getPeriodStart(period, customStart)
+    const end = getPeriodEnd(period, customEnd)
 
     supabase
       .from('company_document_settings')
@@ -317,7 +329,7 @@ function PayrollReport({ period }: { period: string }) {
 
     setRows(Array.from(empMap.values()).sort((a, b) => b.totalPay - a.totalPay))
     setLoading(false)
-  }, [period, companyId])
+  }, [period, customStart, customEnd, companyId])
 
   useEffect(() => { load() }, [load])
 
@@ -509,7 +521,7 @@ function PayrollReport({ period }: { period: string }) {
 
 // ─── Expenses Tab ─────────────────────────────────────────────────────────────
 
-function ExpensesReport({ period }: { period: string }) {
+function ExpensesReport({ period, customStart, customEnd }: { period: string; customStart?: string; customEnd?: string }) {
   const { t } = useTranslation()
   const companyId = useCompanyId()
   const [expenses, setExpenses] = useState<ExpenseRow[]>([])
@@ -518,10 +530,11 @@ function ExpensesReport({ period }: { period: string }) {
   const [searchText, setSearchText] = useState('')
 
   const load = useCallback(async () => {
+    if (period === 'custom' && (!customStart || !customEnd)) return
     setLoading(true)
     const supabase = createClient()
-    const start = getPeriodStart(period)
-    const end = getPeriodEnd(period)
+    const start = getPeriodStart(period, customStart)
+    const end = getPeriodEnd(period, customEnd)
 
     let query = supabase
       .from('expenses')
@@ -536,7 +549,7 @@ function ExpensesReport({ period }: { period: string }) {
     const { data } = await query
     setExpenses((data ?? []) as unknown as ExpenseRow[])
     setLoading(false)
-  }, [period, companyId])
+  }, [period, customStart, customEnd, companyId])
 
   useEffect(() => { load() }, [load])
 
@@ -642,7 +655,7 @@ function ExpensesReport({ period }: { period: string }) {
 
 // ─── Mileage Tab ──────────────────────────────────────────────────────────────
 
-function MileageReport({ period }: { period: string }) {
+function MileageReport({ period, customStart, customEnd }: { period: string; customStart?: string; customEnd?: string }) {
   const { t } = useTranslation()
   const companyId = useCompanyId()
   const [trips, setTrips] = useState<MileageRow[]>([])
@@ -650,10 +663,11 @@ function MileageReport({ period }: { period: string }) {
   const [employeeFilter, setEmployeeFilter] = useState('')
 
   const load = useCallback(async () => {
+    if (period === 'custom' && (!customStart || !customEnd)) return
     setLoading(true)
     const supabase = createClient()
-    const start = getPeriodStart(period)
-    const end = getPeriodEnd(period)
+    const start = getPeriodStart(period, customStart)
+    const end = getPeriodEnd(period, customEnd)
 
     let query = supabase
       .from('mileage_trips')
@@ -668,7 +682,7 @@ function MileageReport({ period }: { period: string }) {
     const { data } = await query
     setTrips((data ?? []) as unknown as MileageRow[])
     setLoading(false)
-  }, [period, companyId])
+  }, [period, customStart, customEnd, companyId])
 
   useEffect(() => { load() }, [load])
 
@@ -769,8 +783,10 @@ type ReportTab = 'payroll' | 'expenses' | 'mileage'
 export default function ReportsPage() {
   const { t } = useTranslation()
   const PERIOD_OPTIONS = usePeriodOptions()
-  const [period, setPeriod] = usePersistentState<string>('reports.period', 'all', oneOf(['week', 'last_week', 'month', 'last_month', 'all'] as const))
+  const [period, setPeriod] = usePersistentState<string>('reports.period', 'all', oneOf(['week', 'last_week', 'month', 'last_month', 'all', 'custom'] as const))
   const [tab, setTab] = usePersistentState<ReportTab>('reports.tab', 'payroll', oneOf(['payroll', 'expenses', 'mileage'] as const))
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd, setCustomEnd] = useState('')
   const [exportingXLSX, setExportingXLSX] = useState(false)
 
   function printPage() { window.print() }
@@ -805,13 +821,30 @@ export default function ReportsPage() {
           <p className="text-sm text-secondary mt-1">{t('admin.reports.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="w-40">
+          <div className="w-44">
             <Select
               options={PERIOD_OPTIONS}
               value={period}
               onChange={e => setPeriod(e.target.value)}
             />
           </div>
+          {period === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customStart}
+                onChange={e => setCustomStart(e.target.value)}
+                className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-button bg-surface text-primary"
+              />
+              <span className="text-xs text-secondary">até</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={e => setCustomEnd(e.target.value)}
+                className="px-2 py-1.5 text-xs border border-[var(--border)] rounded-button bg-surface text-primary"
+              />
+            </div>
+          )}
           <button
             onClick={handleExportXLSX}
             disabled={exportingXLSX}
@@ -860,9 +893,9 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {tab === 'payroll' && <PayrollReport period={period} />}
-      {tab === 'expenses' && <ExpensesReport period={period} />}
-      {tab === 'mileage' && <MileageReport period={period} />}
+      {tab === 'payroll' && <PayrollReport period={period} customStart={customStart} customEnd={customEnd} />}
+      {tab === 'expenses' && <ExpensesReport period={period} customStart={customStart} customEnd={customEnd} />}
+      {tab === 'mileage' && <MileageReport period={period} customStart={customStart} customEnd={customEnd} />}
     </div>
   )
 }
