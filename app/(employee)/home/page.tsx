@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { t } from '@/lib/i18n/translate'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
-import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
+import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/lib/clock-window'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
 import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings } from '@/lib/employee-period'
@@ -38,6 +38,8 @@ export default async function EmployeeHomePage() {
   let isSupervisor = false
   let canSelfClock = true
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
+  let geofenceEnabled = false
+  let jobSites: JobSite[] = []
   let periodDays = 0
   let fullDaysCount = 0
   let halfDaysCount = 0
@@ -81,7 +83,7 @@ export default async function EmployeeHomePage() {
         const perms = profile.permissions as EmployeePermissions | null
         canSelfClock = user.role === 'admin' || perms?.self_clockin !== false
 
-        const [{ data: openEntry }, { data: docSettings }] = await Promise.all([
+        const [{ data: openEntry }, { data: docSettings }, { data: jobSitesData }] = await Promise.all([
           supabase
             .from('time_entries')
             .select('id, clock_in')
@@ -92,9 +94,14 @@ export default async function EmployeeHomePage() {
             .maybeSingle(),
           supabase
             .from('company_document_settings')
-            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type')
+            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type, geofence_enabled')
             .eq('company_id', user.company_id)
             .maybeSingle(),
+          supabase
+            .from('job_sites')
+            .select('id, name, latitude, longitude, radius_meters')
+            .eq('company_id', user.company_id)
+            .eq('active', true),
         ])
 
         if (docSettings) {
@@ -105,6 +112,10 @@ export default async function EmployeeHomePage() {
             clock_in_window_end: docSettings.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: docSettings.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
           }
+          geofenceEnabled = docSettings.geofence_enabled ?? false
+        }
+        if (jobSitesData) {
+          jobSites = jobSitesData
         }
 
         if (openEntry) {
@@ -343,6 +354,8 @@ export default async function EmployeeHomePage() {
             isSupervisor={isSupervisor}
             clockWindow={clockWindow}
             canSelfClock={canSelfClock}
+            geofenceEnabled={geofenceEnabled}
+            jobSites={jobSites}
           />
         ) : (
           <div className="flex flex-col items-center gap-4 py-2">

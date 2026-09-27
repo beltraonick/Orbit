@@ -387,6 +387,11 @@ export default function SettingsPage() {
   const [clockWindowSaving, setClockWindowSaving] = useState(false)
   const [clockWindowSaved, setClockWindowSaved] = useState(false)
 
+  // Geofencing state
+  const [geofenceEnabled, setGeofenceEnabled] = useState(false)
+  const [geofenceSaving, setGeofenceSaving] = useState(false)
+  const [geofenceSaved, setGeofenceSaved] = useState(false)
+
   // Dashboard period state
   const [homePeriodType, setHomePeriodType] = useState<'weekly' | 'biweekly' | 'monthly'>('biweekly')
   const [homePeriodLoading, setHomePeriodLoading] = useState(true)
@@ -459,7 +464,7 @@ export default function SettingsPage() {
       })
     supabase
       .from('company_document_settings')
-      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type, pay_system')
+      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type, pay_system, geofence_enabled')
       .eq('company_id', companyId)
       .maybeSingle()
       .then(({ data }) => {
@@ -471,6 +476,7 @@ export default function SettingsPage() {
             clock_in_window_end: data.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: data.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
           })
+          setGeofenceEnabled(data.geofence_enabled ?? false)
           if (data.home_period_type) {
             setHomePeriodType(data.home_period_type as 'weekly' | 'biweekly' | 'monthly')
           }
@@ -557,6 +563,17 @@ export default function SettingsPage() {
     if (!ok) return
     setClockWindowSaved(true)
     setTimeout(() => setClockWindowSaved(false), 2500)
+  }
+
+  async function handleSaveGeofence(e: React.FormEvent) {
+    e.preventDefault()
+    if (!companyId) return
+    setGeofenceSaving(true)
+    const ok = await saveDocSettings('geofence', { geofence_enabled: geofenceEnabled })
+    setGeofenceSaving(false)
+    if (!ok) return
+    setGeofenceSaved(true)
+    setTimeout(() => setGeofenceSaved(false), 2500)
   }
 
   async function handleSaveHomePeriod(e: React.FormEvent) {
@@ -977,6 +994,54 @@ export default function SettingsPage() {
               )}
             </div>
           </form>
+        </Card>
+      </Section>
+
+      {/* Geofencing */}
+      <Section title="Location Restriction (Geofencing)">
+        <Card>
+          <form onSubmit={handleSaveGeofence} className="space-y-4">
+            <p className="text-xs text-secondary">
+              Optional — off by default. When on, employees can only clock <em>themselves</em> in
+              while their phone GPS is within range of a job site you have added. Supervisors/admins
+              clocking a team member in via the Team Clock tool are never restricted by this.
+            </p>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={geofenceEnabled}
+                onChange={e => setGeofenceEnabled(e.target.checked)}
+                className="w-4 h-4 rounded accent-brand"
+              />
+              <span className="text-sm text-primary">Restrict clock-in to authorized job sites</span>
+            </label>
+            <div className="pt-1 flex items-center gap-3">
+              <Button
+                type="submit"
+                variant="secondary"
+                loading={geofenceSaving}
+                disabled={geofenceSaving}
+              >
+                {t('common.saveChanges')}
+              </Button>
+              {saveErrors.geofence && <span className="text-xs text-danger">{saveErrors.geofence}</span>}
+              {geofenceSaved && (
+                <span className="text-xs text-green">✓ {t('admin.settings.settingsSaved')}</span>
+              )}
+            </div>
+          </form>
+          <div className="mt-4 pt-4 border-t border-[var(--border)]">
+            <a
+              href="/admin/settings/job-sites"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+            >
+              Manage Job Sites
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
+            </a>
+            <p className="text-xs text-secondary mt-1">Add named locations with a GPS coordinate and radius.</p>
+          </div>
         </Card>
       </Section>
 

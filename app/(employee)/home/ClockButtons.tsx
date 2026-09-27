@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { queueIfOffline } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/Button'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-import { localDateTimeParts, isWithinWindow, DEFAULT_CLOCK_WINDOW, type ClockWindowSettings } from '@/lib/clock-window'
+import { localDateTimeParts, isWithinWindow, haversineDistance, DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/lib/clock-window'
 
 interface ClockButtonsProps {
   employeeId: string
@@ -16,6 +16,8 @@ interface ClockButtonsProps {
   isSupervisor?: boolean
   clockWindow?: ClockWindowSettings
   canSelfClock?: boolean
+  geofenceEnabled?: boolean
+  jobSites?: JobSite[]
 }
 
 function formatElapsed(iso: string) {
@@ -72,6 +74,8 @@ export function ClockButtons({
   isSupervisor = false,
   clockWindow = DEFAULT_CLOCK_WINDOW,
   canSelfClock = true,
+  geofenceEnabled = false,
+  jobSites = [],
 }: ClockButtonsProps) {
   const router = useRouter()
   const { t } = useTranslation()
@@ -130,6 +134,23 @@ export function ClockButtons({
 
     const loc = await getLocation()
     setLocationInfo(loc?.city ? `${loc.city}, ${loc.state}` : '')
+
+    // Geofence check — supervisors/admins bypass (same pattern as clock window).
+    if (geofenceEnabled && !isSupervisor && jobSites.length > 0) {
+      if (!loc) {
+        setClockError('Location access is required to clock in at this company. Please allow location and try again.')
+        setLoading(false)
+        return
+      }
+      const withinSite = jobSites.some(
+        s => haversineDistance(loc.latitude, loc.longitude, s.latitude, s.longitude) <= s.radius_meters
+      )
+      if (!withinSite) {
+        setClockError('You are not at an authorized job site. Move closer to a job site and try again.')
+        setLoading(false)
+        return
+      }
+    }
 
     const entryId = newId()
     const clockInIso = new Date().toISOString()
