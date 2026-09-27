@@ -1,4 +1,4 @@
-const CACHE = 'orbit-v3'
+const CACHE = 'orbit-v4'
 const OFFLINE_ASSETS = ['/', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', e => {
