@@ -1,0 +1,22 @@
+name: Auto Clock-Out
+
+on:
+  schedule:
+    # Runs every hour at :00. GitHub Actions free tier supports this.
+    - cron: '0 * * * *'
+  workflow_dispatch: # allow manual trigger from GitHub UI
+
+jobs:
+  clockout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call auto clock-out endpoint
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://orbitconstructions.vercel.app/api/cron/auto-clockout)
+          echo "Response: $response"
+          if [ "$response" != "200" ]; then
+            echo "Unexpected status code: $response"
+            exit 1
+          fi
