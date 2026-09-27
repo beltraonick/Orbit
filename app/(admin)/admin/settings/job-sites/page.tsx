@@ -28,12 +28,14 @@ export default function JobSitesPage() {
 
   // New site form
   const [name, setName] = useState('')
+  const [address, setAddress] = useState('')
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
   const [radius, setRadius] = useState(String(DEFAULT_RADIUS))
   const [addError, setAddError] = useState('')
   const [adding, setAdding] = useState(false)
   const [gettingLocation, setGettingLocation] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
 
   const load = useCallback(async () => {
     if (!companyId) return
@@ -57,8 +59,7 @@ export default function JobSitesPage() {
     const lngNum = parseFloat(lng)
     const radiusNum = parseInt(radius, 10)
     if (!name.trim()) { setAddError('Name is required.'); return }
-    if (isNaN(latNum) || latNum < -90 || latNum > 90) { setAddError('Enter a valid latitude (-90 to 90).'); return }
-    if (isNaN(lngNum) || lngNum < -180 || lngNum > 180) { setAddError('Enter a valid longitude (-180 to 180).'); return }
+    if (isNaN(latNum) || isNaN(lngNum)) { setAddError('Search for an address or use your current location first.'); return }
     if (isNaN(radiusNum) || radiusNum < 10 || radiusNum > 50000) { setAddError('Radius must be between 10 and 50 000 metres.'); return }
 
     setAdding(true)
@@ -73,8 +74,27 @@ export default function JobSitesPage() {
     })
     setAdding(false)
     if (error) { setAddError('Could not save. Please try again.'); return }
-    setName(''); setLat(''); setLng(''); setRadius(String(DEFAULT_RADIUS))
+    setName(''); setAddress(''); setLat(''); setLng(''); setRadius(String(DEFAULT_RADIUS))
     load()
+  }
+
+  async function geocodeAddress() {
+    if (!address.trim()) { setAddError('Enter an address to search.'); return }
+    setGeocoding(true)
+    setAddError('')
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address.trim())}&format=json&limit=1`,
+        { headers: { 'Accept-Language': 'en' } }
+      )
+      const data = await res.json()
+      if (!data.length) { setAddError('Address not found. Try a more specific address.'); setGeocoding(false); return }
+      setLat(parseFloat(data[0].lat).toFixed(7))
+      setLng(parseFloat(data[0].lon).toFixed(7))
+    } catch {
+      setAddError('Could not search for address. Check your connection.')
+    }
+    setGeocoding(false)
   }
 
   function useMyLocation() {
@@ -85,9 +105,10 @@ export default function JobSitesPage() {
       pos => {
         setLat(pos.coords.latitude.toFixed(7))
         setLng(pos.coords.longitude.toFixed(7))
+        setAddress('')
         setGettingLocation(false)
       },
-      () => { setAddError('Could not get your location. Please enter coordinates manually.'); setGettingLocation(false) },
+      () => { setAddError('Could not get your location. Please try entering an address.'); setGettingLocation(false) },
       { timeout: 10000, enableHighAccuracy: true }
     )
   }
@@ -131,23 +152,31 @@ export default function JobSitesPage() {
             onChange={e => setName(e.target.value)}
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Latitude"
-              placeholder="e.g. 40.7128"
-              value={lat}
-              onChange={e => setLat(e.target.value)}
-              type="text"
-              inputMode="decimal"
-            />
-            <Input
-              label="Longitude"
-              placeholder="e.g. -74.0060"
-              value={lng}
-              onChange={e => setLng(e.target.value)}
-              type="text"
-              inputMode="decimal"
-            />
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-secondary">Address</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={address}
+                onChange={e => { setAddress(e.target.value); setLat(''); setLng('') }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); geocodeAddress() } }}
+                placeholder="e.g. 123 Main St, Beckley, WV"
+                className="h-11 flex-1 rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={geocodeAddress}
+                disabled={geocoding || !address.trim()}
+                className="h-11 px-4 rounded-input bg-brand text-white text-sm font-medium disabled:opacity-50 transition-opacity flex-shrink-0"
+              >
+                {geocoding ? '…' : 'Search'}
+              </button>
+            </div>
+            {lat && lng && (
+              <p className="text-xs text-secondary">
+                📍 {parseFloat(lat).toFixed(5)}, {parseFloat(lng).toFixed(5)}
+              </p>
+            )}
           </div>
 
           <button
