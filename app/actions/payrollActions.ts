@@ -3,6 +3,7 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { calcEntryPay } from '@/lib/payroll-calc'
+import { reimbursementWindowStart } from '@/lib/reimbursement-window'
 
 function toISO(dateStr: string) {
   return new Date(dateStr + 'T00:00:00').toISOString()
@@ -71,6 +72,9 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
     return { error: 'This period has already been finalized and cannot be finalized again.' }
   }
 
+  // Same window Payroll and the Pay screen show — see lib/reimbursement-window.ts.
+  const reimbFrom = await reimbursementWindowStart(supabase, companyId, periodStart)
+
   const [{ data: entries }, { data: manualComps }, { data: expenseReimbs }] = await Promise.all([
     supabase
       .from('time_entries')
@@ -98,7 +102,7 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
       .eq('expense_type', 'reimbursement')
       .eq('approval_status', 'approved')
       .is('payroll_period_id', null)
-      .gte('expense_date', periodStart)
+      .gte('expense_date', reimbFrom)
       .lte('expense_date', periodEnd),
   ])
 

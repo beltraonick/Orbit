@@ -10,6 +10,7 @@ import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 import { useCompanyId } from '@/lib/company-context'
 import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
 import { PayApprovalCard } from './PayApprovalCard'
+import { reimbursementWindowStart } from '@/lib/reimbursement-window'
 
 const fmt = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
@@ -136,6 +137,8 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
       .order('compensation_date', { ascending: false })
 
     // Also fetch approved reimbursement expenses not yet locked into a payroll period
+    // (same window Payroll shows and Finalize locks — see lib/reimbursement-window.ts)
+    const reimbFrom = await reimbursementWindowStart(supabase, companyId, periodStart)
     const { data: reimbData } = await supabase
       .from('expenses')
       .select('id, expense_date, amount, description, project:project_id(name)')
@@ -143,7 +146,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
       .eq('expense_type', 'reimbursement')
       .eq('approval_status', 'approved')
       .is('payroll_period_id', null)
-      .gte('expense_date', periodStart)
+      .gte('expense_date', reimbFrom)
       .lte('expense_date', periodEnd)
       .order('expense_date', { ascending: false })
 
@@ -171,7 +174,7 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
 
     setEntries([...built, ...manualEntries, ...reimbEntries].sort((a, b) => b.date.localeCompare(a.date)))
     setLoading(false)
-  }, [profileId, periodStart, periodEnd, dailyRate, hourlyRate, isDailyRate])
+  }, [profileId, periodStart, periodEnd, dailyRate, hourlyRate, isDailyRate, companyId])
 
   useEffect(() => { load() }, [load])
 

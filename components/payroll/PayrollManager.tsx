@@ -16,6 +16,7 @@ import {
 } from '@/lib/employee-period'
 import { createManualCompensation, deleteManualCompensation, listManualCompensations, type CompensationCategory } from '@/app/actions/manualCompensationActions'
 import { getPayApprovals, type PayApproval } from '@/app/actions/payApprovalActions'
+import { reimbursementWindowStart } from '@/lib/reimbursement-window'
 import { PayApprovalsPanel, approvalStatus, type ApprovalPerson } from './PayApprovalsPanel'
 
 const fmt$ = (n: number) =>
@@ -331,6 +332,8 @@ export function PayrollManager() {
     }
 
     const supabase = createClient()
+    // Same window Finalize Payroll locks — see lib/reimbursement-window.ts.
+    const reimbFrom = await reimbursementWindowStart(supabase, companyId, periodStart)
 
     const [{ data: entries }, { data: expenseReimbs }] = await Promise.all([
       supabase
@@ -353,7 +356,7 @@ export function PayrollManager() {
         .eq('expense_type', 'reimbursement')
         .eq('approval_status', 'approved')
         .is('payroll_period_id', null)
-        .gte('expense_date', periodStart)
+        .gte('expense_date', reimbFrom)
         .lte('expense_date', periodEnd)
         .order('expense_date', { ascending: true }),
     ])
