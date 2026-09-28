@@ -107,7 +107,7 @@ export default function JobSitesPage() {
         setSuggestions(items)
         setShowSuggestions(items.length > 0)
       } catch { /* ignore */ }
-    }, 350)
+    }, 150)
   }
 
   function pickSuggestion(s: { label: string; lat: number; lng: number }) {
