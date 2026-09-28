@@ -84,6 +84,9 @@ export default async function PayrollReceiptPage({
       'description, amount, approval_status, submitted_by:submitted_by_profile_id(full_name)',
     )
     .eq('company_id', cid)
+    // Only money owed back to the employee — company-card purchases were
+    // never paid by them. Same rule as Payroll and the Pay screen.
+    .eq('expense_type', 'reimbursement')
     .eq('approval_status', 'approved')
     .limit(1000)
   if (start) expQuery = expQuery.gte('expense_date', start.toISOString().slice(0, 10))
