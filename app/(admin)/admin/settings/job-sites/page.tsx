@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -36,6 +36,14 @@ export default function JobSitesPage() {
   const [adding, setAdding] = useState(false)
   const [gettingLocation, setGettingLocation] = useState(false)
   const [geocoding, setGeocoding] = useState(false)
+  const [suggestions, setSuggestions] = useState<{ label: string; lat: number; lng: number }[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Inline radius editing
+  const [editingRadiusId, setEditingRadiusId] = useState<string | null>(null)
+  const [editingRadiusValue, setEditingRadiusValue] = useState('')
+  const [savingRadiusId, setSavingRadiusId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!companyId) return
@@ -78,19 +86,51 @@ export default function JobSitesPage() {
     load()
   }
 
+  function onAddressChange(value: string) {
+    setAddress(value)
+    setLat('')
+    setLng('')
+    setSuggestions([])
+    if (suggestTimer.current) clearTimeout(suggestTimer.current)
+    if (value.trim().length < 3) { setShowSuggestions(false); return }
+    suggestTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(value.trim())}&limit=5&lang=en`
+        )
+        const data = await res.json()
+        const items = (data.features ?? []).map((f: { geometry: { coordinates: [number, number] }; properties: { name?: string; street?: string; housenumber?: string; city?: string; state?: string; country?: string } }) => {
+          const p = f.properties
+          const parts = [p.name, p.street && p.housenumber ? `${p.street} ${p.housenumber}` : p.street, p.city, p.state, p.country].filter(Boolean)
+          return { label: parts.join(', '), lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] }
+        })
+        setSuggestions(items)
+        setShowSuggestions(items.length > 0)
+      } catch { /* ignore */ }
+    }, 350)
+  }
+
+  function pickSuggestion(s: { label: string; lat: number; lng: number }) {
+    setAddress(s.label)
+    setLat(s.lat.toFixed(7))
+    setLng(s.lng.toFixed(7))
+    setSuggestions([])
+    setShowSuggestions(false)
+  }
+
   async function geocodeAddress() {
     if (!address.trim()) { setAddError('Enter an address to search.'); return }
     setGeocoding(true)
     setAddError('')
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address.trim())}&format=json&limit=1`,
-        { headers: { 'Accept-Language': 'en' } }
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(address.trim())}&limit=1&lang=en`
       )
       const data = await res.json()
-      if (!data.length) { setAddError('Address not found. Try a more specific address.'); setGeocoding(false); return }
-      setLat(parseFloat(data[0].lat).toFixed(7))
-      setLng(parseFloat(data[0].lon).toFixed(7))
+      if (!data.features?.length) { setAddError('Address not found. Try a more specific address.'); setGeocoding(false); return }
+      const f = data.features[0]
+      setLat(f.geometry.coordinates[1].toFixed(7))
+      setLng(f.geometry.coordinates[0].toFixed(7))
     } catch {
       setAddError('Could not search for address. Check your connection.')
     }
@@ -117,6 +157,17 @@ export default function JobSitesPage() {
     const supabase = createClient()
     await supabase.from('job_sites').update({ active: !active }).eq('id', id)
     setSites(prev => prev.map(s => s.id === id ? { ...s, active: !active } : s))
+  }
+
+  async function saveRadius(id: string) {
+    const r = parseInt(editingRadiusValue, 10)
+    if (isNaN(r) || r < 10 || r > 50000) return
+    setSavingRadiusId(id)
+    const supabase = createClient()
+    await supabase.from('job_sites').update({ radius_meters: r }).eq('id', id)
+    setSites(prev => prev.map(s => s.id === id ? { ...s, radius_meters: r } : s))
+    setSavingRadiusId(null)
+    setEditingRadiusId(null)
   }
 
   async function handleDelete(id: string) {
@@ -154,23 +205,50 @@ export default function JobSitesPage() {
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-secondary">Address</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={address}
-                onChange={e => { setAddress(e.target.value); setLat(''); setLng('') }}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); geocodeAddress() } }}
-                placeholder="e.g. 123 Main St, Beckley, WV"
-                className="h-11 flex-1 rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
-              />
-              <button
-                type="button"
-                onClick={geocodeAddress}
-                disabled={geocoding || !address.trim()}
-                className="h-11 px-4 rounded-input bg-brand text-white text-sm font-medium disabled:opacity-50 transition-opacity flex-shrink-0"
-              >
-                {geocoding ? '…' : 'Search'}
-              </button>
+            <div className="relative">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={address}
+                  onChange={e => onAddressChange(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); if (!lat) geocodeAddress() }
+                    if (e.key === 'Escape') setShowSuggestions(false)
+                  }}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  placeholder="e.g. Hampton Inn Beckley, WV"
+                  className="h-11 flex-1 rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+                />
+                {!lat && (
+                  <button
+                    type="button"
+                    onClick={geocodeAddress}
+                    disabled={geocoding || !address.trim()}
+                    className="h-11 px-4 rounded-input bg-brand text-white text-sm font-medium disabled:opacity-50 transition-opacity flex-shrink-0"
+                  >
+                    {geocoding ? '…' : 'Search'}
+                  </button>
+                )}
+              </div>
+              {showSuggestions && (
+                <ul className="absolute z-10 top-full left-0 right-0 mt-1 bg-surface-elevated border border-[var(--border)] rounded-card shadow-lg overflow-hidden">
+                  {suggestions.map((s, i) => (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onMouseDown={() => pickSuggestion(s)}
+                        className="w-full text-left px-4 py-2.5 text-sm text-primary hover:bg-surface-subtle flex items-start gap-2"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-brand flex-shrink-0 mt-0.5">
+                          <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                        </svg>
+                        <span className="truncate">{s.label}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             {lat && lng && (
               <p className="text-xs text-secondary">
@@ -241,8 +319,34 @@ export default function JobSitesPage() {
                     <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${site.active ? 'bg-green' : 'bg-tertiary'}`} />
                   </div>
                   <p className="text-xs text-secondary mt-0.5">
-                    {site.latitude.toFixed(5)}, {site.longitude.toFixed(5)} · {site.radius_meters} m radius
+                    {site.latitude.toFixed(5)}, {site.longitude.toFixed(5)}
                   </p>
+                  {editingRadiusId === site.id ? (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <input
+                        type="number"
+                        min={10}
+                        max={50000}
+                        value={editingRadiusValue}
+                        onChange={e => setEditingRadiusValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveRadius(site.id); if (e.key === 'Escape') setEditingRadiusId(null) }}
+                        className="h-8 w-24 rounded-input bg-surface border border-[var(--border)] px-2 text-xs text-primary focus:outline-none focus:ring-2 focus:ring-brand/40"
+                        autoFocus
+                      />
+                      <span className="text-xs text-secondary">m</span>
+                      <button onClick={() => saveRadius(site.id)} disabled={savingRadiusId === site.id} className="text-xs text-brand hover:underline disabled:opacity-50">
+                        {savingRadiusId === site.id ? '…' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingRadiusId(null)} className="text-xs text-secondary hover:underline">Cancel</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setEditingRadiusId(site.id); setEditingRadiusValue(String(site.radius_meters)) }}
+                      className="text-xs text-secondary hover:text-primary mt-1"
+                    >
+                      {site.radius_meters} m radius · <span className="underline">Edit</span>
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
