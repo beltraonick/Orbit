@@ -11,7 +11,7 @@ import { t } from '@/lib/i18n/translate'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/lib/clock-window'
 import { ThemeToggle } from '@/components/ThemeToggle'
-import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps, isDailyPayMode } from '@/lib/payroll-calc'
 import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings } from '@/lib/employee-period'
 
 const supabaseReady =
@@ -169,15 +169,24 @@ export default async function EmployeeHomePage() {
 
         // Same calcEntryPay() Days and Pay use, so Home can't show a
         // different "days worked" or earnings figure for the same period.
-        for (const e of closed) {
-          const calc = calcEntryPay({
+        const entryCalcs = closed.map(e => ({
+          date: e.clock_in.slice(0, 10),
+          calc: calcEntryPay({
             clock_in: e.clock_in,
             clock_out: e.clock_out,
             hours_worked: null, // not a column in production; derived from clock_in/clock_out
             is_full_day: e.is_full_day,
             daily_rate: profile.daily_rate,
             hourly_rate: profile.hourly_rate,
-          })
+          }),
+        }))
+        // A daily-rate employee clocking in/out more than once in a day still
+        // only counts as one diária — same rule Payroll uses.
+        const capInputs = entryCalcs.map(ec => ({ ec, personKey: profile.id, date: ec.date, payMode: ec.calc.payMode, totalPay: ec.calc.totalPay, overtimePay: ec.calc.overtimePay }))
+        const dailyCaps = findDailyPayCaps(capInputs)
+        for (const c of capInputs) {
+          if (dailyCaps.has(c)) continue
+          const { calc } = c.ec
           if (calc.fullDay) fullDaysCount += 1
           else if (isDailyMode) halfDaysCount += 1
           periodDays += calc.fullDay ? 1 : 0.5

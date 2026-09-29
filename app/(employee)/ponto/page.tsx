@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/Badge'
 import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { createClient } from '@/lib/supabase/server'
 import { t } from '@/lib/i18n/translate'
-import { calcEntryPay, isDailyPayMode } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps, isDailyPayMode } from '@/lib/payroll-calc'
 import { getPayPeriodRange, loadCompanyPeriodSettings } from '@/lib/employee-period'
 
 const supabaseReady =
@@ -63,16 +63,26 @@ export default async function PontoPage() {
         const { start: periodStart, end: periodEnd } = getPayPeriodRange(periodSettings)
         periodStartDate = periodStart
         periodEndDate = periodEnd
-        for (const e of entries) {
-          if (!e.clock_out || new Date(e.clock_in) < periodStart || new Date(e.clock_in) > periodEnd) continue
-          const calc = calcEntryPay({
-            clock_in: e.clock_in,
-            clock_out: e.clock_out,
-            hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
-            is_full_day: e.is_full_day,
-            daily_rate: profile.daily_rate,
-            hourly_rate: profile.hourly_rate,
-          })
+        const periodEntryCalcs = entries
+          .filter(e => e.clock_out && new Date(e.clock_in) >= periodStart && new Date(e.clock_in) <= periodEnd)
+          .map(e => ({
+            date: (e.clock_in as string).slice(0, 10),
+            calc: calcEntryPay({
+              clock_in: e.clock_in,
+              clock_out: e.clock_out,
+              hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
+              is_full_day: e.is_full_day,
+              daily_rate: profile.daily_rate,
+              hourly_rate: profile.hourly_rate,
+            }),
+          }))
+        // A daily-rate employee clocking in/out more than once in a day still
+        // only counts as one diária — same rule Payroll uses.
+        const capInputs = periodEntryCalcs.map(ec => ({ ec, personKey: profile.id, date: ec.date, payMode: ec.calc.payMode, totalPay: ec.calc.totalPay, overtimePay: ec.calc.overtimePay }))
+        const dailyCaps = findDailyPayCaps(capInputs)
+        for (const c of capInputs) {
+          if (dailyCaps.has(c)) continue
+          const { calc } = c.ec
           periodDays += calc.fullDay ? 1 : 0.5
           periodHours += calc.hoursWorked ?? 0
         }

@@ -89,3 +89,38 @@ export function calcEntryPay(entry: PayEntryInput): PayEntryResult {
     overtimePay,
   }
 }
+
+export interface DailyPayCapInput {
+  personKey: string // personId, or full_name where personId isn't available
+  date: string // YYYY-MM-DD
+  payMode: 'daily' | 'hourly' | 'manual'
+  totalPay: number
+  overtimePay: number
+}
+
+// A daily-rate ("diária") person is paid once per calendar day no matter how
+// many clock-in/out sessions they log that day — clocking out for lunch,
+// forgetting to clock out and clocking in again, etc. must not multiply the
+// diária. calcEntryPay() only ever sees one entry at a time, so this is a
+// second pass over the full set of entries: for each person+day, only the
+// highest-paying daily-mode entry counts, and the rest are reported here so
+// callers can zero their contribution to any total while still showing the
+// raw entry (hours, times) for review.
+export function findDailyPayCaps<T extends DailyPayCapInput>(rows: T[]): Set<T> {
+  const bestPerDay = new Map<string, T>()
+  for (const row of rows) {
+    if (row.payMode !== 'daily') continue
+    const key = `${row.personKey}|${row.date}`
+    const best = bestPerDay.get(key)
+    if (!best || row.totalPay + row.overtimePay > best.totalPay + best.overtimePay) {
+      bestPerDay.set(key, row)
+    }
+  }
+  const capped = new Set<T>()
+  for (const row of rows) {
+    if (row.payMode !== 'daily') continue
+    const key = `${row.personKey}|${row.date}`
+    if (bestPerDay.get(key) !== row) capped.add(row)
+  }
+  return capped
+}

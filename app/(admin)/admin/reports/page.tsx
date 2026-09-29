@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import type { ExportData } from '@/lib/exports/exportPayrollXLSX'
-import { calcEntryPay } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps } from '@/lib/payroll-calc'
 import type { PeriodType } from '@/lib/employee-period'
 
 interface ReportRow {
@@ -239,10 +239,9 @@ function PayrollReport({ period, customStart, customEnd }: { period: string; cus
 
     // Same calcEntryPay() the Admin Payroll page and XLSX export use — this
     // report can't disagree with those on what a given entry is worth.
-    const empMap = new Map<string, ReportRow>()
-    for (const e of fetchedEntries) {
+    const entryCalcs = fetchedEntries.flatMap(e => {
       const personId = e.employee_id ?? e.worker_id
-      if (!personId) continue
+      if (!personId) return []
       const frozen = frozenById.get(e.id)
       const calc = calcEntryPay({
         clock_in: e.clock_in,
@@ -252,6 +251,26 @@ function PayrollReport({ period, customStart, customEnd }: { period: string; cus
         daily_rate: frozen ? frozen.daily_rate : (e.profile?.daily_rate ?? e.worker?.daily_rate ?? null),
         hourly_rate: frozen ? frozen.hourly_rate : (e.profile?.hourly_rate ?? e.worker?.hourly_rate ?? null),
       })
+      return [{ e, personId, date: e.clock_in.slice(0, 10), calc }]
+    })
+
+    // A daily-rate person clocking in/out more than once in a day must still
+    // only count as one diária, not one per session — same rule Payroll and
+    // the frozen finalize snapshot use.
+    const capInputs = entryCalcs.map(ec => ({
+      ec,
+      personKey: ec.personId,
+      date: ec.date,
+      payMode: ec.calc.payMode,
+      totalPay: ec.calc.totalPay,
+      overtimePay: ec.calc.overtimePay,
+    }))
+    const dailyCaps = findDailyPayCaps(capInputs)
+
+    const empMap = new Map<string, ReportRow>()
+    capInputs.forEach(c => {
+      const { e, personId, calc } = c.ec
+      const capped = dailyCaps.has(c)
 
       if (!empMap.has(personId)) {
         empMap.set(personId, {
@@ -269,10 +288,12 @@ function PayrollReport({ period, customStart, customEnd }: { period: string; cus
       row.totalHours += hours
       row.overtimeHours += calc.overtimeHours
       row.regularHours += Math.max(hours - calc.overtimeHours, 0)
-      row.totalDays += calc.payMode === 'daily' ? (calc.fullDay ? 1 : 0.5) : 0
-      row.totalPay += calc.totalPay + calc.overtimePay
-      row.overtimePay += calc.overtimePay
-    }
+      if (!capped) {
+        row.totalDays += calc.payMode === 'daily' ? (calc.fullDay ? 1 : 0.5) : 0
+        row.totalPay += calc.totalPay + calc.overtimePay
+        row.overtimePay += calc.overtimePay
+      }
+    })
 
     type ManualRow = { person_id: string; person_name: string; amount?: number; total_pay?: number }
     const manualRows = [
