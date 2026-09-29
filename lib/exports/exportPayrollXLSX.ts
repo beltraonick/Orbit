@@ -8,6 +8,10 @@ export interface ExportEntry {
   hourly_rate: number
   is_full_day: boolean | null
   project: string | null
+  // True when this person already has a full diária counted for this same
+  // day from another entry (multiple clock-in/out sessions in one day) —
+  // the row still shows for review, but contributes $0 to every total.
+  capped?: boolean
 }
 
 export interface ExportExpense {
@@ -52,7 +56,7 @@ export interface ExportData {
 // Delegates to the same calcEntryPay() the Admin Payroll page uses, so this
 // export can never disagree with what the app shows on screen.
 function entryPay(e: ExportEntry) {
-  return calcEntryPay({
+  const calc = calcEntryPay({
     clock_in: e.date,
     clock_out: null,
     hours_worked: e.hours,
@@ -60,6 +64,9 @@ function entryPay(e: ExportEntry) {
     daily_rate: e.daily_rate,
     hourly_rate: e.hourly_rate,
   })
+  // Capped: already counted as this person's one diária for the day via
+  // another entry — keep the row visible, but it pays nothing extra.
+  return e.capped ? { ...calc, totalPay: 0, overtimePay: 0, overtimeHours: 0 } : calc
 }
 
 // Excel sheet names can't contain : \ / ? * [ ] and are capped at 31 chars.
@@ -92,7 +99,7 @@ export async function exportPayrollXLSX(data: ExportData): Promise<void> {
       'FULL DAY?': calc.payMode === 'daily' ? (calc.fullDay ? 'Yes' : 'No') : '—',
       'HOURS': e.hours != null ? Math.round(e.hours * 100) / 100 : '',
       'TOTAL $': Math.round(calc.totalPay * 100) / 100,
-      'NOTES': e.project ?? '',
+      'NOTES': e.capped ? `Already paid this day (${e.project ?? 'other entry'})` : (e.project ?? ''),
     }
   })
 

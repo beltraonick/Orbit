@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { calcEntryPay } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps } from '@/lib/payroll-calc'
 
 function periodDates(period: string): { start: Date | null; end: Date | null } {
   const now = new Date()
@@ -188,7 +188,7 @@ export async function GET(req: Request) {
     employee: { full_name: string } | null
   }
 
-  const entries = ((rawEntries ?? []) as unknown as RawEntry[]).map(e => {
+  const entryCalcs = ((rawEntries ?? []) as unknown as RawEntry[]).map(e => {
     const frozen = frozenById.get(e.id)
     // A finalized entry reports its snapshot's rate/hours/day-type, not
     // today's live values — that's what makes a paid period permanent.
@@ -209,6 +209,7 @@ export async function GET(req: Request) {
       hourly_rate: hourlyRateInput,
     })
     return {
+      personId: (e.employee_id ?? e.worker_id) as string,
       full_name: e.profile?.full_name ?? e.worker?.full_name ?? '—',
       date: e.clock_in.slice(0, 10),
       hours: Math.round(hours * 100) / 100,
@@ -216,8 +217,33 @@ export async function GET(req: Request) {
       hourly_rate: calc.hourlyRate,
       is_full_day: isFullDayInput,
       project: frozen ? (frozen.project_name ?? e.project?.name ?? null) : (e.project?.name ?? null),
+      payMode: calc.payMode,
+      totalPay: calc.totalPay,
+      overtimePay: calc.overtimePay,
     }
   })
+
+  // A daily-rate person clocking in/out more than once in a day must still
+  // only be paid one diária — same rule Payroll and the finalize snapshot use.
+  const capInputs = entryCalcs.map(ec => ({
+    ec,
+    personKey: ec.personId,
+    date: ec.date,
+    payMode: ec.payMode,
+    totalPay: ec.totalPay,
+    overtimePay: ec.overtimePay,
+  }))
+  const dailyCaps = findDailyPayCaps(capInputs)
+  const entries = capInputs.map(c => ({
+    full_name: c.ec.full_name,
+    date: c.ec.date,
+    hours: c.ec.hours,
+    daily_rate: c.ec.daily_rate,
+    hourly_rate: c.ec.hourly_rate,
+    is_full_day: c.ec.is_full_day,
+    project: c.ec.project,
+    capped: dailyCaps.has(c),
+  }))
 
   const expenses = ((rawExpenses ?? []) as unknown as RawExpense[]).map(e => ({
     employee_name: e.submitted_by?.full_name ?? '—',

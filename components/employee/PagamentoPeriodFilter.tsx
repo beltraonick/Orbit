@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card } from '@/components/ui/Card'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-import { calcEntryPay } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps } from '@/lib/payroll-calc'
 import { getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 import { useCompanyId } from '@/lib/company-context'
 import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings, toDateStr, type CompanyPeriodSettings } from '@/lib/employee-period'
@@ -30,6 +30,9 @@ interface DisplayEntry {
   hours: number | null
   fullDay: boolean | null
   amount: number
+  // True when this diária was already paid for this day via another entry
+  // (multiple clock-in/out sessions in one day) — shown, but not counted.
+  capped?: boolean
 }
 
 interface Props {
@@ -105,15 +108,25 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
       hours_worked: number | null; is_full_day: boolean | null
       project: { name: string } | null
     }
-    const built = ((data ?? []) as unknown as RawEntry[]).map((e): DisplayEntry => {
-      const calc = calcEntryPay({
+    const entryCalcs = ((data ?? []) as unknown as RawEntry[]).map(e => ({
+      e,
+      date: e.clock_in.slice(0, 10),
+      calc: calcEntryPay({
         clock_in: e.clock_in,
         clock_out: e.clock_out,
         hours_worked: e.hours_worked != null ? Number(e.hours_worked) : null,
         is_full_day: e.is_full_day,
         daily_rate: dailyRate,
         hourly_rate: hourlyRate,
-      })
+      }),
+    }))
+    // A daily-rate employee clocking in/out more than once in a day still
+    // only earns one diária — same rule Payroll uses.
+    const capInputs = entryCalcs.map(ec => ({ ec, personKey: profileId, date: ec.date, payMode: ec.calc.payMode, totalPay: ec.calc.totalPay, overtimePay: ec.calc.overtimePay }))
+    const dailyCaps = findDailyPayCaps(capInputs)
+    const built = capInputs.map((c): DisplayEntry => {
+      const { e, calc } = c.ec
+      const capped = dailyCaps.has(c)
       return {
         id: e.id,
         date: e.clock_in.slice(0, 10),
@@ -122,7 +135,8 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
         hours: calc.hoursWorked,
         fullDay: isDailyRate ? calc.fullDay : null,
         // Same total Payroll uses (overtime is 0 unless hours were logged).
-        amount: calc.totalPay + calc.overtimePay,
+        amount: capped ? 0 : calc.totalPay + calc.overtimePay,
+        capped,
       }
     })
     // Also fetch manual compensations (production pay, bonuses, corrections)
@@ -176,9 +190,9 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
   useEffect(() => { load() }, [load])
 
   const totalEarnings = entries.reduce((s, e) => s + e.amount, 0)
-  const totalHours = entries.reduce((s, e) => s + (e.hours ?? 0), 0)
-  const fullDaysCount = entries.reduce((s, e) => s + (e.fullDay === true ? 1 : 0), 0)
-  const halfDaysCount = entries.reduce((s, e) => s + (e.fullDay === false ? 1 : 0), 0)
+  const totalHours = entries.reduce((s, e) => s + (e.capped ? 0 : (e.hours ?? 0)), 0)
+  const fullDaysCount = entries.reduce((s, e) => s + (!e.capped && e.fullDay === true ? 1 : 0), 0)
+  const halfDaysCount = entries.reduce((s, e) => s + (!e.capped && e.fullDay === false ? 1 : 0), 0)
   const totalDays = isDailyRate ? fullDaysCount + halfDaysCount * 0.5 : 0
 
   const earningsLabel = t(finalized ? 'employee.pagamento.paidEarnings' : 'employee.pagamento.estEarnings')
@@ -300,6 +314,9 @@ export function PagamentoPeriodFilter({ profileId, hourlyRate, dailyRate }: Prop
                     </p>
                     {e.notes && (
                       <p className="text-xs text-secondary mt-0.5 truncate italic">{e.notes}</p>
+                    )}
+                    {e.capped && (
+                      <p className="text-xs text-secondary mt-0.5 truncate italic">{t('employee.pagamento.alreadyPaidThisDay')}</p>
                     )}
                   </div>
                   {dayLabel ? (

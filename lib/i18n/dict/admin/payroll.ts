@@ -48,6 +48,7 @@ export const payroll = {
     col_pricePerHr: 'Price/hr',
     col_overtimeHrs: 'OT (hrs)',
     col_overtimeTotal: 'OT Total $',
+    dailyCapNote: 'Not counted — this person already has a full diária on this day from another entry.',
   },
   pt: {
     title: 'Folha de Pagamento',
@@ -98,6 +99,7 @@ export const payroll = {
     col_pricePerHr: 'Valor/h',
     col_overtimeHrs: 'H. Extra',
     col_overtimeTotal: 'Total H. Extra $',
+    dailyCapNote: 'Não contabilizado — esta pessoa já tem uma diária completa neste dia em outro registro.',
   },
   es: {
     title: 'Nómina',
@@ -148,5 +150,6 @@ export const payroll = {
     col_pricePerHr: 'Precio/h',
     col_overtimeHrs: 'H. Extra',
     col_overtimeTotal: 'Total H. Extra $',
+    dailyCapNote: 'No contabilizado — esta persona ya tiene una diária completa este día en otro registro.',
   },
 }

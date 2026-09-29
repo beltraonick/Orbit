@@ -30,6 +30,7 @@ export const pagamento = {
     fullDayPlural: '{n} Full Days',
     halfDaySingular: '{n} Half Day',
     halfDayPlural: '{n} Half Days',
+    alreadyPaidThisDay: 'Already paid for this day (another clock-in/out)',
   },
   pt: {
     title: 'Meus Ganhos',
@@ -62,6 +63,7 @@ export const pagamento = {
     fullDayPlural: '{n} Dias Completos',
     halfDaySingular: '{n} Meio Dia',
     halfDayPlural: '{n} Meios Dias',
+    alreadyPaidThisDay: 'Já pago neste dia (outro clock-in/out)',
   },
   es: {
     title: 'Mis Ganancias',
@@ -94,5 +96,6 @@ export const pagamento = {
     fullDayPlural: '{n} Días Completos',
     halfDaySingular: '{n} Medio Día',
     halfDayPlural: '{n} Medios Días',
+    alreadyPaidThisDay: 'Ya pagado este día (otro clock-in/out)',
   },
 }

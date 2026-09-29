@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-import { calcEntryPay, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps, STANDARD_DAY_HOURS } from '@/lib/payroll-calc'
 import { finalizePayrollPeriod, getFinalizedPayrollPeriod } from '@/app/actions/payrollActions'
 import {
   getPayPeriodRange,
@@ -68,6 +68,7 @@ interface DayRow {
   totalPay: number
   overtimeHours: number
   overtimePay: number
+  dailyPayCapped: boolean
 }
 
 interface ManualCompRow {
@@ -282,6 +283,7 @@ export function PayrollManager() {
         totalPay: Number(e.total_pay),
         overtimeHours: Number(e.overtime_hours),
         overtimePay: Number(e.overtime_pay),
+        dailyPayCapped: e.pay_mode === 'daily' && Number(e.total_pay) === 0 && Number(e.overtime_pay) === 0,
       })))
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setManualRows(snapshot.entries.filter((e: any) => e.pay_mode === 'manual' && e.source_type !== 'expense_reimbursement').map((e): ManualCompRow => ({
@@ -409,10 +411,27 @@ export function PayrollManager() {
         totalPay: calc.totalPay,
         overtimeHours: calc.overtimeHours,
         overtimePay: calc.overtimePay,
+        dailyPayCapped: false,
       }
     })
 
-    setRows(built)
+    // A daily-rate person clocking in/out more than once in a day must still
+    // only be paid one diária — zero every entry but the highest-paying one
+    // per person+day (the rest stay visible, just not counted).
+    const capInputs = built.map(r => ({
+      row: r,
+      personKey: r.personId,
+      date: r.date,
+      payMode: r.payMode,
+      totalPay: r.totalPay,
+      overtimePay: r.overtimePay,
+    }))
+    const dailyCaps = findDailyPayCaps(capInputs)
+    const cappedBuilt = capInputs.map(c =>
+      dailyCaps.has(c) ? { ...c.row, totalPay: 0, overtimePay: 0, dailyPayCapped: true } : c.row
+    )
+
+    setRows(cappedBuilt)
     setLoading(false)
   }, [companyId, periodStart, periodEnd])
 
@@ -1111,7 +1130,9 @@ ${manualOnlySections}
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold text-primary tabular-nums">
-                      {fmt$(row.totalPay)}
+                      <span title={row.dailyPayCapped ? t('admin.payroll.dailyCapNote') : undefined}>
+                        {fmt$(row.totalPay)}
+                      </span>
                     </td>
                     <td className="px-3 py-2.5 text-secondary max-w-[180px] truncate text-xs">{row.notes ?? ''}</td>
                     <td className="px-3 py-2.5 text-secondary whitespace-nowrap text-xs">{row.projectName}</td>

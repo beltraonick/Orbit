@@ -2,7 +2,7 @@
 
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
-import { calcEntryPay } from '@/lib/payroll-calc'
+import { calcEntryPay, findDailyPayCaps } from '@/lib/payroll-calc'
 
 function toISO(dateStr: string) {
   return new Date(dateStr + 'T00:00:00').toISOString()
@@ -190,7 +190,23 @@ export async function finalizePayrollPeriod(periodStart: string, periodEnd: stri
     overtime_pay: 0,
   }))
 
-  const snapshotRows = [...timeEntrySnapshotRows, ...manualCompSnapshotRows, ...expenseReimbSnapshotRows]
+  // A daily-rate person clocking in/out several times in one day must still
+  // only be paid one diária for that day — zero every entry but the
+  // highest-paying one per person+day before this gets frozen forever.
+  const capInputs = timeEntrySnapshotRows.map(r => ({
+    row: r,
+    personKey: r.person_id,
+    date: r.entry_date,
+    payMode: r.pay_mode,
+    totalPay: r.total_pay,
+    overtimePay: r.overtime_pay,
+  }))
+  const dailyCaps = findDailyPayCaps(capInputs)
+  const cappedTimeEntryRows = capInputs.map(c =>
+    dailyCaps.has(c) ? { ...c.row, total_pay: 0, overtime_pay: 0 } : c.row
+  )
+
+  const snapshotRows = [...cappedTimeEntryRows, ...manualCompSnapshotRows, ...expenseReimbSnapshotRows]
   const grandTotal = snapshotRows.reduce((s, r) => s + r.total_pay + r.overtime_pay, 0)
 
   const { data: period, error: periodError } = await supabase
