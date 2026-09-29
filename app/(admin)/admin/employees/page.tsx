@@ -150,7 +150,7 @@ export default function EmployeesPage() {
       .from('project_members')
       .select('project_id')
       .eq('profile_id', emp.id)
-    setMemberProjectIds((members ?? []).map((m: { project_id: string }) => m.project_id))
+    setMemberProjectIds(Array.from(new Set((members ?? []).map((m: { project_id: string }) => m.project_id))))
     setShowModal(true)
   }
 
@@ -206,9 +206,10 @@ export default function EmployeesPage() {
         return
       }
       const { error: delErr } = await supabase.from('project_members').delete().eq('profile_id', editing.id)
-      const { error: insErr } = memberProjectIds.length > 0 && !delErr
+      const uniqueProjectIds = Array.from(new Set(memberProjectIds))
+      const { error: insErr } = uniqueProjectIds.length > 0 && !delErr
         ? await supabase.from('project_members').insert(
-            memberProjectIds.map(pid => ({ project_id: pid, profile_id: editing.id }))
+            uniqueProjectIds.map(pid => ({ project_id: pid, profile_id: editing.id }))
           )
         : { error: null }
       if (delErr || insErr) {
