@@ -1,6 +1,6 @@
 'use client'
 
-import { writeFailed } from '@/lib/write-feedback'
+import { writeFailed, actionFailed } from '@/lib/write-feedback'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/Badge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { PhotoPicker } from '@/components/ui/PhotoPicker'
 import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox'
+import { deleteTaskPhoto } from '@/app/actions/employeeTasks'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
@@ -257,14 +258,12 @@ export function TaskList({
     setUploadProgress(null)
   }, [supabaseReady, doUpload])
 
-  // Execute the actual DB/storage delete (used after undo window expires)
+  // Execute the actual DB/storage delete (used after undo window expires).
+  // Goes through a server action so the delete_team_photos permission is
+  // re-checked fresh, not trusted from the client's page-load-time prop.
   const execDelete = useCallback(async (storagePath: string, taskId: string) => {
-    const supabase = createClient()
-    const [, { error }] = await Promise.all([
-      supabase.storage.from('task-photos').remove([storagePath]),
-      supabase.from('task_media').delete().eq('task_id', taskId).eq('storage_path', storagePath),
-    ])
-    writeFailed(error, 'delete this photo')
+    const result = await deleteTaskPhoto(taskId, storagePath)
+    actionFailed(result)
   }, [])
 
   // Delete with confirmation → undo toast (5s window before actual DB delete)
