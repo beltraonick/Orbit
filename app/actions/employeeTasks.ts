@@ -3,6 +3,7 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 
 export async function updateEmployeeTask(
   taskId: string,
@@ -253,6 +254,49 @@ export async function updateSupervisorTask(
 
   revalidatePath(`/projects/${currentTask.project_id}`)
   revalidatePath(`/admin/projects/${currentTask.project_id}`)
+  return { ok: true }
+}
+
+// Deletes a task photo. Re-checks delete_team_photos server-side instead of
+// trusting the client's (possibly stale) permission prop — the client-only
+// version of this let a supervisor whose permission was just revoked keep
+// deleting other people's photos until they fully restarted the app.
+export async function deleteTaskPhoto(taskId: string, storagePath: string) {
+  const user = getCurrentUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const supabase = createClient()
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, permissions')
+    .eq('email', user.email)
+    .eq('company_id', user.company_id)
+    .maybeSingle()
+
+  if (!profile) return { error: 'Profile not found' }
+
+  const { data: media } = await supabase
+    .from('task_media')
+    .select('storage_path, employee_id, company_id')
+    .eq('task_id', taskId)
+    .eq('storage_path', storagePath)
+    .maybeSingle()
+
+  if (!media) return { ok: true } // already deleted
+  if (media.company_id !== user.company_id) return { error: 'Not found' }
+
+  const permissions = (profile.permissions as EmployeePermissions | null) ?? {}
+  const canDelete = hasPermission(permissions, 'delete_team_photos') || media.employee_id === profile.id
+  if (!canDelete) return { error: 'Not authorized to delete this photo' }
+
+  const [{ error: storageErr }, { error: dbErr }] = await Promise.all([
+    supabase.storage.from('task-photos').remove([storagePath]),
+    supabase.from('task_media').delete().eq('task_id', taskId).eq('storage_path', storagePath),
+  ])
+
+  if (dbErr) return { error: dbErr.message }
+  if (storageErr) return { error: storageErr.message }
   return { ok: true }
 }
 

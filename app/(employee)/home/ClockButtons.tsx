@@ -34,36 +34,68 @@ function newId(): string {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-async function getLocation() {
-  return new Promise<{ latitude: number; longitude: number; city: string; state: string } | null>(resolve => {
-    if (!navigator.geolocation) { resolve(null); return }
-    navigator.geolocation.getCurrentPosition(
-      async pos => {
-        const { latitude, longitude } = pos.coords
-        // City/state is a nice-to-have: never let a slow or rate-limited
-        // geocoder hold up the clock-in itself (it used to wait forever).
-        const ctrl = new AbortController()
-        const timer = setTimeout(() => ctrl.abort(), 3000)
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { 'Accept-Language': 'en-US' }, signal: ctrl.signal }
-          )
-          const data = await res.json()
-          const addr = data.address ?? {}
-          const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? ''
-          const state = addr.state ?? ''
-          resolve({ latitude, longitude, city, state })
-        } catch {
-          resolve({ latitude, longitude, city: '', state: '' })
-        } finally {
-          clearTimeout(timer)
-        }
-      },
-      () => resolve(null),
-      { timeout: 6000, enableHighAccuracy: true, maximumAge: 60000 }
-    )
+type LocationResult =
+  | { ok: true; latitude: number; longitude: number; city: string; state: string }
+  // 'denied' vs 'unavailable' get different messages to the employee — a
+  // permission problem needs a Settings change (and often a full app
+  // restart on iOS, which doesn't re-check a permission granted while the
+  // page was already open), while a weak GPS signal just needs a retry.
+  | { ok: false; reason: 'denied' | 'unavailable' }
+
+function getPosition(options: PositionOptions): Promise<GeolocationPosition | GeolocationPositionError> {
+  return new Promise(resolve => {
+    navigator.geolocation.getCurrentPosition(resolve, resolve, options)
   })
+}
+
+function isPositionError(v: GeolocationPosition | GeolocationPositionError): v is GeolocationPositionError {
+  return 'code' in v
+}
+
+async function getLocation(): Promise<LocationResult> {
+  if (!navigator.geolocation) return { ok: false, reason: 'unavailable' }
+
+  // First try: a real GPS fix. Job sites often have weak signal (indoors,
+  // trailers), so this gets a generous timeout rather than the 6s that used
+  // to make a slow-but-genuine GPS fix look identical to a denied permission.
+  let result = await getPosition({ timeout: 15000, enableHighAccuracy: true, maximumAge: 60000 })
+
+  // A real permission denial (code 1) never succeeds on retry — stop here.
+  if (isPositionError(result) && result.code === result.PERMISSION_DENIED) {
+    return { ok: false, reason: 'denied' }
+  }
+
+  // Timeout or position-unavailable: retry once, network/cell-tower based
+  // (enableHighAccuracy: false) instead of GPS — much faster to resolve and
+  // plenty precise for a job-site radius check.
+  if (isPositionError(result)) {
+    result = await getPosition({ timeout: 8000, enableHighAccuracy: false, maximumAge: 60000 })
+  }
+
+  if (isPositionError(result)) {
+    return { ok: false, reason: result.code === result.PERMISSION_DENIED ? 'denied' : 'unavailable' }
+  }
+
+  const { latitude, longitude } = result.coords
+  // City/state is a nice-to-have: never let a slow or rate-limited
+  // geocoder hold up the clock-in itself (it used to wait forever).
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 3000)
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+      { headers: { 'Accept-Language': 'en-US' }, signal: ctrl.signal }
+    )
+    const data = await res.json()
+    const addr = data.address ?? {}
+    const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? ''
+    const state = addr.state ?? ''
+    return { ok: true, latitude, longitude, city, state }
+  } catch {
+    return { ok: true, latitude, longitude, city: '', state: '' }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export function ClockButtons({
@@ -133,12 +165,16 @@ export function ClockButtons({
     setLocationInfo(t('employee.clockButtons.gettingLocation'))
 
     const loc = await getLocation()
-    setLocationInfo(loc?.city ? `${loc.city}, ${loc.state}` : '')
+    setLocationInfo(loc.ok && loc.city ? `${loc.city}, ${loc.state}` : '')
 
     // Geofence check — supervisors/admins bypass (same pattern as clock window).
     if (geofenceEnabled && !isSupervisor && jobSites.length > 0) {
-      if (!loc) {
-        setClockError('Location access is required to clock in at this company. Please allow location and try again.')
+      if (!loc.ok) {
+        setClockError(
+          loc.reason === 'denied'
+            ? t('employee.clockButtons.locationDenied')
+            : t('employee.clockButtons.locationUnavailable')
+        )
         setLoading(false)
         return
       }
@@ -146,7 +182,7 @@ export function ClockButtons({
         s => haversineDistance(loc.latitude, loc.longitude, s.latitude, s.longitude) <= s.radius_meters
       )
       if (!withinSite) {
-        setClockError('You are not at an authorized job site. Move closer to a job site and try again.')
+        setClockError(t('employee.clockButtons.notAtJobSite'))
         setLoading(false)
         return
       }
@@ -159,7 +195,7 @@ export function ClockButtons({
       employee_id: employeeId,
       company_id: companyId,
       clock_in: clockInIso,
-      ...(loc && {
+      ...(loc.ok && {
         latitude: loc.latitude,
         longitude: loc.longitude,
         city: loc.city,

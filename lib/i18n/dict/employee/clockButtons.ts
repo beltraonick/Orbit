@@ -7,6 +7,9 @@ export const clockButtons = {
     notClockedIn: 'You are not clocked in',
     clockIn: 'Clock In',
     managedBySupervisor: 'Your time is managed by your supervisor.',
+    locationDenied: 'Location access is off for this app. Turn it on in your phone Settings, then fully close and reopen the app (not just tap Clock In again).',
+    locationUnavailable: 'Could not get a location fix — signal may be weak here. Try moving near a window or outside, then try again.',
+    notAtJobSite: 'You are not at an authorized job site. Move closer to a job site and try again.',
   },
   pt: {
     gettingLocation: 'Obtendo localização…',
@@ -16,6 +19,9 @@ export const clockButtons = {
     notClockedIn: 'Você não bateu o ponto',
     clockIn: 'Bater Ponto',
     managedBySupervisor: 'Seu ponto é gerenciado pelo supervisor.',
+    locationDenied: 'O acesso à localização está desligado para este app. Ative nos Ajustes do celular, depois feche o app de verdade e abra de novo (não é só tocar em Bater Ponto outra vez).',
+    locationUnavailable: 'Não conseguimos obter a localização — o sinal pode estar fraco aqui. Tente se aproximar de uma janela ou ir pra fora e tente de novo.',
+    notAtJobSite: 'Você não está em uma obra autorizada. Aproxime-se de uma obra e tente novamente.',
   },
   es: {
     gettingLocation: 'Obteniendo ubicación…',
@@ -25,5 +31,8 @@ export const clockButtons = {
     notClockedIn: 'No has marcado entrada',
     clockIn: 'Marcar Entrada',
     managedBySupervisor: 'Tu registro es gestionado por tu supervisor.',
+    locationDenied: 'El acceso a la ubicación está desactivado para esta app. Actívalo en los Ajustes del teléfono, luego cierra la app por completo y ábrela de nuevo (no basta con tocar Marcar Entrada otra vez).',
+    locationUnavailable: 'No pudimos obtener la ubicación — la señal puede estar débil aquí. Intenta acercarte a una ventana o salir afuera y vuelve a intentar.',
+    notAtJobSite: 'No estás en una obra autorizada. Acércate a una obra e intenta de nuevo.',
   },
 }
