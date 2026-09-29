@@ -283,7 +283,7 @@ export default function TimePage() {
     setClockOutError('')
     const res = await supervisorClockOut({
       entryId: clockOutEntry.id,
-      isFullDay: clockOutIsFullDay,
+      isFullDayOverride: clockOutIsFullDay,
       notes: clockOutNotes || undefined,
     })
     setClockOutSaving(false)

@@ -168,6 +168,32 @@ export async function supervisorClockIn(data: {
 
   if (existing.data) return { error: 'Already clocked in' }
 
+  // One clock-in/out cycle per calendar day per person — clocking in again
+  // after already completing one today would let the same day get paid or
+  // counted more than once.
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const alreadyToday = data.profileId
+    ? await supabase
+        .from('time_entries')
+        .select('id')
+        .eq('employee_id', data.profileId)
+        .eq('company_id', user.company_id)
+        .not('clock_out', 'is', null)
+        .gte('clock_in', `${todayStr}T00:00:00.000Z`)
+        .lt('clock_in', `${todayStr}T23:59:59.999Z`)
+        .maybeSingle()
+    : await supabase
+        .from('time_entries')
+        .select('id')
+        .eq('worker_id', data.workerId!)
+        .eq('company_id', user.company_id)
+        .not('clock_out', 'is', null)
+        .gte('clock_in', `${todayStr}T00:00:00.000Z`)
+        .lt('clock_in', `${todayStr}T23:59:59.999Z`)
+        .maybeSingle()
+
+  if (alreadyToday.data) return { error: 'Already clocked in and out today — one clock-in per day.' }
+
   const { data: entry, error } = await supabase
     .from('time_entries')
     .insert({
@@ -190,8 +216,12 @@ export async function supervisorClockIn(data: {
 
 export async function supervisorClockOut(data: {
   entryId: string
-  isFullDay: boolean
   notes?: string
+  // Admin-only manual correction for a forgotten/stale clock-out, where
+  // elapsed time to "now" doesn't reflect real hours worked. Ignored for
+  // anyone but an admin — a live supervisor/employee clock-out always uses
+  // the automatic hours-based rule below.
+  isFullDayOverride?: boolean
 }) {
   const user = getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
@@ -212,11 +242,30 @@ export async function supervisorClockOut(data: {
 
   if (!isSupervisor && !canCheckinTeam) return { error: 'Not authorized' }
 
+  const { data: openEntry } = await supabase
+    .from('time_entries')
+    .select('clock_in')
+    .eq('id', data.entryId)
+    .eq('company_id', user.company_id)
+    .maybeSingle()
+
+  if (!openEntry) return { error: 'Entry not found' }
+
+  // Full vs half day is decided by hours actually worked, not a manual
+  // choice — 5+ hours is a full day, less is half. An admin fixing a
+  // forgotten/stale clock-out can still override this manually, since
+  // elapsed time to "now" wouldn't reflect real hours worked in that case.
+  const clockOutIso = new Date().toISOString()
+  const hoursWorked = (new Date(clockOutIso).getTime() - new Date(openEntry.clock_in).getTime()) / 3600000
+  const isFullDay = user.role === 'admin' && data.isFullDayOverride != null
+    ? data.isFullDayOverride
+    : hoursWorked >= 5
+
   const { error } = await supabase
     .from('time_entries')
     .update({
-      clock_out: new Date().toISOString(),
-      is_full_day: data.isFullDay,
+      clock_out: clockOutIso,
+      is_full_day: isFullDay,
       notes: data.notes?.trim() || null,
       clocked_by_profile_id: profile.id,
     })
