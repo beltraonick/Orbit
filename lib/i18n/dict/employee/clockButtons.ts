@@ -10,6 +10,7 @@ export const clockButtons = {
     locationDenied: 'Location access is off for this app. Turn it on in your phone Settings, then fully close and reopen the app (not just tap Clock In again).',
     locationUnavailable: 'Could not get a location fix — signal may be weak here. Try moving near a window or outside, then try again.',
     notAtJobSite: 'You are not at an authorized job site. Move closer to a job site and try again.',
+    alreadyClockedToday: 'You already clocked in and out today. Only one clock-in per day is allowed — contact your supervisor if this is wrong.',
   },
   pt: {
     gettingLocation: 'Obtendo localização…',
@@ -22,6 +23,7 @@ export const clockButtons = {
     locationDenied: 'O acesso à localização está desligado para este app. Ative nos Ajustes do celular, depois feche o app de verdade e abra de novo (não é só tocar em Bater Ponto outra vez).',
     locationUnavailable: 'Não conseguimos obter a localização — o sinal pode estar fraco aqui. Tente se aproximar de uma janela ou ir pra fora e tente de novo.',
     notAtJobSite: 'Você não está em uma obra autorizada. Aproxime-se de uma obra e tente novamente.',
+    alreadyClockedToday: 'Você já bateu ponto de entrada e saída hoje. Só é permitido um ciclo por dia — fale com seu supervisor se isso estiver errado.',
   },
   es: {
     gettingLocation: 'Obteniendo ubicación…',
@@ -34,5 +36,6 @@ export const clockButtons = {
     locationDenied: 'El acceso a la ubicación está desactivado para esta app. Actívalo en los Ajustes del teléfono, luego cierra la app por completo y ábrela de nuevo (no basta con tocar Marcar Entrada otra vez).',
     locationUnavailable: 'No pudimos obtener la ubicación — la señal puede estar débil aquí. Intenta acercarte a una ventana o salir afuera y vuelve a intentar.',
     notAtJobSite: 'No estás en una obra autorizada. Acércate a una obra e intenta de nuevo.',
+    alreadyClockedToday: 'Ya marcaste entrada y salida hoy. Solo se permite un ciclo por día — contacta a tu supervisor si esto es un error.',
   },
 }

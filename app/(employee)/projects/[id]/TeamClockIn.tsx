@@ -27,7 +27,6 @@ function ClockOutSheet({
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  const [isFullDay, setIsFullDay] = useState(true)
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -36,7 +35,7 @@ function ClockOutSheet({
     if (!member.entry) return
     setSaving(true)
     setError('')
-    const res = await supervisorClockOut({ entryId: member.entry.id, isFullDay, notes })
+    const res = await supervisorClockOut({ entryId: member.entry.id, notes })
     setSaving(false)
     if (res.error) { setError(res.error); return }
     onDone()
@@ -59,32 +58,7 @@ function ClockOutSheet({
               {t('supervisor.clockIn.clockedInAt')} {fmtTime(member.entry.clock_in)}
             </p>
           )}
-
-          <div className="mb-4">
-            <p className="text-xs font-medium text-secondary mb-2">{t('supervisor.clockIn.fullDayQuestion')}</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setIsFullDay(true)}
-                className={`flex-1 py-2.5 rounded-button text-sm font-medium border transition-colors ${
-                  isFullDay
-                    ? 'bg-brand text-white border-brand'
-                    : 'bg-surface border-[var(--border)] text-secondary'
-                }`}
-              >
-                {t('supervisor.clockIn.fullDay')}
-              </button>
-              <button
-                onClick={() => setIsFullDay(false)}
-                className={`flex-1 py-2.5 rounded-button text-sm font-medium border transition-colors ${
-                  !isFullDay
-                    ? 'bg-amber text-white border-amber'
-                    : 'bg-surface border-[var(--border)] text-secondary'
-                }`}
-              >
-                {t('supervisor.clockIn.partialDay')}
-              </button>
-            </div>
-          </div>
+          <p className="text-xs text-secondary mb-4">{t('supervisor.clockIn.autoFullDayNote')}</p>
 
           <div className="mb-4">
             <label className="text-xs font-medium text-secondary block mb-1.5">

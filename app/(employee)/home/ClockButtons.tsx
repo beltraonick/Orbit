@@ -115,7 +115,6 @@ export function ClockButtons({
   const [elapsed, setElapsed] = useState('')
   const [locationInfo, setLocationInfo] = useState('')
   const [clockError, setClockError] = useState('')
-  const [confirmingOut, setConfirmingOut] = useState(false)
   const [nowLocal, setNowLocal] = useState('')
 
   // Only gates this employee's OWN clock-in — supervisors/admins clocking
@@ -188,6 +187,25 @@ export function ClockButtons({
       }
     }
 
+    // One clock-in/out cycle per calendar day — clocking in again after
+    // already completing one today would let the same day get paid or
+    // counted more than once.
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const { data: alreadyToday } = await createClient()
+      .from('time_entries')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .not('clock_out', 'is', null)
+      .gte('clock_in', `${todayStr}T00:00:00.000Z`)
+      .lt('clock_in', `${todayStr}T23:59:59.999Z`)
+      .maybeSingle()
+    if (alreadyToday) {
+      setClockError(t('employee.clockButtons.alreadyClockedToday'))
+      setLoading(false)
+      setLocationInfo('')
+      return
+    }
+
     const entryId = newId()
     const clockInIso = new Date().toISOString()
     const payload = {
@@ -230,11 +248,15 @@ export function ClockButtons({
     setLocationInfo('')
   }
 
-  async function clockOut(isFullDay: boolean) {
-    if (!localEntryId) return
+  async function clockOut() {
+    if (!localEntryId || !localClockInTime) return
     setLoading(true)
-    setConfirmingOut(false)
-    const payload = { clock_out: new Date().toISOString(), is_full_day: isFullDay }
+    // Full vs half day is decided by hours actually worked, not a manual
+    // choice — 5+ hours is a full day, less is half.
+    const clockOutIso = new Date().toISOString()
+    const hoursWorked = (new Date(clockOutIso).getTime() - new Date(localClockInTime).getTime()) / 3600000
+    const isFullDay = hoursWorked >= 5
+    const payload = { clock_out: clockOutIso, is_full_day: isFullDay }
 
     setClockedIn(false)
     setLocalClockInTime(null)
@@ -283,34 +305,9 @@ export function ClockButtons({
 
         {clockError && <p className="text-sm text-danger text-center">{clockError}</p>}
 
-        {!confirmingOut ? (
-          <Button variant="danger" size="lg" onClick={() => setConfirmingOut(true)} loading={loading} className="w-full mt-1">
-            {t('employee.clockButtons.clockOut')}
-          </Button>
-        ) : (
-          <div className="w-full flex flex-col gap-2 mt-1">
-            <p className="text-xs font-medium text-secondary text-center">{t('supervisor.clockIn.fullDayQuestion')}</p>
-            <div className="flex gap-2 w-full">
-              <button
-                onClick={() => clockOut(true)}
-                disabled={loading}
-                className="flex-1 py-2.5 rounded-button text-sm font-medium bg-brand text-white disabled:opacity-50"
-              >
-                {t('supervisor.clockIn.fullDay')}
-              </button>
-              <button
-                onClick={() => clockOut(false)}
-                disabled={loading}
-                className="flex-1 py-2.5 rounded-button text-sm font-medium bg-amber text-white disabled:opacity-50"
-              >
-                {t('supervisor.clockIn.partialDay')}
-              </button>
-            </div>
-            <button onClick={() => setConfirmingOut(false)} disabled={loading} className="text-xs text-secondary underline">
-              {t('common.cancel')}
-            </button>
-          </div>
-        )}
+        <Button variant="danger" size="lg" onClick={clockOut} loading={loading} className="w-full mt-1">
+          {t('employee.clockButtons.clockOut')}
+        </Button>
       </div>
     )
   }
