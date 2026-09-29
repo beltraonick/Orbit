@@ -13,7 +13,10 @@ interface ClockButtonsProps {
   companyId: string
   openEntryId: string | null
   clockInTime: string | null
-  isSupervisor?: boolean
+  // True only for an admin account — the "supervisor" permission alone
+  // (kanban access, photo uploads) must not exempt someone from clock-in
+  // rules like anyone else.
+  bypassClockRules?: boolean
   clockWindow?: ClockWindowSettings
   canSelfClock?: boolean
   geofenceEnabled?: boolean
@@ -103,7 +106,7 @@ export function ClockButtons({
   companyId,
   openEntryId,
   clockInTime,
-  isSupervisor = false,
+  bypassClockRules = false,
   clockWindow = DEFAULT_CLOCK_WINDOW,
   canSelfClock = true,
   geofenceEnabled = false,
@@ -119,7 +122,7 @@ export function ClockButtons({
 
   // Only gates this employee's OWN clock-in — supervisors/admins clocking
   // someone else in via the Team Clock tool are never restricted by this.
-  const windowActive = clockWindow.enforce_clock_window && !isSupervisor
+  const windowActive = clockWindow.enforce_clock_window && !bypassClockRules
 
   useEffect(() => {
     if (!windowActive) return
@@ -167,7 +170,7 @@ export function ClockButtons({
     setLocationInfo(loc.ok && loc.city ? `${loc.city}, ${loc.state}` : '')
 
     // Geofence check — supervisors/admins bypass (same pattern as clock window).
-    if (geofenceEnabled && !isSupervisor && jobSites.length > 0) {
+    if (geofenceEnabled && !bypassClockRules && jobSites.length > 0) {
       if (!loc.ok) {
         setClockError(
           loc.reason === 'denied'

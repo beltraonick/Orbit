@@ -36,6 +36,10 @@ export default async function EmployeeHomePage() {
   let openEntryId: string | null = null
   let clockInTime: string | null = null
   let isSupervisor = false
+  // Only a true admin account bypasses clock-in rules (window, geofence).
+  // The "supervisor" permission alone (kanban access, photo uploads) must
+  // NOT exempt someone from the same clock-in restrictions as any employee.
+  let bypassClockRules = false
   let canSelfClock = true
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let geofenceEnabled = false
@@ -80,6 +84,7 @@ export default async function EmployeeHomePage() {
       if (profile) {
         profileId = profile.id
         isSupervisor = user.role === 'admin' || hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
+        bypassClockRules = user.role === 'admin'
         const perms = profile.permissions as EmployeePermissions | null
         canSelfClock = user.role === 'admin' || perms?.self_clockin !== false
 
@@ -360,7 +365,7 @@ export default async function EmployeeHomePage() {
             companyId={user.company_id as string}
             openEntryId={openEntryId}
             clockInTime={clockInTime}
-            isSupervisor={isSupervisor}
+            bypassClockRules={bypassClockRules}
             clockWindow={clockWindow}
             canSelfClock={canSelfClock}
             geofenceEnabled={geofenceEnabled}
