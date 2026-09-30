@@ -100,6 +100,32 @@ export async function updateEmployeeTask(
   return { ok: true }
 }
 
+// A "Supervisor view" employee can work on any project of their company —
+// the Projects tab lists them all, not only the ones they're a member of.
+// Callers check the supervisor permission first.
+async function canSuperviseProject(
+  supabase: ReturnType<typeof createClient>,
+  profileId: string,
+  projectId: string,
+  companyId: string | null,
+): Promise<boolean> {
+  const { data: member } = await supabase
+    .from('project_members')
+    .select('project_id')
+    .eq('profile_id', profileId)
+    .eq('project_id', projectId)
+    .maybeSingle()
+  if (member) return true
+  if (!companyId) return false
+  const { data: project } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('id', projectId)
+    .eq('company_id', companyId)
+    .maybeSingle()
+  return !!project
+}
+
 export async function createSupervisorTask(
   projectId: string,
   columnId: string | null,
@@ -123,14 +149,9 @@ export async function createSupervisorTask(
   const permissions = (profile.permissions as Record<string, boolean> | null) ?? {}
   if (!permissions.supervisor) return { error: 'Not a supervisor' }
 
-  const { data: member } = await supabase
-    .from('project_members')
-    .select('project_id')
-    .eq('profile_id', profile.id)
-    .eq('project_id', projectId)
-    .maybeSingle()
-
-  if (!member) return { error: 'Not a project member' }
+  if (!(await canSuperviseProject(supabase, profile.id, projectId, user.company_id))) {
+    return { error: 'Not a project member' }
+  }
 
   const { data: task, error: insertErr } = await supabase
     .from('tasks')
@@ -198,14 +219,9 @@ export async function updateSupervisorTask(
 
   if (!currentTask) return { error: 'Task not found' }
 
-  const { data: member } = await supabase
-    .from('project_members')
-    .select('project_id')
-    .eq('profile_id', profile.id)
-    .eq('project_id', currentTask.project_id)
-    .maybeSingle()
-
-  if (!member) return { error: 'Not a project member' }
+  if (!(await canSuperviseProject(supabase, profile.id, currentTask.project_id, user.company_id))) {
+    return { error: 'Not a project member' }
+  }
 
   const changes: { field: string; old_value: unknown; new_value: unknown }[] = []
   const payload: Record<string, unknown> = {}

@@ -74,7 +74,20 @@ export default async function EmployeeProjectDetailPage({ params }: { params: { 
           .eq('project_id', projectId)
           .maybeSingle()
 
-        if (member) {
+        // "Supervisor view" can open any project of the company (it lists
+        // them all on /projects), not only ones they're a member of.
+        let supervisorAccess = false
+        if (!member && isSupervisor) {
+          const { data: companyProject } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('id', projectId)
+            .eq('company_id', user.company_id)
+            .maybeSingle()
+          supervisorAccess = !!companyProject
+        }
+
+        if (member || supervisorAccess) {
           found = true
 
           const { data: proj } = await supabase

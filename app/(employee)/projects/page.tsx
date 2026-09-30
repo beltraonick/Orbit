@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { t } from '@/lib/i18n/translate'
 import Link from 'next/link'
+import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
@@ -40,21 +41,36 @@ export default async function EmployeeProjectsPage() {
       // Get profile id
       const { data: profile } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, permissions')
         .eq('email', user.email)
         .eq('company_id', user.company_id)
         .maybeSingle()
 
       if (profile) {
-        // Fetch projects this employee is a member of
-        const { data: members } = await supabase
-          .from('project_members')
-          .select('project_id, projects(id, name, status, progress, cover_image_path)')
-          .eq('profile_id', profile.id)
+        // "Supervisor view" gives access to every project's kanban (see the
+        // permission's description in Admin → Employees), so it lists all
+        // company projects. Everyone else sees the projects they're a member of.
+        const isSupervisor = hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
+        type ProjectRow = { id: string; name: string; status: string; progress: number; cover_image_path: string | null }
+        let projectRows: ProjectRow[]
+        if (isSupervisor) {
+          const { data: all } = await supabase
+            .from('projects')
+            .select('id, name, status, progress, cover_image_path')
+            .eq('company_id', user.company_id)
+            .order('created_at', { ascending: false })
+          projectRows = (all ?? []) as ProjectRow[]
+        } else {
+          // Fetch projects this employee is a member of
+          const { data: members } = await supabase
+            .from('project_members')
+            .select('project_id, projects(id, name, status, progress, cover_image_path)')
+            .eq('profile_id', profile.id)
 
-        const projectRows = (members ?? [])
-          .map((m: { project_id: string; projects: unknown }) => m.projects)
-          .filter(Boolean) as { id: string; name: string; status: string; progress: number; cover_image_path: string | null }[]
+          projectRows = (members ?? [])
+            .map((m: { project_id: string; projects: unknown }) => m.projects)
+            .filter(Boolean) as ProjectRow[]
+        }
 
         // For each project, count tasks assigned to this employee
         if (projectRows.length > 0) {
@@ -65,12 +81,17 @@ export default async function EmployeeProjectsPage() {
 
           const assignedIds = new Set((assignments ?? []).map((a: { task_id: string }) => a.task_id))
 
-          const { data: tasks } = await supabase
+          // Supervisors see every open task on the project's kanban; others
+          // only the tasks assigned to them.
+          let tasksQuery = supabase
             .from('tasks')
             .select('id, project_id, status')
             .in('project_id', projectRows.map(p => p.id))
-            .in('id', assignedIds.size > 0 ? Array.from(assignedIds) : ['__none__'])
             .neq('status', 'completed')
+          if (!isSupervisor) {
+            tasksQuery = tasksQuery.in('id', assignedIds.size > 0 ? Array.from(assignedIds) : ['__none__'])
+          }
+          const { data: tasks } = await tasksQuery
 
           const taskCountByProject: Record<string, number> = {}
           for (const task of (tasks ?? [])) {
