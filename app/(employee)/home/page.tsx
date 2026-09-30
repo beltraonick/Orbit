@@ -35,12 +35,18 @@ export default async function EmployeeHomePage() {
   let profileId: string | null = null
   let openEntryId: string | null = null
   let clockInTime: string | null = null
-  let isSupervisor = false
   // Only a true admin account bypasses clock-in rules (window, geofence).
   // The "supervisor" permission alone (kanban access, photo uploads) must
   // NOT exempt someone from the same clock-in restrictions as any employee.
   let bypassClockRules = false
   let canSelfClock = true
+  // Each quick-action tile is gated by its OWN specific permission — not by
+  // "supervisor" alone, which only grants kanban/photo access and must not
+  // also unlock Team Clock, Mileage or Expenses for someone who wasn't
+  // granted those individually.
+  let canCheckinTeam = false
+  let canTrackMileage = false
+  let canUploadReceipts = false
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let geofenceEnabled = false
   let jobSites: JobSite[] = []
@@ -83,9 +89,11 @@ export default async function EmployeeHomePage() {
 
       if (profile) {
         profileId = profile.id
-        isSupervisor = user.role === 'admin' || hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
         bypassClockRules = user.role === 'admin'
         const perms = profile.permissions as EmployeePermissions | null
+        canCheckinTeam = user.role === 'admin' || hasPermission(perms, 'checkin_team')
+        canTrackMileage = user.role === 'admin' || hasPermission(perms, 'track_mileage') || hasPermission(perms, 'manual_mileage')
+        canUploadReceipts = user.role === 'admin' || hasPermission(perms, 'upload_receipts')
         canSelfClock = user.role === 'admin' || perms?.self_clockin !== false
 
         const [{ data: openEntry }, { data: docSettings }, { data: jobSitesData }] = await Promise.all([
@@ -237,80 +245,66 @@ export default async function EmployeeHomePage() {
     ? t(locale, 'employee.home.dailyRateCaption').replace('{rate}', dailyRate.toFixed(0)).replace('{half}', (dailyRate / 2).toFixed(0))
     : t(locale, 'employee.home.hourlyRateCaption').replace('{rate}', hourlyRate.toFixed(0))
 
-  // Quick actions config — same card design as admin QuickActionsWidget
+  // Quick actions config — same card design as admin QuickActionsWidget.
+  // Each tile is gated by its own specific permission, never by
+  // "supervisor" alone (that grants kanban/photo access only).
   type QA = { href: string; label: string; iconBg: string; iconColor: string; icon: ReactNode }
-  const supervisorActions: QA[] = [
-    {
-      href: '/team/checkin',
-      label: t(locale, 'employee.home.actionTeamClock'),
-      iconBg: 'bg-blue/10',
-      iconColor: 'text-blue',
-      icon: (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-          <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-        </svg>
-      ),
-    },
-    {
-      href: '/mileage',
-      label: t(locale, 'employee.home.actionMileage'),
-      iconBg: 'bg-blue/10',
-      iconColor: 'text-blue',
-      icon: (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-          <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
-          <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1v-1h3.05a2.5 2.5 0 014.9 0H19a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0017 6h-3V5a1 1 0 00-1-1H3zm11 4h2.586L18 9.414V10h-4V8z" />
-        </svg>
-      ),
-    },
-    {
-      href: '/expenses',
-      label: t(locale, 'employee.home.actionExpenses'),
-      iconBg: 'bg-amber/10',
-      iconColor: 'text-amber',
-      icon: (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-          <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-        </svg>
-      ),
-    },
-    {
-      href: '/pagamento',
-      label: t(locale, 'employee.home.actionPay'),
-      iconBg: 'bg-green/10',
-      iconColor: 'text-green',
-      icon: (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
-        </svg>
-      ),
-    },
-  ]
-
-  const employeeActions: QA[] = [
-    {
-      href: '/pagamento',
-      label: t(locale, 'employee.home.actionPay'),
-      iconBg: 'bg-green/10',
-      iconColor: 'text-green',
-      icon: (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
-        </svg>
-      ),
-    },
-    {
-      href: '/ponto',
-      label: t(locale, 'employee.home.actionTime'),
-      iconBg: 'bg-blue/10',
-      iconColor: 'text-blue',
-      icon: (
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-        </svg>
-      ),
-    },
-  ]
+  const payAction: QA = {
+    href: '/pagamento',
+    label: t(locale, 'employee.home.actionPay'),
+    iconBg: 'bg-green/10',
+    iconColor: 'text-green',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
+      </svg>
+    ),
+  }
+  const timeAction: QA = {
+    href: '/ponto',
+    label: t(locale, 'employee.home.actionTime'),
+    iconBg: 'bg-blue/10',
+    iconColor: 'text-blue',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+      </svg>
+    ),
+  }
+  const teamClockAction: QA = {
+    href: '/team/checkin',
+    label: t(locale, 'employee.home.actionTeamClock'),
+    iconBg: 'bg-blue/10',
+    iconColor: 'text-blue',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+      </svg>
+    ),
+  }
+  const mileageAction: QA = {
+    href: '/mileage',
+    label: t(locale, 'employee.home.actionMileage'),
+    iconBg: 'bg-blue/10',
+    iconColor: 'text-blue',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path d="M8 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM15 16.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+        <path d="M3 4a1 1 0 00-1 1v10a1 1 0 001 1h1.05a2.5 2.5 0 014.9 0H10a1 1 0 001-1v-1h3.05a2.5 2.5 0 014.9 0H19a1 1 0 001-1v-5a1 1 0 00-.293-.707l-2-2A1 1 0 0017 6h-3V5a1 1 0 00-1-1H3zm11 4h2.586L18 9.414V10h-4V8z" />
+      </svg>
+    ),
+  }
+  const expensesAction: QA = {
+    href: '/expenses',
+    label: t(locale, 'employee.home.actionExpenses'),
+    iconBg: 'bg-amber/10',
+    iconColor: 'text-amber',
+    icon: (
+      <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+        <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+      </svg>
+    ),
+  }
 
   // Days off: see fixed/upcoming days off and ask for one (see /folgas).
   const daysOffAction: QA = {
@@ -324,7 +318,14 @@ export default async function EmployeeHomePage() {
       </svg>
     ),
   }
-  const quickActions = [...(isSupervisor ? supervisorActions : employeeActions), daysOffAction]
+  const quickActions = [
+    payAction,
+    timeAction,
+    ...(canCheckinTeam ? [teamClockAction] : []),
+    ...(canTrackMileage ? [mileageAction] : []),
+    ...(canUploadReceipts ? [expensesAction] : []),
+    daysOffAction,
+  ]
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 md:py-8">
