@@ -31,20 +31,22 @@ export async function GET(req: Request) {
   if (companiesErr) return Response.json({ error: companiesErr.message }, { status: 500 })
 
   let closed = 0
-  const details: { company_id: string; closed: number }[] = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const details: any[] = []
 
   for (const company of companies ?? []) {
     const tz = company.timezone || 'America/New_York'
     const deadline = company.clock_out_deadline || '18:00'
     const { date: todayLocal, time: nowLocal } = localDateTimeParts(now, tz)
 
-    const { data: openEntries } = await supabase
+    const { data: openEntries, error: openEntriesErr } = await supabase
       .from('time_entries')
       .select('id, clock_in')
       .eq('company_id', company.company_id)
       .is('clock_out', null)
 
     let companyClosed = 0
+    const errors: string[] = []
     for (const entry of openEntries ?? []) {
       const entryLocalDate = localDateTimeParts(new Date(entry.clock_in), tz).date
       const pastDeadline = entryLocalDate < todayLocal || (entryLocalDate === todayLocal && nowLocal >= deadline)
@@ -62,13 +64,22 @@ export async function GET(req: Request) {
         .is('clock_out', null)
 
       if (!updateErr) companyClosed++
+      else errors.push(updateErr.message)
     }
 
-    if (companyClosed > 0) {
-      closed += companyClosed
-      details.push({ company_id: company.company_id, closed: companyClosed })
-    }
+    closed += companyClosed
+    details.push({
+      company_id: company.company_id,
+      timezone: tz,
+      deadline,
+      nowLocal,
+      todayLocal,
+      openEntriesCount: (openEntries ?? []).length,
+      openEntriesErr: openEntriesErr?.message ?? null,
+      closed: companyClosed,
+      updateErrors: errors,
+    })
   }
 
-  return Response.json({ ok: true, closed, details })
+  return Response.json({ ok: true, closed, companiesChecked: (companies ?? []).length, details })
 }
