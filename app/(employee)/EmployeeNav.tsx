@@ -10,7 +10,10 @@ export function EmployeeNav() {
   const pathname = usePathname()
   const { t } = useTranslation()
   const permissions = usePermissions()
-  const isSupervisor = hasPermission(permissions, 'checkin_team') ||
+  // "Supervisor view" (supervisor) is what gives access to projects/tasks,
+  // so it shows the Projects tab too — it does NOT change clock-in rules.
+  const isSupervisor = hasPermission(permissions, 'supervisor') ||
+    hasPermission(permissions, 'checkin_team') ||
     hasPermission(permissions, 'create_extras') ||
     hasPermission(permissions, 'close_payroll')
   const canTrackMileage = hasPermission(permissions, 'track_mileage')
