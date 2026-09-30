@@ -1,6 +1,11 @@
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { localDateTimeParts, zonedTimeToUtc } from '@/lib/clock-window'
 
+// Bulk-updates are grouped per company (see below), so this should stay far
+// under any plan's default — this just removes the platform default as a
+// second point of failure on top of it.
+export const maxDuration = 60
+
 // A GitHub Actions workflow (.github/workflows/auto-clockout.yml) hits this
 // hourly (Authorization: Bearer $CRON_SECRET). Closes out anyone still
 // clocked in past their company's configured clock_out_deadline — see
@@ -45,26 +50,44 @@ export async function GET(req: Request) {
       .eq('company_id', company.company_id)
       .is('clock_out', null)
 
-    let companyClosed = 0
-    const errors: string[] = []
+    // Group past-deadline entries by (their local calendar day, full/half
+    // day) so each group can be closed with ONE bulk update instead of one
+    // round-trip per person. A company with hundreds of employees all past
+    // deadline at once could otherwise take minutes to close one-by-one —
+    // long enough to hit a serverless function's execution time limit and
+    // get killed mid-run, leaving some people closed and others not.
+    type Group = { clockOutAt: Date; fullIds: string[]; halfIds: string[] }
+    const groups = new Map<string, Group>()
     for (const entry of openEntries ?? []) {
       const entryLocalDate = localDateTimeParts(new Date(entry.clock_in), tz).date
       const pastDeadline = entryLocalDate < todayLocal || (entryLocalDate === todayLocal && nowLocal >= deadline)
       if (!pastDeadline) continue
 
-      const clockOutAt = zonedTimeToUtc(entryLocalDate, deadline, tz)
+      if (!groups.has(entryLocalDate)) {
+        groups.set(entryLocalDate, { clockOutAt: zonedTimeToUtc(entryLocalDate, deadline, tz), fullIds: [], halfIds: [] })
+      }
+      const group = groups.get(entryLocalDate)!
       // Same 5-hour rule as a live clock-out — an auto clock-out shouldn't
       // fall back to a different threshold just because nobody tapped the
       // button.
-      const hoursWorked = (clockOutAt.getTime() - new Date(entry.clock_in).getTime()) / 3600000
-      const { error: updateErr } = await supabase
-        .from('time_entries')
-        .update({ clock_out: clockOutAt.toISOString(), is_full_day: hoursWorked >= 5 })
-        .eq('id', entry.id)
-        .is('clock_out', null)
+      const hoursWorked = (group.clockOutAt.getTime() - new Date(entry.clock_in).getTime()) / 3600000
+      ;(hoursWorked >= 5 ? group.fullIds : group.halfIds).push(entry.id)
+    }
 
-      if (!updateErr) companyClosed++
-      else errors.push(updateErr.message)
+    let companyClosed = 0
+    const errors: string[] = []
+    for (const group of Array.from(groups.values())) {
+      for (const [ids, isFullDay] of [[group.fullIds, true], [group.halfIds, false]] as const) {
+        if (ids.length === 0) continue
+        const { error: updateErr, count } = await supabase
+          .from('time_entries')
+          .update({ clock_out: group.clockOutAt.toISOString(), is_full_day: isFullDay }, { count: 'exact' })
+          .in('id', ids)
+          .is('clock_out', null)
+
+        if (!updateErr) companyClosed += count ?? ids.length
+        else errors.push(updateErr.message)
+      }
     }
 
     closed += companyClosed
