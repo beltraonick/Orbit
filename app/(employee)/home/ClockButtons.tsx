@@ -38,12 +38,17 @@ function newId(): string {
 }
 
 type LocationResult =
-  | { ok: true; latitude: number; longitude: number; city: string; state: string }
+  // accuracy: the phone's own error radius in metres (coords.accuracy).
+  | { ok: true; latitude: number; longitude: number; accuracy: number; city: string; state: string }
   // 'denied' vs 'unavailable' get different messages to the employee — a
   // permission problem needs a Settings change (and often a full app
   // restart on iOS, which doesn't re-check a permission granted while the
   // page was already open), while a weak GPS signal just needs a retry.
   | { ok: false; reason: 'denied' | 'unavailable' }
+
+// Above this error radius (metres) the phone is only giving an approximate
+// position — typically iPhone "Precise Location" turned off.
+const IMPRECISE_LOCATION_METERS = 1000
 
 function getPosition(options: PositionOptions): Promise<GeolocationPosition | GeolocationPositionError> {
   return new Promise(resolve => {
@@ -80,6 +85,7 @@ async function getLocation(): Promise<LocationResult> {
   }
 
   const { latitude, longitude } = result.coords
+  const accuracy = Number.isFinite(result.coords.accuracy) ? result.coords.accuracy : 0
   // City/state is a nice-to-have: never let a slow or rate-limited
   // geocoder hold up the clock-in itself (it used to wait forever).
   const ctrl = new AbortController()
@@ -93,9 +99,9 @@ async function getLocation(): Promise<LocationResult> {
     const addr = data.address ?? {}
     const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? ''
     const state = addr.state ?? ''
-    return { ok: true, latitude, longitude, city, state }
+    return { ok: true, latitude, longitude, accuracy, city, state }
   } catch {
-    return { ok: true, latitude, longitude, city: '', state: '' }
+    return { ok: true, latitude, longitude, accuracy, city: '', state: '' }
   } finally {
     clearTimeout(timer)
   }
@@ -184,7 +190,15 @@ export function ClockButtons({
         s => haversineDistance(loc.latitude, loc.longitude, s.latitude, s.longitude) <= s.radius_meters
       )
       if (!withinSite) {
-        setClockError(t('employee.clockButtons.notAtJobSite'))
+        // Same rule as before — only the message changes. An error radius
+        // this large almost always means iPhone "Precise Location" is off
+        // (it blurs the position by kilometres on purpose), so say how to fix
+        // that instead of "you're not at the job site".
+        setClockError(
+          loc.accuracy > IMPRECISE_LOCATION_METERS
+            ? t('employee.clockButtons.impreciseLocation').replace('{km}', String(Math.max(1, Math.round(loc.accuracy / 1000))))
+            : t('employee.clockButtons.notAtJobSite')
+        )
         setLoading(false)
         return
       }
