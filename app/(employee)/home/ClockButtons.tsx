@@ -38,12 +38,21 @@ function newId(): string {
 }
 
 type LocationResult =
-  | { ok: true; latitude: number; longitude: number; city: string; state: string }
+  // accuracy: the phone's own error radius in metres (coords.accuracy).
+  | { ok: true; latitude: number; longitude: number; accuracy: number; city: string; state: string }
   // 'denied' vs 'unavailable' get different messages to the employee — a
   // permission problem needs a Settings change (and often a full app
   // restart on iOS, which doesn't re-check a permission granted while the
   // page was already open), while a weak GPS signal just needs a retry.
   | { ok: false; reason: 'denied' | 'unavailable' }
+
+// Above this error radius (metres) the phone is only giving an approximate
+// position — typically iPhone "Precise Location" turned off.
+const IMPRECISE_LOCATION_METERS = 1000
+
+function formatDistance(m: number): string {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`
+}
 
 function getPosition(options: PositionOptions): Promise<GeolocationPosition | GeolocationPositionError> {
   return new Promise(resolve => {
@@ -55,13 +64,17 @@ function isPositionError(v: GeolocationPosition | GeolocationPositionError): v i
   return 'code' in v
 }
 
-async function getLocation(): Promise<LocationResult> {
+// fresh: don't reuse a position cached in the last minute — used on "Try
+// again" so a phone that just turned on Precise Location isn't handed the
+// same old approximate fix.
+async function getLocation(fresh = false): Promise<LocationResult> {
   if (!navigator.geolocation) return { ok: false, reason: 'unavailable' }
 
   // First try: a real GPS fix. Job sites often have weak signal (indoors,
   // trailers), so this gets a generous timeout rather than the 6s that used
   // to make a slow-but-genuine GPS fix look identical to a denied permission.
-  let result = await getPosition({ timeout: 15000, enableHighAccuracy: true, maximumAge: 60000 })
+  const maximumAge = fresh ? 0 : 60000
+  let result = await getPosition({ timeout: 15000, enableHighAccuracy: true, maximumAge })
 
   // A real permission denial (code 1) never succeeds on retry — stop here.
   if (isPositionError(result) && result.code === result.PERMISSION_DENIED) {
@@ -72,7 +85,7 @@ async function getLocation(): Promise<LocationResult> {
   // (enableHighAccuracy: false) instead of GPS — much faster to resolve and
   // plenty precise for a job-site radius check.
   if (isPositionError(result)) {
-    result = await getPosition({ timeout: 8000, enableHighAccuracy: false, maximumAge: 60000 })
+    result = await getPosition({ timeout: 8000, enableHighAccuracy: false, maximumAge })
   }
 
   if (isPositionError(result)) {
@@ -80,6 +93,7 @@ async function getLocation(): Promise<LocationResult> {
   }
 
   const { latitude, longitude } = result.coords
+  const accuracy = Number.isFinite(result.coords.accuracy) ? result.coords.accuracy : 0
   // City/state is a nice-to-have: never let a slow or rate-limited
   // geocoder hold up the clock-in itself (it used to wait forever).
   const ctrl = new AbortController()
@@ -93,9 +107,9 @@ async function getLocation(): Promise<LocationResult> {
     const addr = data.address ?? {}
     const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? ''
     const state = addr.state ?? ''
-    return { ok: true, latitude, longitude, city, state }
+    return { ok: true, latitude, longitude, accuracy, city, state }
   } catch {
-    return { ok: true, latitude, longitude, city: '', state: '' }
+    return { ok: true, latitude, longitude, accuracy, city: '', state: '' }
   } finally {
     clearTimeout(timer)
   }
@@ -118,6 +132,10 @@ export function ClockButtons({
   const [elapsed, setElapsed] = useState('')
   const [locationInfo, setLocationInfo] = useState('')
   const [clockError, setClockError] = useState('')
+  // Set when the last clock-in was blocked by the job-site check: drives the
+  // distance line, the "How to turn it on" steps and the "Try again" label.
+  const [geoProblem, setGeoProblem] = useState<{ imprecise: boolean; distanceM: number; siteName: string } | null>(null)
+  const [showSteps, setShowSteps] = useState(false)
   const [nowLocal, setNowLocal] = useState('')
 
   // Only gates this employee's OWN clock-in — supervisors/admins clocking
@@ -166,7 +184,8 @@ export function ClockButtons({
     setClockError('')
     setLocationInfo(t('employee.clockButtons.gettingLocation'))
 
-    const loc = await getLocation()
+    const loc = await getLocation(geoProblem !== null)
+    setGeoProblem(null)
     setLocationInfo(loc.ok && loc.city ? `${loc.city}, ${loc.state}` : '')
 
     // Geofence check — supervisors/admins bypass (same pattern as clock window).
@@ -184,7 +203,21 @@ export function ClockButtons({
         s => haversineDistance(loc.latitude, loc.longitude, s.latitude, s.longitude) <= s.radius_meters
       )
       if (!withinSite) {
-        setClockError(t('employee.clockButtons.notAtJobSite'))
+        // Same rule as before — only the message changes. An error radius
+        // this large almost always means iPhone "Precise Location" is off
+        // (it blurs the position by kilometres on purpose), so say how to fix
+        // that instead of "you're not at the job site".
+        const nearest = jobSites
+          .map(s => ({ name: s.name, d: haversineDistance(loc.latitude, loc.longitude, s.latitude, s.longitude) }))
+          .sort((a, b) => a.d - b.d)[0]
+        const imprecise = loc.accuracy > IMPRECISE_LOCATION_METERS
+        setGeoProblem({ imprecise, distanceM: nearest.d, siteName: nearest.name })
+        setShowSteps(false)
+        setClockError(
+          imprecise
+            ? t('employee.clockButtons.impreciseLocation').replace('{km}', String(Math.max(1, Math.round(loc.accuracy / 1000))))
+            : t('employee.clockButtons.notAtJobSite')
+        )
         setLoading(false)
         return
       }
@@ -321,6 +354,37 @@ export function ClockButtons({
       {clockError && (
         <p className="text-sm text-danger text-center">{clockError}</p>
       )}
+      {geoProblem && (
+        <p className="text-xs text-secondary text-center">
+          {t(geoProblem.imprecise ? 'employee.clockButtons.distanceToSiteApprox' : 'employee.clockButtons.distanceToSite')
+            .replace('{dist}', formatDistance(geoProblem.distanceM))
+            .replace('{name}', geoProblem.siteName)}
+        </p>
+      )}
+      {geoProblem?.imprecise && (
+        <div className="w-full">
+          <button
+            type="button"
+            onClick={() => setShowSteps(v => !v)}
+            className="w-full h-10 rounded-button border border-brand/40 text-brand text-sm font-semibold bg-brand/5"
+          >
+            {showSteps ? t('employee.clockButtons.hideSteps') : `📍 ${t('employee.clockButtons.howToEnable')}`}
+          </button>
+          {showSteps && (
+            <div className="mt-2 rounded-card border border-[var(--border)] bg-surface-elevated p-3 text-left text-xs text-primary space-y-2">
+              <p className="font-semibold">{t('employee.clockButtons.stepsIphoneTitle')}</p>
+              <ol className="list-decimal pl-5 space-y-1 text-secondary">
+                {[1, 2, 3, 4, 5].map(n => <li key={n}>{t(`employee.clockButtons.stepsIphone${n}`)}</li>)}
+              </ol>
+              <p className="font-semibold pt-1">{t('employee.clockButtons.stepsAndroidTitle')}</p>
+              <ul className="list-disc pl-5 space-y-1 text-secondary">
+                <li>{t('employee.clockButtons.stepsAndroid1')}</li>
+                <li>{t('employee.clockButtons.stepsAndroid2')}</li>
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
       {locationInfo && (
         <p className="text-xs text-secondary flex items-center gap-1.5">
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-brand">
@@ -335,7 +399,7 @@ export function ClockButtons({
         </p>
       )}
       <Button size="lg" onClick={clockIn} loading={loading} disabled={!canClockInNow} className="w-full">
-        {t('employee.clockButtons.clockIn')}
+        {geoProblem ? t('employee.clockButtons.tryAgain') : t('employee.clockButtons.clockIn')}
       </Button>
     </div>
   )
