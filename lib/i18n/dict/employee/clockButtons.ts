@@ -25,6 +25,9 @@ export const clockButtons = {
     stepsAndroidTitle: 'Android',
     stepsAndroid1: 'Settings → Location → Location services → Google Location Accuracy → turn it ON',
     stepsAndroid2: 'In Chrome: Settings → Site settings → Location → allow this site (precise)',
+    stepsAlsoTitle: 'Still not working? This also helps',
+    stepsAlsoWifiBluetooth: 'Turn on Wi-Fi and Bluetooth (you don’t need to connect to any network) — the phone uses them to find its position more precisely.',
+    stepsAlsoMaps: 'Open Google Maps or Apple Maps once, allow location if it asks, wait for the blue dot to settle, then come back and tap Try again.',
     alreadyClockedToday: 'You already clocked in and out today. Only one clock-in per day is allowed — contact your supervisor if this is wrong.',
   },
   pt: {
@@ -53,6 +56,9 @@ export const clockButtons = {
     stepsAndroidTitle: 'Android',
     stepsAndroid1: 'Configurações → Localização → Serviços de localização → Precisão da localização do Google → LIGAR',
     stepsAndroid2: 'No Chrome: Configurações → Configurações do site → Local → permitir este site (preciso)',
+    stepsAlsoTitle: 'Ainda não funcionou? Isso também ajuda',
+    stepsAlsoWifiBluetooth: 'Ligue o Wi-Fi e o Bluetooth (não precisa conectar em nenhuma rede) — o celular usa eles para achar a posição com mais precisão.',
+    stepsAlsoMaps: 'Abra o Google Maps ou o Apple Maps uma vez, permita a localização se pedir, espere o ponto azul parar e volte para tocar em Tentar de novo.',
     alreadyClockedToday: 'Você já bateu ponto de entrada e saída hoje. Só é permitido um ciclo por dia — fale com seu supervisor se isso estiver errado.',
   },
   es: {
@@ -81,6 +87,9 @@ export const clockButtons = {
     stepsAndroidTitle: 'Android',
     stepsAndroid1: 'Ajustes → Ubicación → Servicios de ubicación → Precisión de la ubicación de Google → ACTIVAR',
     stepsAndroid2: 'En Chrome: Configuración → Configuración de sitios → Ubicación → permitir este sitio (exacta)',
+    stepsAlsoTitle: '¿Sigue sin funcionar? Esto también ayuda',
+    stepsAlsoWifiBluetooth: 'Activa el Wi-Fi y el Bluetooth (no hace falta conectarse a ninguna red) — el teléfono los usa para ubicarse con más precisión.',
+    stepsAlsoMaps: 'Abre Google Maps o Apple Maps una vez, permite la ubicación si lo pide, espera a que el punto azul se quede quieto y vuelve para tocar Intentar de nuevo.',
     alreadyClockedToday: 'Ya marcaste entrada y salida hoy. Solo se permite un ciclo por día — contacta a tu supervisor si esto es un error.',
   },
 }
