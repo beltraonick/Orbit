@@ -381,6 +381,11 @@ export function ClockButtons({
                 <li>{t('employee.clockButtons.stepsAndroid1')}</li>
                 <li>{t('employee.clockButtons.stepsAndroid2')}</li>
               </ul>
+              <p className="font-semibold pt-1">{t('employee.clockButtons.stepsAlsoTitle')}</p>
+              <ul className="list-disc pl-5 space-y-1 text-secondary">
+                <li>{t('employee.clockButtons.stepsAlsoWifiBluetooth')}</li>
+                <li>{t('employee.clockButtons.stepsAlsoMaps')}</li>
+              </ul>
             </div>
           )}
         </div>
