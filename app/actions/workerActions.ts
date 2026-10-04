@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { revalidatePath } from 'next/cache'
 import { getAttendanceStatus } from './scheduleActions'
+import { closeStaleEntriesForCompany } from '@/lib/auto-clockout'
 
 
 // ─── Worker CRUD (admin only) ─────────────────────────────────────────────────
@@ -295,6 +296,25 @@ export async function getProjectTeamStatus(projectId?: string) {
   const canCheckinTeam = hasPermission(profile.permissions as EmployeePermissions | null, 'checkin_team')
 
   if (!isSupervisor && !canCheckinTeam) return { error: 'Not authorized' }
+
+  // Sweep stale clock-ins for the whole company before reading who's still
+  // clocked in — same reasoning as the Home page: a GitHub Actions
+  // free-tier schedule doesn't reliably fire hourly, so this screen would
+  // otherwise keep showing people as clocked in for hours after their
+  // deadline passed.
+  const { data: windowSettings } = await supabase
+    .from('company_document_settings')
+    .select('timezone, enforce_clock_window, clock_out_deadline')
+    .eq('company_id', user.company_id)
+    .maybeSingle()
+  if (windowSettings?.enforce_clock_window) {
+    await closeStaleEntriesForCompany(
+      supabase,
+      user.company_id as string,
+      windowSettings.timezone || 'America/New_York',
+      windowSettings.clock_out_deadline || '18:00',
+    )
+  }
 
   // With no projectId, this is the general company-wide "Team Clock" (the
   // /team/checkin hub) — every active employee in the company,

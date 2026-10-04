@@ -1,9 +1,9 @@
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
-import { localDateTimeParts, zonedTimeToUtc } from '@/lib/clock-window'
+import { closeStaleEntriesForCompany } from '@/lib/auto-clockout'
 
-// Bulk-updates are grouped per company (see below), so this should stay far
-// under any plan's default — this just removes the platform default as a
-// second point of failure on top of it.
+// Bulk-updates are grouped per company (see lib/auto-clockout.ts), so this
+// should stay far under any plan's default — this just removes the
+// platform default as a second point of failure on top of it.
 export const maxDuration = 60
 
 // A GitHub Actions workflow (.github/workflows/auto-clockout.yml) hits this
@@ -12,13 +12,17 @@ export const maxDuration = 60
 // 033_clock_window_settings.sql. Companies that never opted in
 // (enforce_clock_window = false) are skipped entirely.
 //
+// This is a backstop, not the only way entries get closed: the employee
+// Home page (app/(employee)/home/page.tsx) runs the same sweep on every
+// load, which doesn't depend on any external scheduler firing on time —
+// GitHub Actions' free-tier schedule does not reliably run hourly (observed
+// gaps of 3-8+ hours), so relying on it alone left entries open for hours
+// past the deadline.
+//
 // Uses the service-role client, not the session-scoped one: this request has
 // no logged-in user/cookie, so the session-scoped client would run as the
 // `anon` Postgres role — which the tenant-isolation RLS policies (migration
 // 044) block from reading company_document_settings/time_entries at all.
-// That failure is silent (RLS just returns zero rows, not an error), so
-// this endpoint kept responding 200 with `closed: 0` — a plausible actual
-// cause of "auto clock-out isn't working" reports.
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -26,7 +30,6 @@ export async function GET(req: Request) {
   }
 
   const supabase = createServiceRoleClient()
-  const now = new Date()
 
   const { data: companies, error: companiesErr } = await supabase
     .from('company_document_settings')
@@ -42,66 +45,9 @@ export async function GET(req: Request) {
   for (const company of companies ?? []) {
     const tz = company.timezone || 'America/New_York'
     const deadline = company.clock_out_deadline || '18:00'
-    const { date: todayLocal, time: nowLocal } = localDateTimeParts(now, tz)
-
-    const { data: openEntries, error: openEntriesErr } = await supabase
-      .from('time_entries')
-      .select('id, clock_in')
-      .eq('company_id', company.company_id)
-      .is('clock_out', null)
-
-    // Group past-deadline entries by (their local calendar day, full/half
-    // day) so each group can be closed with ONE bulk update instead of one
-    // round-trip per person. A company with hundreds of employees all past
-    // deadline at once could otherwise take minutes to close one-by-one —
-    // long enough to hit a serverless function's execution time limit and
-    // get killed mid-run, leaving some people closed and others not.
-    type Group = { clockOutAt: Date; fullIds: string[]; halfIds: string[] }
-    const groups = new Map<string, Group>()
-    for (const entry of openEntries ?? []) {
-      const entryLocalDate = localDateTimeParts(new Date(entry.clock_in), tz).date
-      const pastDeadline = entryLocalDate < todayLocal || (entryLocalDate === todayLocal && nowLocal >= deadline)
-      if (!pastDeadline) continue
-
-      if (!groups.has(entryLocalDate)) {
-        groups.set(entryLocalDate, { clockOutAt: zonedTimeToUtc(entryLocalDate, deadline, tz), fullIds: [], halfIds: [] })
-      }
-      const group = groups.get(entryLocalDate)!
-      // Same 5-hour rule as a live clock-out — an auto clock-out shouldn't
-      // fall back to a different threshold just because nobody tapped the
-      // button.
-      const hoursWorked = (group.clockOutAt.getTime() - new Date(entry.clock_in).getTime()) / 3600000
-      ;(hoursWorked >= 5 ? group.fullIds : group.halfIds).push(entry.id)
-    }
-
-    let companyClosed = 0
-    const errors: string[] = []
-    for (const group of Array.from(groups.values())) {
-      for (const [ids, isFullDay] of [[group.fullIds, true], [group.halfIds, false]] as const) {
-        if (ids.length === 0) continue
-        const { error: updateErr, count } = await supabase
-          .from('time_entries')
-          .update({ clock_out: group.clockOutAt.toISOString(), is_full_day: isFullDay }, { count: 'exact' })
-          .in('id', ids)
-          .is('clock_out', null)
-
-        if (!updateErr) companyClosed += count ?? ids.length
-        else errors.push(updateErr.message)
-      }
-    }
-
-    closed += companyClosed
-    details.push({
-      company_id: company.company_id,
-      timezone: tz,
-      deadline,
-      nowLocal,
-      todayLocal,
-      openEntriesCount: (openEntries ?? []).length,
-      openEntriesErr: openEntriesErr?.message ?? null,
-      closed: companyClosed,
-      updateErrors: errors,
-    })
+    const result = await closeStaleEntriesForCompany(supabase, company.company_id, tz, deadline)
+    closed += result.closed
+    details.push({ company_id: company.company_id, timezone: tz, deadline, ...result })
   }
 
   return Response.json({ ok: true, closed, companiesChecked: (companies ?? []).length, details })
