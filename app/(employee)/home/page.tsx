@@ -13,6 +13,7 @@ import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { calcEntryPay, findDailyPayCaps, isDailyPayMode } from '@/lib/payroll-calc'
 import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings } from '@/lib/employee-period'
+import { closeStaleEntriesForCompany } from '@/lib/auto-clockout'
 
 const supabaseReady =
   process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -131,9 +132,29 @@ export default async function EmployeeHomePage() {
           jobSites = jobSitesData
         }
 
-        if (openEntry) {
-          openEntryId = openEntry.id
-          clockInTime = openEntry.clock_in
+        let currentOpenEntry = openEntry
+
+        // Sweep the whole company's stale clock-ins on every Home load,
+        // instead of relying only on the scheduled cron — a GitHub Actions
+        // free-tier schedule does not reliably fire hourly (observed gaps of
+        // 3-8+ hours), so the first person in the company to open the app
+        // after the deadline now closes everyone out, no scheduler needed.
+        if (clockWindow.enforce_clock_window) {
+          await closeStaleEntriesForCompany(supabase, user.company_id as string, clockWindow.timezone, clockWindow.clock_out_deadline)
+          if (openEntry) {
+            const { data: refreshed } = await supabase
+              .from('time_entries')
+              .select('id, clock_in')
+              .eq('id', openEntry.id)
+              .is('clock_out', null)
+              .maybeSingle()
+            currentOpenEntry = refreshed
+          }
+        }
+
+        if (currentOpenEntry) {
+          openEntryId = currentOpenEntry.id
+          clockInTime = currentOpenEntry.clock_in
         }
 
         // Same company pay period Admin Payroll uses (type + optional start date).
