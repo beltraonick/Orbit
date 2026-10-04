@@ -29,6 +29,9 @@ export const clockButtons = {
     stepsAlsoWifiBluetooth: 'Turn on Wi-Fi and Bluetooth (you don’t need to connect to any network) — the phone uses them to find its position more precisely.',
     stepsAlsoMaps: 'Open Google Maps or Apple Maps once, allow location if it asks, wait for the blue dot to settle, then come back and tap Try again.',
     alreadyClockedToday: 'You already clocked in and out today. Only one clock-in per day is allowed — contact your supervisor if this is wrong.',
+    stillWorkingQuestion: 'It\'s past your normal end of day — are you still working?',
+    stillWorkingYes: 'Yes, still working',
+    stillWorkingNo: 'No, clock me out',
   },
   pt: {
     gettingLocation: 'Obtendo localização…',
@@ -60,6 +63,9 @@ export const clockButtons = {
     stepsAlsoWifiBluetooth: 'Ligue o Wi-Fi e o Bluetooth (não precisa conectar em nenhuma rede) — o celular usa eles para achar a posição com mais precisão.',
     stepsAlsoMaps: 'Abra o Google Maps ou o Apple Maps uma vez, permita a localização se pedir, espere o ponto azul parar e volte para tocar em Tentar de novo.',
     alreadyClockedToday: 'Você já bateu ponto de entrada e saída hoje. Só é permitido um ciclo por dia — fale com seu supervisor se isso estiver errado.',
+    stillWorkingQuestion: 'Já passou do seu horário normal de saída — você ainda está trabalhando?',
+    stillWorkingYes: 'Sim, ainda trabalhando',
+    stillWorkingNo: 'Não, bater saída',
   },
   es: {
     gettingLocation: 'Obteniendo ubicación…',
@@ -91,5 +97,8 @@ export const clockButtons = {
     stepsAlsoWifiBluetooth: 'Activa el Wi-Fi y el Bluetooth (no hace falta conectarse a ninguna red) — el teléfono los usa para ubicarse con más precisión.',
     stepsAlsoMaps: 'Abre Google Maps o Apple Maps una vez, permite la ubicación si lo pide, espera a que el punto azul se quede quieto y vuelve para tocar Intentar de nuevo.',
     alreadyClockedToday: 'Ya marcaste entrada y salida hoy. Solo se permite un ciclo por día — contacta a tu supervisor si esto es un error.',
+    stillWorkingQuestion: 'Ya pasó tu horario normal de salida — ¿sigues trabajando?',
+    stillWorkingYes: 'Sí, sigo trabajando',
+    stillWorkingNo: 'No, marcar salida',
   },
 }

@@ -16,6 +16,7 @@ import { calcEntryPay } from '@/lib/payroll-calc'
 import { getPayPeriodRange, getPreviousPayPeriodRange, loadCompanyPeriodSettings, type CompanyPeriodSettings } from '@/lib/employee-period'
 import { DEFAULT_CLOCK_WINDOW, zonedTimeToUtc, type ClockWindowSettings } from '@/lib/clock-window'
 import type { Locale } from '@/lib/i18n/translate'
+import { OvertimeConfirmationsCard } from './OvertimeConfirmationsCard'
 
 interface TimeEntry {
   id: string
@@ -430,6 +431,8 @@ export default function TimePage() {
           + Add Entry
         </button>
       </div>
+
+      {companyId && <OvertimeConfirmationsCard companyId={companyId} />}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-[var(--border)]">

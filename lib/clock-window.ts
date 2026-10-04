@@ -7,7 +7,14 @@ export interface ClockWindowSettings {
   enforce_clock_window: boolean
   clock_in_window_start: string // 'HH:MM', company-local time
   clock_in_window_end: string
+  // The hard ceiling: past this, the auto-clockout sweep closes the entry
+  // no matter what — nobody is asked "still working?" anymore. Should be
+  // later than normal_clock_out_time, or real overtime gets cut off.
   clock_out_deadline: string
+  // When the normal workday ends. Up to 30 minutes past this is still
+  // treated as a normal day (no prompt); after that, an employee who's
+  // still clocked in gets asked "still working?" on their next app open.
+  normal_clock_out_time: string
 }
 
 export const DEFAULT_CLOCK_WINDOW: ClockWindowSettings = {
@@ -16,6 +23,25 @@ export const DEFAULT_CLOCK_WINDOW: ClockWindowSettings = {
   clock_in_window_start: '07:00',
   clock_in_window_end: '09:00',
   clock_out_deadline: '18:00',
+  normal_clock_out_time: '18:00',
+}
+
+// Minutes past normal_clock_out_time still treated as a normal day — no
+// "still working?" prompt, matches daily-rate tolerance (half an hour
+// either way doesn't change the pay).
+export const OVERTIME_PROMPT_GRACE_MINUTES = 30
+
+// Once confirmed, don't ask again for this many minutes — avoids re-asking
+// every single time someone reopens the app for an unrelated reason.
+export const OVERTIME_PROMPT_THROTTLE_MINUTES = 60
+
+/** Adds `minutes` to an 'HH:MM' time, wrapping within the same day (caps at 23:59). */
+export function addMinutesToTime(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number)
+  const total = Math.min(h * 60 + m + minutes, 23 * 60 + 59)
+  const hh = Math.floor(total / 60)
+  const mm = total % 60
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
 export const COMMON_TIMEZONES = [

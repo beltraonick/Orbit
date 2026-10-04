@@ -7,6 +7,7 @@ import { queueIfOffline } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/Button'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { localDateTimeParts, isWithinWindow, haversineDistance, DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/lib/clock-window'
+import { confirmStillWorking } from '@/app/actions/overtimeActions'
 
 interface ClockButtonsProps {
   employeeId: string
@@ -21,6 +22,9 @@ interface ClockButtonsProps {
   canSelfClock?: boolean
   geofenceEnabled?: boolean
   jobSites?: JobSite[]
+  // True when it's past normal end of day (+ grace) and this entry hasn't
+  // confirmed "still working" recently — decided server-side on page load.
+  needsOvertimeCheck?: boolean
 }
 
 function formatElapsed(iso: string) {
@@ -125,6 +129,7 @@ export function ClockButtons({
   canSelfClock = true,
   geofenceEnabled = false,
   jobSites = [],
+  needsOvertimeCheck = false,
 }: ClockButtonsProps) {
   const router = useRouter()
   const { t } = useTranslation()
@@ -132,6 +137,8 @@ export function ClockButtons({
   const [elapsed, setElapsed] = useState('')
   const [locationInfo, setLocationInfo] = useState('')
   const [clockError, setClockError] = useState('')
+  const [showOvertimePrompt, setShowOvertimePrompt] = useState(needsOvertimeCheck)
+  const [overtimeSaving, setOvertimeSaving] = useState(false)
   // Set when the last clock-in was blocked by the job-site check: drives the
   // distance line, the "How to turn it on" steps and the "Try again" label.
   const [geoProblem, setGeoProblem] = useState<{ imprecise: boolean; distanceM: number; siteName: string } | null>(null)
@@ -323,6 +330,52 @@ export function ClockButtons({
     setLocalEntryId(null)
     router.refresh()
     setLoading(false)
+  }
+
+  // "Still working?" — asked once it's past normal end of day instead of
+  // silently assuming either way. No logs them out now; yes records a
+  // timestamped, location-checked confirmation and keeps the session open.
+  async function confirmOvertime(stillWorking: boolean) {
+    if (!stillWorking) {
+      setShowOvertimePrompt(false)
+      await clockOut()
+      return
+    }
+    if (!localEntryId) { setShowOvertimePrompt(false); return }
+    setOvertimeSaving(true)
+    const loc = await getLocation()
+    await confirmStillWorking({
+      entryId: localEntryId,
+      latitude: loc.ok ? loc.latitude : undefined,
+      longitude: loc.ok ? loc.longitude : undefined,
+    })
+    setOvertimeSaving(false)
+    setShowOvertimePrompt(false)
+  }
+
+  if (clockedIn && showOvertimePrompt) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-2">
+        <p className="text-sm font-medium text-primary text-center">{t('employee.clockButtons.stillWorkingQuestion')}</p>
+        <p className="text-lg font-semibold text-tertiary tracking-wide font-mono tabular-nums">{elapsed}</p>
+        <div className="flex gap-2 w-full">
+          <button
+            onClick={() => confirmOvertime(true)}
+            disabled={overtimeSaving}
+            className="flex-1 py-2.5 rounded-button text-sm font-medium bg-brand text-white disabled:opacity-50"
+          >
+            {t('employee.clockButtons.stillWorkingYes')}
+          </button>
+          <button
+            onClick={() => confirmOvertime(false)}
+            disabled={overtimeSaving}
+            className="flex-1 py-2.5 rounded-button text-sm font-medium bg-surface-elevated border border-[var(--border)] text-secondary disabled:opacity-50"
+          >
+            {t('employee.clockButtons.stillWorkingNo')}
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (clockedIn) {
