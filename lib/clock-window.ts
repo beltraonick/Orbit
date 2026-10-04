@@ -31,10 +31,6 @@ export const DEFAULT_CLOCK_WINDOW: ClockWindowSettings = {
 // either way doesn't change the pay).
 export const OVERTIME_PROMPT_GRACE_MINUTES = 30
 
-// Once confirmed, don't ask again for this many minutes — avoids re-asking
-// every single time someone reopens the app for an unrelated reason.
-export const OVERTIME_PROMPT_THROTTLE_MINUTES = 60
-
 /** Adds `minutes` to an 'HH:MM' time, wrapping within the same day (caps at 23:59). */
 export function addMinutesToTime(time: string, minutes: number): string {
   const [h, m] = time.split(':').map(Number)
