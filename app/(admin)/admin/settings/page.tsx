@@ -464,7 +464,7 @@ export default function SettingsPage() {
       })
     supabase
       .from('company_document_settings')
-      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type, pay_system, geofence_enabled')
+      .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, normal_clock_out_time, home_period_type, pay_system, geofence_enabled')
       .eq('company_id', companyId)
       .maybeSingle()
       .then(({ data }) => {
@@ -475,6 +475,7 @@ export default function SettingsPage() {
             clock_in_window_start: data.clock_in_window_start ?? DEFAULT_CLOCK_WINDOW.clock_in_window_start,
             clock_in_window_end: data.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: data.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
+            normal_clock_out_time: data.normal_clock_out_time ?? data.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.normal_clock_out_time,
           })
           setGeofenceEnabled(data.geofence_enabled ?? false)
           if (data.home_period_type) {
@@ -920,9 +921,13 @@ export default function SettingsPage() {
             ) : (
               <>
                 <p className="text-xs text-secondary">
-                  Optional — off by default. When on, employees can only clock <em>themselves</em> in during the window below,
-                  and anyone still clocked in past the deadline gets automatically clocked out. Supervisors/admins clocking a
-                  team member in via the Team Clock tool are never restricted by this.
+                  Optional — off by default. When on, employees can only clock <em>themselves</em> in during the window below.
+                  Past &ldquo;Normal end of day&rdquo;, anyone still clocked in is asked &ldquo;still working?&rdquo; on their
+                  next app open — say no and they&apos;re clocked out, say yes and it keeps running. Past &ldquo;Auto clock-out
+                  at&rdquo; (set this later, e.g. a few hours after normal end), nobody is asked anymore — it just closes
+                  automatically, no exceptions. Keep these two different if anyone ever works real overtime, or the hard
+                  deadline will cut it off. Supervisors/admins clocking a team member in via the Team Clock tool are never
+                  restricted by this.
                 </p>
 
                 <label className="flex items-center gap-2.5 cursor-pointer">
@@ -948,7 +953,7 @@ export default function SettingsPage() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-secondary">Clock-in opens</label>
                     <input
@@ -968,7 +973,16 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-secondary">Auto clock-out at</label>
+                    <label className="text-sm font-medium text-secondary">Normal end of day</label>
+                    <input
+                      type="time"
+                      value={clockWindow.normal_clock_out_time}
+                      onChange={e => setClockWindow(w => ({ ...w, normal_clock_out_time: e.target.value }))}
+                      className="h-11 w-full rounded-input bg-surface-elevated border border-[var(--border)] px-4 text-sm text-primary focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand/60 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-secondary">Auto clock-out at (hard ceiling)</label>
                     <input
                       type="time"
                       value={clockWindow.clock_out_deadline}

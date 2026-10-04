@@ -9,7 +9,15 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { t } from '@/lib/i18n/translate'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
-import { DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/lib/clock-window'
+import {
+  DEFAULT_CLOCK_WINDOW,
+  OVERTIME_PROMPT_GRACE_MINUTES,
+  OVERTIME_PROMPT_THROTTLE_MINUTES,
+  addMinutesToTime,
+  localDateTimeParts,
+  type ClockWindowSettings,
+  type JobSite,
+} from '@/lib/clock-window'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { calcEntryPay, findDailyPayCaps, isDailyPayMode } from '@/lib/payroll-calc'
 import { getPayPeriodRange, isAwaitingPayment, loadCompanyPeriodSettings } from '@/lib/employee-period'
@@ -48,6 +56,7 @@ export default async function EmployeeHomePage() {
   let canCheckinTeam = false
   let canTrackMileage = false
   let canUploadReceipts = false
+  let needsOvertimeCheck = false
   let clockWindow: ClockWindowSettings = DEFAULT_CLOCK_WINDOW
   let geofenceEnabled = false
   let jobSites: JobSite[] = []
@@ -108,7 +117,7 @@ export default async function EmployeeHomePage() {
             .maybeSingle(),
           supabase
             .from('company_document_settings')
-            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, home_period_type, geofence_enabled')
+            .select('timezone, enforce_clock_window, clock_in_window_start, clock_in_window_end, clock_out_deadline, normal_clock_out_time, home_period_type, geofence_enabled')
             .eq('company_id', user.company_id)
             .maybeSingle(),
           supabase
@@ -125,6 +134,7 @@ export default async function EmployeeHomePage() {
             clock_in_window_start: docSettings.clock_in_window_start ?? DEFAULT_CLOCK_WINDOW.clock_in_window_start,
             clock_in_window_end: docSettings.clock_in_window_end ?? DEFAULT_CLOCK_WINDOW.clock_in_window_end,
             clock_out_deadline: docSettings.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.clock_out_deadline,
+            normal_clock_out_time: docSettings.normal_clock_out_time ?? docSettings.clock_out_deadline ?? DEFAULT_CLOCK_WINDOW.normal_clock_out_time,
           }
           geofenceEnabled = docSettings.geofence_enabled ?? false
         }
@@ -155,6 +165,29 @@ export default async function EmployeeHomePage() {
         if (currentOpenEntry) {
           openEntryId = currentOpenEntry.id
           clockInTime = currentOpenEntry.clock_in
+        }
+
+        // Past normal end of day (+ a grace window that's still a normal
+        // day, same tolerance as the pay rule), ask whoever's still clocked
+        // in whether they're really still working — instead of silently
+        // assuming either way. Throttled so reopening the app for something
+        // unrelated a few minutes later doesn't re-ask immediately.
+        if (currentOpenEntry && clockWindow.enforce_clock_window) {
+          const { time: nowLocal } = localDateTimeParts(new Date(), clockWindow.timezone)
+          const promptsFrom = addMinutesToTime(clockWindow.normal_clock_out_time, OVERTIME_PROMPT_GRACE_MINUTES)
+          if (nowLocal >= promptsFrom && nowLocal < clockWindow.clock_out_deadline) {
+            const { data: lastConfirmation } = await supabase
+              .from('overtime_confirmations')
+              .select('confirmed_at')
+              .eq('time_entry_id', currentOpenEntry.id)
+              .order('confirmed_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            const minutesSinceConfirmed = lastConfirmation
+              ? (Date.now() - new Date(lastConfirmation.confirmed_at).getTime()) / 60000
+              : Infinity
+            needsOvertimeCheck = minutesSinceConfirmed >= OVERTIME_PROMPT_THROTTLE_MINUTES
+          }
         }
 
         // Same company pay period Admin Payroll uses (type + optional start date).
@@ -392,6 +425,7 @@ export default async function EmployeeHomePage() {
             canSelfClock={canSelfClock}
             geofenceEnabled={geofenceEnabled}
             jobSites={jobSites}
+            needsOvertimeCheck={needsOvertimeCheck}
           />
         ) : (
           <div className="flex flex-col items-center gap-4 py-2">
