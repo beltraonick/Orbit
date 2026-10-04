@@ -138,7 +138,11 @@ export function ClockButtons({
   const [locationInfo, setLocationInfo] = useState('')
   const [clockError, setClockError] = useState('')
   const [showOvertimePrompt, setShowOvertimePrompt] = useState(needsOvertimeCheck)
-  const [overtimeSaving, setOvertimeSaving] = useState(false)
+  // 5-second undo window before an overtime answer actually commits — a
+  // mistap ("No" meant for a different button, or "Yes" out of habit) is
+  // reversible instead of instantly closing the entry or logging a false
+  // confirmation.
+  const [pendingOvertimeAnswer, setPendingOvertimeAnswer] = useState<{ stillWorking: boolean; timer: ReturnType<typeof setTimeout> } | null>(null)
   // Set when the last clock-in was blocked by the job-site check: drives the
   // distance line, the "How to turn it on" steps and the "Try again" label.
   const [geoProblem, setGeoProblem] = useState<{ imprecise: boolean; distanceM: number; siteName: string } | null>(null)
@@ -335,22 +339,35 @@ export function ClockButtons({
   // "Still working?" — asked once it's past normal end of day instead of
   // silently assuming either way. No logs them out now; yes records a
   // timestamped, location-checked confirmation and keeps the session open.
-  async function confirmOvertime(stillWorking: boolean) {
+  // Neither happens right away: a 5s undo window makes a mistap reversible.
+  async function executeOvertimeAnswer(stillWorking: boolean) {
     if (!stillWorking) {
-      setShowOvertimePrompt(false)
       await clockOut()
       return
     }
-    if (!localEntryId) { setShowOvertimePrompt(false); return }
-    setOvertimeSaving(true)
+    if (!localEntryId) return
     const loc = await getLocation()
     await confirmStillWorking({
       entryId: localEntryId,
       latitude: loc.ok ? loc.latitude : undefined,
       longitude: loc.ok ? loc.longitude : undefined,
     })
-    setOvertimeSaving(false)
+  }
+
+  function answerOvertime(stillWorking: boolean) {
     setShowOvertimePrompt(false)
+    const timer = setTimeout(() => {
+      setPendingOvertimeAnswer(null)
+      void executeOvertimeAnswer(stillWorking)
+    }, 5000)
+    setPendingOvertimeAnswer({ stillWorking, timer })
+  }
+
+  function undoOvertimeAnswer() {
+    if (!pendingOvertimeAnswer) return
+    clearTimeout(pendingOvertimeAnswer.timer)
+    setPendingOvertimeAnswer(null)
+    setShowOvertimePrompt(true)
   }
 
   if (clockedIn && showOvertimePrompt) {
@@ -360,16 +377,14 @@ export function ClockButtons({
         <p className="text-lg font-semibold text-tertiary tracking-wide font-mono tabular-nums">{elapsed}</p>
         <div className="flex gap-2 w-full">
           <button
-            onClick={() => confirmOvertime(true)}
-            disabled={overtimeSaving}
-            className="flex-1 py-2.5 rounded-button text-sm font-medium bg-brand text-white disabled:opacity-50"
+            onClick={() => answerOvertime(true)}
+            className="flex-1 py-2.5 rounded-button text-sm font-medium bg-brand text-white"
           >
             {t('employee.clockButtons.stillWorkingYes')}
           </button>
           <button
-            onClick={() => confirmOvertime(false)}
-            disabled={overtimeSaving}
-            className="flex-1 py-2.5 rounded-button text-sm font-medium bg-surface-elevated border border-[var(--border)] text-secondary disabled:opacity-50"
+            onClick={() => answerOvertime(false)}
+            className="flex-1 py-2.5 rounded-button text-sm font-medium bg-surface-elevated border border-[var(--border)] text-secondary"
           >
             {t('employee.clockButtons.stillWorkingNo')}
           </button>
@@ -393,6 +408,17 @@ export function ClockButtons({
         <p className="text-lg font-semibold text-tertiary tracking-wide font-mono tabular-nums">{elapsed}</p>
 
         {clockError && <p className="text-sm text-danger text-center">{clockError}</p>}
+
+        {pendingOvertimeAnswer && (
+          <div className="w-full flex items-center justify-between px-4 py-3 rounded-card bg-surface-elevated border border-[var(--border)] shadow-sm">
+            <p className="text-sm text-secondary">
+              {t(pendingOvertimeAnswer.stillWorking ? 'employee.clockButtons.stillWorkingYesSaved' : 'employee.clockButtons.stillWorkingNoSaved')}
+            </p>
+            <button onClick={undoOvertimeAnswer} className="text-sm font-semibold text-brand hover:text-brand/80 transition-colors">
+              {t('common.undo')}
+            </button>
+          </div>
+        )}
 
         <Button variant="danger" size="lg" onClick={clockOut} loading={loading} className="w-full mt-1">
           {t('employee.clockButtons.clockOut')}

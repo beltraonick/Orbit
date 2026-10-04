@@ -12,7 +12,6 @@ import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import {
   DEFAULT_CLOCK_WINDOW,
   OVERTIME_PROMPT_GRACE_MINUTES,
-  OVERTIME_PROMPT_THROTTLE_MINUTES,
   addMinutesToTime,
   localDateTimeParts,
   type ClockWindowSettings,
@@ -170,24 +169,14 @@ export default async function EmployeeHomePage() {
         // Past normal end of day (+ a grace window that's still a normal
         // day, same tolerance as the pay rule), ask whoever's still clocked
         // in whether they're really still working — instead of silently
-        // assuming either way. Throttled so reopening the app for something
-        // unrelated a few minutes later doesn't re-ask immediately.
+        // assuming either way. Asked on every app open in this window (not
+        // throttled): each "yes" logs its own timestamped, location-checked
+        // confirmation, building a running proof trail for as long as they
+        // keep working.
         if (currentOpenEntry && clockWindow.enforce_clock_window) {
           const { time: nowLocal } = localDateTimeParts(new Date(), clockWindow.timezone)
           const promptsFrom = addMinutesToTime(clockWindow.normal_clock_out_time, OVERTIME_PROMPT_GRACE_MINUTES)
-          if (nowLocal >= promptsFrom && nowLocal < clockWindow.clock_out_deadline) {
-            const { data: lastConfirmation } = await supabase
-              .from('overtime_confirmations')
-              .select('confirmed_at')
-              .eq('time_entry_id', currentOpenEntry.id)
-              .order('confirmed_at', { ascending: false })
-              .limit(1)
-              .maybeSingle()
-            const minutesSinceConfirmed = lastConfirmation
-              ? (Date.now() - new Date(lastConfirmation.confirmed_at).getTime()) / 60000
-              : Infinity
-            needsOvertimeCheck = minutesSinceConfirmed >= OVERTIME_PROMPT_THROTTLE_MINUTES
-          }
+          needsOvertimeCheck = nowLocal >= promptsFrom && nowLocal < clockWindow.clock_out_deadline
         }
 
         // Same company pay period Admin Payroll uses (type + optional start date).

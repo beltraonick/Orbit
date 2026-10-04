@@ -32,6 +32,8 @@ export const clockButtons = {
     stillWorkingQuestion: 'It\'s past your normal end of day — are you still working?',
     stillWorkingYes: 'Yes, still working',
     stillWorkingNo: 'No, clock me out',
+    stillWorkingYesSaved: 'Confirmed — still working',
+    stillWorkingNoSaved: 'Clocking out…',
   },
   pt: {
     gettingLocation: 'Obtendo localização…',
@@ -66,6 +68,8 @@ export const clockButtons = {
     stillWorkingQuestion: 'Já passou do seu horário normal de saída — você ainda está trabalhando?',
     stillWorkingYes: 'Sim, ainda trabalhando',
     stillWorkingNo: 'Não, bater saída',
+    stillWorkingYesSaved: 'Confirmado — ainda trabalhando',
+    stillWorkingNoSaved: 'Batendo saída…',
   },
   es: {
     gettingLocation: 'Obteniendo ubicación…',
@@ -100,5 +104,7 @@ export const clockButtons = {
     stillWorkingQuestion: 'Ya pasó tu horario normal de salida — ¿sigues trabajando?',
     stillWorkingYes: 'Sí, sigo trabajando',
     stillWorkingNo: 'No, marcar salida',
+    stillWorkingYesSaved: 'Confirmado — sigues trabajando',
+    stillWorkingNoSaved: 'Marcando salida…',
   },
 }
