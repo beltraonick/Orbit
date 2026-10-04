@@ -1,12 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { queueIfOffline } from '@/lib/offline-queue'
 import { Button } from '@/components/ui/Button'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
-import { localDateTimeParts, isWithinWindow, haversineDistance, DEFAULT_CLOCK_WINDOW, type ClockWindowSettings, type JobSite } from '@/lib/clock-window'
+import {
+  localDateTimeParts,
+  isWithinWindow,
+  haversineDistance,
+  addMinutesToTime,
+  OVERTIME_PROMPT_GRACE_MINUTES,
+  DEFAULT_CLOCK_WINDOW,
+  type ClockWindowSettings,
+  type JobSite,
+} from '@/lib/clock-window'
 import { confirmStillWorking } from '@/app/actions/overtimeActions'
 
 interface ClockButtonsProps {
@@ -176,6 +185,33 @@ export function ClockButtons({
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
   }, [localClockInTime])
+
+  // Re-asks "still working?" every hour on the hour WHILE THE APP STAYS
+  // OPEN, not only when it's reopened — so someone who keeps the app open
+  // and keeps answering "yes" gets one confirmation per hour (6-7, 7-8, …)
+  // instead of just one snapshot from whenever they happened to open it.
+  // No server cron involved: this is a client-side timer, so it only runs
+  // while the tab/app is actually open and in the foreground (the browser
+  // suspends it otherwise) — the page-load check covers the reopen case for
+  // when the phone was locked or the app was closed in between.
+  const lastOvertimePromptAt = useRef<number>(needsOvertimeCheck ? Date.now() : 0)
+  useEffect(() => {
+    if (!clockedIn || !clockWindow.enforce_clock_window) return
+    const checkHourly = () => {
+      if (showOvertimePrompt || pendingOvertimeAnswer) return
+      const { time: nowLoc } = localDateTimeParts(new Date(), clockWindow.timezone)
+      const promptsFrom = addMinutesToTime(clockWindow.normal_clock_out_time, OVERTIME_PROMPT_GRACE_MINUTES)
+      const inWindow = nowLoc >= promptsFrom && nowLoc < clockWindow.clock_out_deadline
+      if (!inWindow) return
+      const minutesSincePrompt = (Date.now() - lastOvertimePromptAt.current) / 60000
+      if (minutesSincePrompt >= 60) {
+        lastOvertimePromptAt.current = Date.now()
+        setShowOvertimePrompt(true)
+      }
+    }
+    const id = setInterval(checkHourly, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [clockedIn, clockWindow, showOvertimePrompt, pendingOvertimeAnswer])
 
   if (!canSelfClock) {
     return (
@@ -356,6 +392,7 @@ export function ClockButtons({
 
   function answerOvertime(stillWorking: boolean) {
     setShowOvertimePrompt(false)
+    lastOvertimePromptAt.current = Date.now()
     const timer = setTimeout(() => {
       setPendingOvertimeAnswer(null)
       void executeOvertimeAnswer(stillWorking)
