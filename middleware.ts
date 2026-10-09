@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const SESSION_COOKIE = 'uc_session'
 const PUBLIC_PATHS = ['/login', '/register', '/signup', '/pending', '/activate', '/forgot-password', '/reset-password', '/adminnovarkadmin',
+  // Legal pages — required to be publicly accessible for App Store review.
+  '/terms', '/privacy',
   // Static PWA files: the browser fetches these without a session (install
   // from the login screen, service-worker updates), so they must never
   // redirect to /login.
