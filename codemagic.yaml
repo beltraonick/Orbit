@@ -86,6 +86,13 @@ workflows:
             <string>app-store</string>
             <key>teamID</key>
             <string>S8MCAPHAVG</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.nicollasbeltrao.orbitops</key>
+              <string>OrbitOps App Store</string>
+            </dict>
           </dict>
           </plist>
           EOF
