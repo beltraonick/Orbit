@@ -81,7 +81,7 @@ workflows:
             --scheme "$XCODE_SCHEME"
 
     integrations:
-      app_store_connect: codemagic_api_key
+      app_store_connect: aortype_app_store_connect
 
     artifacts:
       - build/ios/ipa/*.ipa
