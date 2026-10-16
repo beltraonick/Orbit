@@ -9,8 +9,8 @@ workflows:
       vars:
         XCODE_WORKSPACE: "ios/App/App.xcworkspace"
         XCODE_SCHEME: "App"
-        # Set this to the numeric Apple ID of the app after you create it in App Store Connect
-        APP_STORE_APPLE_ID: "6746853950"
+        # Numeric Apple ID of the app in App Store Connect ("Orbit Construction" → App Information → Apple ID)
+        APP_STORE_APPLE_ID: "6823703961"
       xcode: latest
       cocoapods: default
       node: v18
