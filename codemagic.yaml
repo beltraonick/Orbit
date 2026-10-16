@@ -1,0 +1,92 @@
+workflows:
+  ios-app-store:
+    name: OrbitOps — iOS App Store
+    max_build_duration: 60
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.nicollasbeltrao.orbitops
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+        # Set this to the numeric Apple ID of the app after you create it in App Store Connect
+        APP_STORE_APPLE_ID: "6746853950"
+      xcode: latest
+      cocoapods: default
+      node: v18
+
+    scripts:
+      - name: Install npm dependencies
+        script: npm ci --legacy-peer-deps
+
+      - name: Sync Capacitor iOS project
+        script: npx cap sync ios
+
+      - name: Copy and register PrivacyInfo.xcprivacy
+        script: |
+          # Copy the manifest into the iOS target folder
+          cp ios-setup/PrivacyInfo.xcprivacy ios/App/App/PrivacyInfo.xcprivacy
+
+          # Add it to the Xcode project using xcodeproj gem (pre-installed on Codemagic)
+          ruby - <<'RUBY'
+          require 'xcodeproj'
+          project_path = 'ios/App/App.xcodeproj'
+          project = Xcodeproj::Project.open(project_path)
+
+          # Find the App group (the folder shown as "App" in the Xcode sidebar)
+          app_group = project.main_group.find_subpath('App', false)
+          unless app_group
+            puts "App group not found, skipping xcprivacy registration"
+            exit 0
+          end
+
+          # Skip if already added
+          if app_group.files.any? { |f| f.path == 'PrivacyInfo.xcprivacy' }
+            puts "PrivacyInfo.xcprivacy already in project"
+            exit 0
+          end
+
+          # Add file reference
+          file_ref = app_group.new_file('PrivacyInfo.xcprivacy')
+          file_ref.last_known_file_type = 'file.bplist'
+          file_ref.source_tree = '<group>'
+
+          # Add to Resources build phase for every app target
+          project.targets.each do |target|
+            next unless target.name == 'App'
+            phase = target.resources_build_phase
+            phase.add_file_reference(file_ref)
+          end
+
+          project.save
+          puts "PrivacyInfo.xcprivacy added to project"
+          RUBY
+
+      - name: Install CocoaPods
+        script: |
+          cd ios/App
+          pod install
+
+      - name: Set build number (TestFlight auto-increment)
+        script: |
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo "0")
+          NEW_BUILD=$((LATEST + 1))
+          cd ios/App
+          agvtool new-version -all "$NEW_BUILD"
+
+      - name: Build and archive IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
