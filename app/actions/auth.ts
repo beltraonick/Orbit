@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation'
 import { findUserByEmail, createEmployeeWithInvite, findActiveInviteCode, toSessionUser } from '@/lib/auth/store'
-import { verifyPassword, hashPassword } from '@/lib/auth/crypto'
+import { verifyPassword, hashPassword, isLegacyHash } from '@/lib/auth/crypto'
 import { setSessionCookie, clearSessionCookie, createToken, verifyToken } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -62,6 +62,19 @@ export async function login(
 
   if (!verifyPassword(password, user.password_hash)) {
     return { error: 'Invalid email or password.' }
+  }
+
+  // Silently migrate legacy SHA-256 hashes to bcrypt on first successful login.
+  if (isLegacyHash(user.password_hash)) {
+    try {
+      const supabase = createClient()
+      await supabase
+        .from('profiles')
+        .update({ password_hash: hashPassword(password) })
+        .eq('id', user.id)
+    } catch {
+      // best-effort — login still succeeds; next login migrates again
+    }
   }
 
   if (user.status === 'suspended') {

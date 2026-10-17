@@ -1,13 +1,28 @@
 import { createHash, randomBytes } from 'crypto'
+import bcrypt from 'bcryptjs'
 
-const SALT = 'upper_construction_2024'
+const LEGACY_SALT = 'upper_construction_2024'
+const BCRYPT_ROUNDS = 12
+
+// Bcrypt hashes always start with $2a$ or $2b$; legacy hashes are 64-char hex.
+export function isLegacyHash(hash: string): boolean {
+  return !hash.startsWith('$2')
+}
 
 export function hashPassword(password: string): string {
-  return createHash('sha256').update(SALT + password).digest('hex')
+  return bcrypt.hashSync(password, BCRYPT_ROUNDS)
+}
+
+// Used only during migration — verifying a legacy hash on first login.
+function hashPasswordLegacy(password: string): string {
+  return createHash('sha256').update(LEGACY_SALT + password).digest('hex')
 }
 
 export function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash
+  if (isLegacyHash(hash)) {
+    return hashPasswordLegacy(password) === hash
+  }
+  return bcrypt.compareSync(password, hash)
 }
 
 export function generateId(): string {
