@@ -1,8 +1,14 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto'
 
 function getKey(): Buffer {
-  const secret = process.env.AUTH_SECRET ?? 'upper_construction_dev_secret_fallback'
-  return createHash('sha256').update(secret + ':qbo').digest()
+  // QBO_ENCRYPTION_KEY is a dedicated AES-256 key for QBO OAuth tokens.
+  // It must never be derived from AUTH_SECRET so that session key rotation
+  // does not invalidate stored QBO connections.
+  const raw = process.env.QBO_ENCRYPTION_KEY ?? process.env.AUTH_SECRET ?? 'upper_construction_dev_secret_fallback'
+  // Accept either a raw 64-char hex key (32 bytes) or a passphrase — both
+  // produce a stable 32-byte buffer via SHA-256.
+  if (/^[0-9a-f]{64}$/i.test(raw)) return Buffer.from(raw, 'hex')
+  return createHash('sha256').update(raw + ':qbo').digest()
 }
 
 export function encryptToken(plaintext: string): string {

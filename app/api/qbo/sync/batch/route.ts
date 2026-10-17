@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { syncTimeEntry } from '@/lib/qbo/sync-entry'
 
 export async function POST() {
   const user = await getCurrentUser()
@@ -10,7 +11,6 @@ export async function POST() {
 
   const supabase = createClient()
 
-  // Find all completed, not-synced entries for this company
   const { data: entries } = await supabase
     .from('time_entries')
     .select('id')
@@ -24,23 +24,13 @@ export async function POST() {
     return NextResponse.json({ ok: true, synced: 0 })
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
   let synced = 0
   let failed = 0
 
   for (const entry of entries) {
-    try {
-      const res = await fetch(`${appUrl}/api/qbo/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ time_entry_id: entry.id }),
-      })
-      const data = await res.json()
-      if (data.ok && !data.skipped) synced++
-      else if (!data.ok) failed++
-    } catch {
-      failed++
-    }
+    const result = await syncTimeEntry(supabase, user.company_id, entry.id)
+    if (result.ok && !result.skipped) synced++
+    else if (!result.ok) failed++
   }
 
   return NextResponse.json({ ok: true, total: entries.length, synced, failed })
