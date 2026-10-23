@@ -9,6 +9,8 @@ import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { DayTypeBadge } from '@/components/ui/DayTypeBadge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
+import { SharePdfButton } from '@/components/SharePdfButton'
+import { PrintPageButton } from '@/components/PrintPageButton'
 import type { ExportData } from '@/lib/exports/exportPayrollXLSX'
 import { calcEntryPay, findDailyPayCaps } from '@/lib/payroll-calc'
 import type { PeriodType } from '@/lib/employee-period'
@@ -810,12 +812,21 @@ export default function ReportsPage() {
   const [customEnd, setCustomEnd] = useState('')
   const [exportingXLSX, setExportingXLSX] = useState(false)
 
-  function printPage() { window.print() }
+  // Custom period → also send its dates (browser-local start/end of day as
+  // ISO, the same range the screen uses); otherwise the receipt and the
+  // export fell back to "all time".
+  const rangeQuery = (() => {
+    if (period !== 'custom' || !customStart || !customEnd) return ''
+    const start = getPeriodStart('custom', customStart)
+    const end = getPeriodEnd('custom', customEnd)
+    if (!start || !end) return ''
+    return `&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+  })()
 
   async function handleExportXLSX() {
     setExportingXLSX(true)
     try {
-      const res = await fetch(`/api/reports/export?period=${period}`)
+      const res = await fetch(`/api/reports/export?period=${period}${rangeQuery}`)
       if (!res.ok) throw new Error('Failed to fetch export data')
       const data: ExportData = await res.json()
       const { exportPayrollXLSX } = await import('@/lib/exports/exportPayrollXLSX')
@@ -874,7 +885,7 @@ export default function ReportsPage() {
             {exportingXLSX ? 'Exporting…' : 'Export XLSX'}
           </button>
           <a
-            href={`/admin/reports/payroll-receipt?period=${period}`}
+            href={`/admin/reports/payroll-receipt?period=${period}${rangeQuery}`}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-2 rounded-button border border-[var(--border)] text-xs font-medium text-secondary hover:text-primary hover:bg-surface-elevated transition-colors"
@@ -887,12 +898,21 @@ export default function ReportsPage() {
           >
             Relatório de Tarefas (PDF)
           </a>
-          <button
-            onClick={printPage}
+          {/* Print works on a computer; on iPhone (home-screen app) it does
+              nothing, so the PDF button builds a real file to share/save. */}
+          <SharePdfButton
+            target="#report-content"
+            fileName={`report-${tab}-${period}.pdf`}
+            className="px-3 py-2 rounded-button bg-brand text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+            labels={{
+              build: t('common.pdf.build'), building: t('common.pdf.building'), share: t('common.pdf.share'),
+              open: t('common.pdf.open'), error: t('common.pdf.error'),
+            }}
+          />
+          <PrintPageButton
+            label={t('admin.reports.print')}
             className="px-3 py-2 rounded-button border border-[var(--border)] text-xs font-medium text-secondary hover:text-primary hover:bg-surface-elevated transition-colors"
-          >
-            {t('admin.reports.print')}
-          </button>
+          />
         </div>
       </div>
 
@@ -914,9 +934,11 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {tab === 'payroll' && <PayrollReport period={period} customStart={customStart} customEnd={customEnd} />}
-      {tab === 'expenses' && <ExpensesReport period={period} customStart={customStart} customEnd={customEnd} />}
-      {tab === 'mileage' && <MileageReport period={period} customStart={customStart} customEnd={customEnd} />}
+      <div id="report-content" className="bg-background">
+        {tab === 'payroll' && <PayrollReport period={period} customStart={customStart} customEnd={customEnd} />}
+        {tab === 'expenses' && <ExpensesReport period={period} customStart={customStart} customEnd={customEnd} />}
+        {tab === 'mileage' && <MileageReport period={period} customStart={customStart} customEnd={customEnd} />}
+      </div>
     </div>
   )
 }
