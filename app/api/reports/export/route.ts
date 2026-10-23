@@ -2,8 +2,23 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { calcEntryPay, findDailyPayCaps } from '@/lib/payroll-calc'
 
-function periodDates(period: string): { start: Date | null; end: Date | null } {
+// ?start / ?end for the Reports page's "Custom period". The page sends the
+// browser's local start/end of day as ISO instants so this range matches what
+// the screen shows; a plain YYYY-MM-DD is accepted too.
+function parseBound(v: string | null | undefined, endOfDay: boolean): Date | null {
+  if (!v) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(v + (endOfDay ? 'T23:59:59.999' : 'T00:00:00'))
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function periodDates(period: string, customStart?: string | null, customEnd?: string | null): { start: Date | null; end: Date | null } {
   const now = new Date()
+  if (period === 'custom') {
+    const start = parseBound(customStart, false)
+    const end = parseBound(customEnd, true)
+    if (start && end) return { start, end }
+  }
   if (period === 'week') {
     const d = new Date(now)
     d.setDate(now.getDate() - now.getDay())
@@ -45,7 +60,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const period = searchParams.get('period') ?? 'month'
-  const { start, end } = periodDates(period)
+  const { start, end } = periodDates(period, searchParams.get('start'), searchParams.get('end'))
   const supabase = createClient()
   const cid = user.company_id
 

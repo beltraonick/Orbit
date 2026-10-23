@@ -2,12 +2,32 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { calcEntryPay } from '@/lib/payroll-calc'
+import { SharePdfButton } from '@/components/SharePdfButton'
+import { PrintPageButton } from '@/components/PrintPageButton'
+import { t } from '@/lib/i18n/translate'
 
 const fmt$ = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
-function periodDates(period: string): { start: Date | null; end: Date | null } {
+// ?start / ?end for the Reports page's "Custom period". The page sends the
+// browser's local start/end of day as ISO instants so this range matches what
+// the screen shows; a plain YYYY-MM-DD is accepted too.
+function parseBound(v: string | null | undefined, endOfDay: boolean): Date | null {
+  if (!v) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(v + (endOfDay ? 'T23:59:59.999' : 'T00:00:00'))
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function periodDates(period: string, customStart?: string, customEnd?: string): { start: Date | null; end: Date | null } {
   const now = new Date()
+  // "Custom period" on the Reports page — its dates come in ?start=&end=.
+  // Without them this used to fall through to "all time".
+  if (period === 'custom') {
+    const start = parseBound(customStart, false)
+    const end = parseBound(customEnd, true)
+    if (start && end) return { start, end }
+  }
   if (period === 'week') {
     const d = new Date(now)
     d.setDate(now.getDate() - now.getDay())
@@ -55,14 +75,14 @@ const printCss = `
 export default async function PayrollReceiptPage({
   searchParams,
 }: {
-  searchParams: { period?: string }
+  searchParams: { period?: string; start?: string; end?: string }
 }) {
   const user = getCurrentUser()
   if (!user) redirect('/login')
   if (user.role !== 'admin' && user.role !== 'owner') redirect('/')
 
   const period = searchParams.period ?? 'month'
-  const { start, end } = periodDates(period)
+  const { start, end } = periodDates(period, searchParams.start, searchParams.end)
   const supabase = createClient()
   const cid = user.company_id
 
@@ -248,25 +268,26 @@ export default async function PayrollReceiptPage({
       {/* eslint-disable-next-line react/no-danger */}
       <style dangerouslySetInnerHTML={{ __html: printCss }} />
 
-      <div className="no-print flex gap-3 mb-6">
-        <button
-          onClick={undefined}
-          data-action="print"
+      <div className="no-print flex flex-wrap items-center gap-3 mb-6">
+        {/* Real PDF file + share sheet — window.print() does nothing in the
+            iPhone home-screen app. */}
+        <SharePdfButton
+          target="#receipt-root"
+          fileName={`payment-receipt-${start ? start.toISOString().slice(0, 10) : 'all'}${end ? '_' + end.toISOString().slice(0, 10) : ''}.pdf`}
           className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-700 transition-colors"
-          suppressHydrationWarning
-        >
-          Print / Save as PDF
-        </button>
-        <a href={`/admin/reports?period=${period}`} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+          labels={{
+            build: t(user.language, 'common.pdf.build'), building: t(user.language, 'common.pdf.building'),
+            share: t(user.language, 'common.pdf.share'), open: t(user.language, 'common.pdf.open'), error: t(user.language, 'common.pdf.error'),
+          }}
+        />
+        <PrintPageButton
+          label="Print"
+          className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+        />
+        <a href="/admin/reports" className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors">
           ← Back to Reports
         </a>
       </div>
-
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `document.querySelector('[data-action="print"]').addEventListener('click',()=>window.print())`,
-        }}
-      />
 
       <div id="receipt-root" className="bg-white text-gray-900 font-sans max-w-[780px] mx-auto">
         {/* Header */}

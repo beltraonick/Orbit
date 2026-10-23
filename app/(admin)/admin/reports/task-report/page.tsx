@@ -127,7 +127,9 @@ export default async function TaskReportPage({
 
   return (
     <>
-      <style>{`
+      {/* Raw CSS on purpose: as React text, its quotes were escaped
+          differently on the server and in the browser → hydration error. */}
+      <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           body { margin: 0; }
           .no-print { display: none !important; }
@@ -186,10 +188,13 @@ export default async function TaskReportPage({
         .page-footer { margin-top: 32px; border-top: 1px solid #e5e5e5; padding-top: 12px; display: flex; justify-content: space-between; font-size: 10px; color: #bbb; }
         .print-btn-bar { position: fixed; bottom: 24px; right: 24px; z-index: 100; display: flex; gap: 8px; }
         @media print { .print-btn-bar { display: none; } }
-      `}</style>
+      ` }} />
 
       {/* Print button (client component) */}
       <PrintButton projectName={project.name} />
+
+      {/* Everything below becomes the PDF (see PrintButton → SharePdfButton). */}
+      <div id="task-report-root" style={{ background: '#fff' }}>
 
       {/* ── COVER PAGE ── */}
       <div className="cover">
@@ -362,6 +367,7 @@ export default async function TaskReportPage({
           </div>
         )
       })}
+      </div>
     </>
   )
 }
