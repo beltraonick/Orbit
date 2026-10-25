@@ -1444,7 +1444,7 @@ ${manualOnlySections}
                     className={`w-full text-sm rounded-button border px-2.5 py-2 bg-surface ${manualForm.category === 'deduction' ? 'border-danger text-danger' : 'border-[var(--border)] text-primary'}`}
                   />
                   {manualForm.category === 'deduction' && (
-                    <p className="text-xs text-danger mt-1">This amount will be subtracted from the employee's pay.</p>
+                    <p className="text-xs text-danger mt-1">This amount will be subtracted from the employee&apos;s pay.</p>
                   )}
                 </div>
                 <div>
