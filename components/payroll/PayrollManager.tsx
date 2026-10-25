@@ -106,6 +106,7 @@ const CATEGORY_LABELS: Record<CompensationCategory, string> = {
   bonus: 'Bonus',
   correction: 'Correction',
   production: 'Production',
+  deduction: 'Deduction',
 }
 
 interface Summary {
@@ -478,7 +479,7 @@ export function PayrollManager() {
     const person = people.find(p => `${p.type}:${p.id}` === manualForm.personKey)
     if (!person) { setManualError('Select a person.'); return }
     const amount = Number(manualForm.amount)
-    if (!amount || amount <= 0) { setManualError('Enter an amount greater than 0.'); return }
+    if (!amount || amount <= 0) { setManualError('Enter a positive amount.'); return }
     if (!manualForm.description.trim()) { setManualError('A description is required.'); return }
     if (!manualForm.date) { setManualError('Select a date.'); return }
 
@@ -1314,13 +1315,15 @@ ${manualOnlySections}
                         </td>
                         <td className="px-3 py-2.5 text-secondary whitespace-nowrap">{fmtDate(row.date)}</td>
                         <td className="px-3 py-2.5">
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-brand/10 text-brand">
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${row.category === 'deduction' ? 'bg-danger/10 text-danger' : 'bg-brand/10 text-brand'}`}>
                             {CATEGORY_LABELS[row.category]}
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-secondary max-w-[240px] truncate text-xs">{row.description}</td>
                         <td className="px-3 py-2.5 text-secondary whitespace-nowrap text-xs">{row.projectName ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-primary tabular-nums">{fmt$(row.amount)}</td>
+                        <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${row.category === 'deduction' ? 'text-danger' : 'text-primary'}`}>
+                          {row.category === 'deduction' ? `-${fmt$(Math.abs(row.amount))}` : fmt$(row.amount)}
+                        </td>
                         <td className="px-3 py-2.5 text-right print:hidden">
                           {!row.locked && (
                             <button
@@ -1431,13 +1434,18 @@ ${manualOnlySections}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-secondary mb-1 block">Amount ($)</label>
+                  <label className="text-xs font-medium text-secondary mb-1 block">
+                    {manualForm.category === 'deduction' ? 'Amount to Deduct ($)' : 'Amount ($)'}
+                  </label>
                   <input
                     type="number" min="0.01" step="0.01" required
                     value={manualForm.amount}
                     onChange={e => setManualForm(f => ({ ...f, amount: e.target.value }))}
-                    className="w-full text-sm rounded-button border border-[var(--border)] px-2.5 py-2 bg-surface text-primary"
+                    className={`w-full text-sm rounded-button border px-2.5 py-2 bg-surface ${manualForm.category === 'deduction' ? 'border-danger text-danger' : 'border-[var(--border)] text-primary'}`}
                   />
+                  {manualForm.category === 'deduction' && (
+                    <p className="text-xs text-danger mt-1">This amount will be subtracted from the employee's pay.</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-medium text-secondary mb-1 block">Date</label>
