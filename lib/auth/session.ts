@@ -9,7 +9,10 @@ import type { SessionUser } from './types'
 
 const COOKIE_NAME = 'uc_session'
 const MAX_AGE = 60 * 60 * 24 * 90 // 90 days in seconds — stay logged in like a normal app
-const SECRET = process.env.AUTH_SECRET ?? 'upper_construction_dev_secret_fallback'
+if (!process.env.AUTH_SECRET) {
+  throw new Error('AUTH_SECRET environment variable is not set. Set it in Vercel → Settings → Environment Variables.')
+}
+const SECRET = process.env.AUTH_SECRET
 
 // ─── Token encoding/decoding ─────────────────────────────────────────────────
 

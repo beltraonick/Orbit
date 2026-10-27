@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export type CompensationCategory = 'extra_work' | 'bonus' | 'correction' | 'production'
+export type CompensationCategory = 'extra_work' | 'bonus' | 'correction' | 'production' | 'deduction'
 
 export async function createManualCompensation(data: {
   person_type: 'employee' | 'worker'
@@ -19,6 +19,9 @@ export async function createManualCompensation(data: {
   const user = getCurrentUser()
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
   if (!data.amount || data.amount === 0) return { error: 'Amount must not be zero.' }
+
+  // Deductions must be stored as negative; the UI passes the absolute value.
+  const amount = data.category === 'deduction' ? -Math.abs(data.amount) : Math.abs(data.amount)
   if (!data.description.trim()) return { error: 'A description is required for audit purposes.' }
 
   const supabase = createClient()
@@ -43,7 +46,7 @@ export async function createManualCompensation(data: {
       person_type: data.person_type,
       person_id: data.person_id,
       person_name: data.person_name,
-      amount: data.amount,
+      amount,
       compensation_date: data.compensation_date,
       category: data.category,
       description: data.description.trim(),
