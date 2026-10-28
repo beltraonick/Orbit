@@ -18,7 +18,8 @@ const nextConfig = {
       "script-src 'self' 'unsafe-inline'",
       // Tailwind injects utility classes as inline styles.
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
+      // Receipts, project/task photos and avatars are served from Supabase Storage.
+      "img-src 'self' data: blob: https://*.supabase.co",
       "font-src 'self'",
       // Supabase REST + realtime WebSocket; nothing else reaches the browser.
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.resend.com",
