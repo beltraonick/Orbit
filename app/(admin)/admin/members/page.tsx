@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { getPendingRequests, approveMember, rejectMember } from '@/app/actions/membership'
+import { getPendingRequests, getRecentMembers, approveMember, rejectMember } from '@/app/actions/membership'
 import { getCompanyInviteCode, disableInviteCode, regenerateInviteCode } from '@/app/actions/invites'
-import type { MembershipRequest } from '@/app/actions/membership'
+import type { MembershipRequest, RecentMember } from '@/app/actions/membership'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,7 @@ import { useTranslation } from '@/lib/i18n/LocaleContext'
 export default function MembersPage() {
   const { t } = useTranslation()
   const [requests, setRequests] = useState<MembershipRequest[]>([])
+  const [recent, setRecent] = useState<RecentMember[]>([])
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -23,12 +24,14 @@ export default function MembersPage() {
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
-    const [membersResult, codeResult] = await Promise.all([
+    const [membersResult, codeResult, recentResult] = await Promise.all([
       getPendingRequests(),
       getCompanyInviteCode(),
+      getRecentMembers(),
     ])
     if (membersResult.error) setError(membersResult.error)
     if (membersResult.requests) setRequests(membersResult.requests)
+    if (recentResult.members) setRecent(recentResult.members)
     if (codeResult.code) {
       setInviteLink(`${window.location.origin}/register?code=${codeResult.code}`)
       setLinkActive(true)
@@ -205,6 +208,35 @@ export default function MembersPage() {
             })}
           </div>
         </Card>
+      )}
+
+      {!loading && recent.length > 0 && (
+        <div className="mt-6">
+          <p className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">{t('admin.members.recentTitle')}</p>
+          <Card padding="none">
+            <div className="divide-y divide-[var(--border)]">
+              {recent.map(m => (
+                <div key={m.id} className="flex items-center gap-4 px-5 py-4">
+                  <Avatar name={m.full_name} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-primary truncate">{m.full_name}</p>
+                    <p className="text-xs text-secondary truncate">{m.email}</p>
+                    {m.phone && (
+                      <p className="text-xs text-tertiary">{m.phone}</p>
+                    )}
+                    <p className="text-xs text-tertiary mt-0.5">
+                      {t('admin.members.joinedOn').replace('{date}', new Date(m.created_at).toLocaleDateString())}
+                    </p>
+                  </div>
+                  <span className="flex-shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-green/10 text-green">
+                    ✓ {t('admin.members.joinedBadge')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <p className="text-xs text-secondary mt-2">{t('admin.members.recentHint')}</p>
+        </div>
       )}
 
       <div className="mt-6 bg-surface rounded-card border border-[var(--border)] p-4">

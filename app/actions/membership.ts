@@ -40,6 +40,42 @@ export async function getPendingRequests(): Promise<{ requests?: MembershipReque
   return { requests: (data ?? []) as unknown as MembershipRequest[] }
 }
 
+export interface RecentMember {
+  id: string
+  full_name: string
+  email: string
+  phone: string | null
+  created_at: string
+}
+
+// How far back the "Recently joined" list on Member Requests looks.
+const RECENT_JOIN_DAYS = 7
+
+// People who joined the company recently (e.g. through the invite link,
+// which approves them right away so they never show up as a pending
+// request). Read-only — just so the admin can see who came in.
+export async function getRecentMembers(): Promise<{ members?: RecentMember[]; error?: string }> {
+  const user = getCurrentUser()
+  if (!user || user.role !== 'admin' || !user.company_id) {
+    return { error: 'Not authorized.' }
+  }
+
+  const since = new Date(Date.now() - RECENT_JOIN_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, email, phone, created_at')
+    .eq('company_id', user.company_id)
+    .eq('role', 'employee')
+    .eq('auth_status', 'approved')
+    .eq('status', 'active')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+
+  if (error) return { error: error.message }
+  return { members: (data ?? []) as RecentMember[] }
+}
+
 export async function approveMember(requestId: string): Promise<{ error?: string }> {
   const user = getCurrentUser()
   if (!user || user.role !== 'admin' || !user.company_id) {
