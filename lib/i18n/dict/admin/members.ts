@@ -18,6 +18,10 @@ export const members = {
     disableLink: 'Disable link',
     newLink: 'New link',
     linkDisabled: 'Link disabled — new registrations blocked',
+    recentTitle: 'Joined recently (last 7 days)',
+    joinedOn: 'Joined {date}',
+    joinedBadge: 'Active',
+    recentHint: 'They already have access. Manage them in Employees.',
   },
   pt: {
     title: 'Solicitações de Membros',
@@ -38,6 +42,10 @@ export const members = {
     disableLink: 'Desativar link',
     newLink: 'Novo link',
     linkDisabled: 'Link desativado — novos cadastros bloqueados',
+    recentTitle: 'Entraram recentemente (últimos 7 dias)',
+    joinedOn: 'Entrou em {date}',
+    joinedBadge: 'Ativo',
+    recentHint: 'Já têm acesso. Gerencie em Funcionários.',
   },
   es: {
     title: 'Solicitudes de Miembros',
@@ -58,5 +66,9 @@ export const members = {
     disableLink: 'Desactivar enlace',
     newLink: 'Nuevo enlace',
     linkDisabled: 'Enlace desactivado — nuevos registros bloqueados',
+    recentTitle: 'Se unieron recientemente (últimos 7 días)',
+    joinedOn: 'Se unió el {date}',
+    joinedBadge: 'Activo',
+    recentHint: 'Ya tienen acceso. Adminístralos en Empleados.',
   },
 }
