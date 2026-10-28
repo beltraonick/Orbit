@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getPendingRequests, approveMember, rejectMember } from '@/app/actions/membership'
+import { getCompanyInviteCode } from '@/app/actions/invites'
 import type { MembershipRequest } from '@/app/actions/membership'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
@@ -14,17 +15,41 @@ export default function MembersPage() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [inviteLink, setInviteLink] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
-    const result = await getPendingRequests()
-    if (result.error) setError(result.error)
-    if (result.requests) setRequests(result.requests)
+    const [membersResult, codeResult] = await Promise.all([
+      getPendingRequests(),
+      getCompanyInviteCode(),
+    ])
+    if (membersResult.error) setError(membersResult.error)
+    if (membersResult.requests) setRequests(membersResult.requests)
+    if (codeResult.code) {
+      setInviteLink(`${window.location.origin}/register?code=${codeResult.code}`)
+    }
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleCopyLink() {
+    if (!inviteLink) return
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+    } catch {
+      const el = document.createElement('textarea')
+      el.value = inviteLink
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   async function handleApprove(id: string) {
     setProcessing(id)
@@ -52,6 +77,24 @@ export default function MembersPage() {
           {t('admin.members.subtitle')}
         </p>
       </div>
+
+      {/* Invite link card */}
+      <Card className="mb-6">
+        <p className="text-xs font-semibold text-secondary uppercase tracking-wide mb-3">{t('admin.members.inviteLinkTitle')}</p>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 bg-surface rounded-input border border-[var(--border)] px-3 py-2">
+            <p className="text-xs text-primary truncate font-mono select-all">{inviteLink || '…'}</p>
+          </div>
+          <Button
+            onClick={handleCopyLink}
+            disabled={!inviteLink}
+            className="flex-shrink-0 text-xs px-4 py-2 h-auto"
+          >
+            {copied ? t('admin.members.linkCopied') : t('admin.members.copyLink')}
+          </Button>
+        </div>
+        <p className="text-xs text-secondary mt-2">{t('admin.members.inviteLinkHint')}</p>
+      </Card>
 
       {error && (
         <div className="mb-4 bg-danger/10 border border-danger/20 rounded-input px-4 py-3 text-sm text-danger">

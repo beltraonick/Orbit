@@ -254,7 +254,7 @@ export async function createEmployeeWithInvite(
           company_id,
           role: 'employee',
           status: 'active',
-          auth_status: 'pending',
+          auth_status: 'approved',
           full_name: data.full_name,
           email,
           phone: data.phone,
@@ -277,7 +277,7 @@ export async function createEmployeeWithInvite(
         profile_id: authUser.id,
         company_id,
         invite_code_id,
-        status: 'pending',
+        status: 'approved',
       })
       if (mrErr) logAuthInfraFailure('membership_requests.insert', mrErr)
     } catch (mrErr) {
@@ -295,7 +295,7 @@ export async function createEmployeeWithInvite(
     password_hash: data.password_hash,
     language: data.language,
     role: 'employee',
-    status: 'pending',
+    status: 'approved',
     company_id,
     created_at: new Date().toISOString(),
   }
