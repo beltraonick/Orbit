@@ -1,16 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { register } from '@/app/actions/auth'
 import { Input } from '@/components/ui/Input'
 import { t, translateError, type Locale } from '@/lib/i18n/login'
 import type { Language } from '@/lib/auth/types'
 
-export function RegisterForm({ locale }: { locale: Locale }) {
+export function RegisterForm({ locale, initialCode = '' }: { locale: Locale; initialCode?: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [inviteCode, setInviteCode] = useState(initialCode)
+
+  // Sync if parent resolves the code asynchronously (e.g. from URL params on mount)
+  useEffect(() => { if (initialCode) setInviteCode(initialCode) }, [initialCode])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -36,7 +40,7 @@ export function RegisterForm({ locale }: { locale: Locale }) {
         return
       }
 
-      router.push('/pending?registered=1')
+      router.push('/home')
     } catch {
       setError(t(locale, 'errorGeneric'))
       setLoading(false)
@@ -55,6 +59,8 @@ export function RegisterForm({ locale }: { locale: Locale }) {
           required
           autoComplete="off"
           autoCapitalize="characters"
+          value={inviteCode}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInviteCode(e.target.value)}
         />
         <p className="text-xs text-secondary">{t(locale, 'inviteCodeHint')}</p>
       </div>

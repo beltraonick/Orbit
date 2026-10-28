@@ -165,7 +165,7 @@ export async function register(data: {
       return { error: 'An account with this email already exists.' }
     }
 
-    await createEmployeeWithInvite(
+    const newUser = await createEmployeeWithInvite(
       {
         email: data.email.trim(),
         full_name: data.full_name.trim(),
@@ -176,6 +176,7 @@ export async function register(data: {
       invite.company_id,
       invite.id
     )
+    setSessionCookie(toSessionUser(newUser))
   } catch (err) {
     if (!(err instanceof AuthInfrastructureError)) logAuthInfraFailure('register', err)
     return { error: REQUEST_UNAVAILABLE_MESSAGE }

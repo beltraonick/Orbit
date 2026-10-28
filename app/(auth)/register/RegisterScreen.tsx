@@ -8,9 +8,13 @@ import { getStoredLocale, storeLocale, t, type Locale } from '@/lib/i18n/login'
 
 export function RegisterScreen() {
   const [locale, setLocale] = useState<Locale>('en')
+  const [initialCode, setInitialCode] = useState('')
 
   useEffect(() => {
     setLocale(getStoredLocale())
+    const p = new URLSearchParams(window.location.search)
+    const code = p.get('code')
+    if (code) setInitialCode(code.toUpperCase())
   }, [])
 
   function handleChange(l: Locale) {
@@ -45,7 +49,7 @@ export function RegisterScreen() {
 
         {/* Card */}
         <div className="bg-surface rounded-card border border-[var(--border)] p-6">
-          <RegisterForm locale={locale} />
+          <RegisterForm locale={locale} initialCode={initialCode} />
         </div>
 
         <p className="text-center text-sm text-secondary mt-6">
