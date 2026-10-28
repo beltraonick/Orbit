@@ -44,6 +44,21 @@ export async function getCompanyInviteCode(): Promise<{ code?: string; error?: s
   return { code: deterministicCode(user.company_id) }
 }
 
+export async function disableInviteCode(): Promise<{ error?: string }> {
+  const user = getCurrentUser()
+  if (!user || user.role !== 'admin' || !user.company_id) return { error: 'Not authorized.' }
+
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('invite_codes')
+    .update({ is_active: false })
+    .eq('company_id', user.company_id)
+    .eq('is_active', true)
+
+  if (error) return { error: error.message }
+  return {}
+}
+
 export async function regenerateInviteCode(): Promise<{ code?: string; error?: string }> {
   const user = getCurrentUser()
   if (!user || user.role !== 'admin' || !user.company_id) {

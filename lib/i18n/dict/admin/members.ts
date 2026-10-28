@@ -15,6 +15,9 @@ export const members = {
     inviteLinkHint: 'Anyone with this link can join your company account',
     copyLink: 'Copy Link',
     linkCopied: 'Copied!',
+    disableLink: 'Disable link',
+    newLink: 'New link',
+    linkDisabled: 'Link disabled — new registrations blocked',
   },
   pt: {
     title: 'Solicitações de Membros',
@@ -32,6 +35,9 @@ export const members = {
     inviteLinkHint: 'Qualquer pessoa com este link pode entrar na sua conta da empresa',
     copyLink: 'Copiar Link',
     linkCopied: 'Copiado!',
+    disableLink: 'Desativar link',
+    newLink: 'Novo link',
+    linkDisabled: 'Link desativado — novos cadastros bloqueados',
   },
   es: {
     title: 'Solicitudes de Miembros',
@@ -49,5 +55,8 @@ export const members = {
     inviteLinkHint: 'Cualquier persona con este enlace puede unirse a tu cuenta de empresa',
     copyLink: 'Copiar enlace',
     linkCopied: '¡Copiado!',
+    disableLink: 'Desactivar enlace',
+    newLink: 'Nuevo enlace',
+    linkDisabled: 'Enlace desactivado — nuevos registros bloqueados',
   },
 }

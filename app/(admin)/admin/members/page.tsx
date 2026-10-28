@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getPendingRequests, approveMember, rejectMember } from '@/app/actions/membership'
-import { getCompanyInviteCode } from '@/app/actions/invites'
+import { getCompanyInviteCode, disableInviteCode, regenerateInviteCode } from '@/app/actions/invites'
 import type { MembershipRequest } from '@/app/actions/membership'
 import { Card } from '@/components/ui/Card'
 import { Avatar } from '@/components/ui/Avatar'
@@ -16,7 +16,9 @@ export default function MembersPage() {
   const [processing, setProcessing] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [inviteLink, setInviteLink] = useState('')
+  const [linkActive, setLinkActive] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [linkWorking, setLinkWorking] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -29,11 +31,34 @@ export default function MembersPage() {
     if (membersResult.requests) setRequests(membersResult.requests)
     if (codeResult.code) {
       setInviteLink(`${window.location.origin}/register?code=${codeResult.code}`)
+      setLinkActive(true)
+    } else {
+      setInviteLink('')
+      setLinkActive(false)
     }
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleDisableLink() {
+    setLinkWorking(true)
+    const result = await disableInviteCode()
+    if (result.error) setError(result.error)
+    else { setInviteLink(''); setLinkActive(false) }
+    setLinkWorking(false)
+  }
+
+  async function handleNewLink() {
+    setLinkWorking(true)
+    const result = await regenerateInviteCode()
+    if (result.error) setError(result.error)
+    else if (result.code) {
+      setInviteLink(`${window.location.origin}/register?code=${result.code}`)
+      setLinkActive(true)
+    }
+    setLinkWorking(false)
+  }
 
   async function handleCopyLink() {
     if (!inviteLink) return
@@ -82,18 +107,38 @@ export default function MembersPage() {
       <Card className="mb-6">
         <p className="text-xs font-semibold text-secondary uppercase tracking-wide mb-3">{t('admin.members.inviteLinkTitle')}</p>
         <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0 bg-surface rounded-input border border-[var(--border)] px-3 py-2">
-            <p className="text-xs text-primary truncate font-mono select-all">{inviteLink || '…'}</p>
+          <div className={['flex-1 min-w-0 rounded-input border px-3 py-2 transition-colors', linkActive ? 'bg-surface border-[var(--border)]' : 'bg-surface/50 border-[var(--border)] opacity-50'].join(' ')}>
+            <p className="text-xs text-primary truncate font-mono select-all">
+              {linkActive ? inviteLink : t('admin.members.linkDisabled')}
+            </p>
           </div>
           <Button
             onClick={handleCopyLink}
-            disabled={!inviteLink}
+            disabled={!linkActive}
             className="flex-shrink-0 text-xs px-4 py-2 h-auto"
           >
             {copied ? t('admin.members.linkCopied') : t('admin.members.copyLink')}
           </Button>
         </div>
-        <p className="text-xs text-secondary mt-2">{t('admin.members.inviteLinkHint')}</p>
+        <p className="text-xs text-secondary mt-2 mb-3">{t('admin.members.inviteLinkHint')}</p>
+        <div className="flex items-center gap-3 border-t border-[var(--border)] pt-3">
+          {linkActive && (
+            <button
+              onClick={handleDisableLink}
+              disabled={linkWorking}
+              className="text-xs text-secondary hover:text-danger transition-colors disabled:opacity-50"
+            >
+              {t('admin.members.disableLink')}
+            </button>
+          )}
+          <button
+            onClick={handleNewLink}
+            disabled={linkWorking}
+            className="text-xs text-secondary hover:text-primary transition-colors disabled:opacity-50"
+          >
+            {t('admin.members.newLink')}
+          </button>
+        </div>
       </Card>
 
       {error && (
