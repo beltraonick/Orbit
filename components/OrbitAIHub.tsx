@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useAIConsent } from '@/components/AIConsent'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -67,6 +68,7 @@ export function OrbitAIHub() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const { ensureConsent, dialog: consentDialog } = useAIConsent()
   const inputRef = useRef<HTMLInputElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -81,6 +83,7 @@ export function OrbitAIHub() {
   async function send(question?: string) {
     const q = (question ?? input).trim()
     if (!q || loading) return
+    if (!(await ensureConsent())) return
     setInput('')
     setOpen(true)
 
@@ -122,6 +125,7 @@ export function OrbitAIHub() {
 
   return (
     <div className="mb-6 md:mb-8 orbit-hub-card">
+      {consentDialog}
       {/* Top glow strip */}
       <div style={{ background: 'radial-gradient(ellipse at 50% 0%, rgba(193,18,31,0.09) 0%, transparent 65%)' }} className="rounded-t-card pt-7 pb-5 flex flex-col items-center">
         <button
