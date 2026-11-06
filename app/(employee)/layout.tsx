@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser, getImpersonatorToken } from '@/lib/auth/session'
 import { touchAccess } from '@/lib/auth/access'
+import { mustSignOut, REVOKED_SIGNOUT_PATH } from '@/lib/auth/revocation'
 import { createClient } from '@/lib/supabase/server'
 import { EmployeeNav } from './EmployeeNav'
 import { CompanyProvider } from '@/lib/company-context'
@@ -23,6 +24,7 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
   if (user.role === 'admin') redirect('/admin/dashboard')
   if (user.role === 'client') redirect('/client')
   if (user.role === 'owner') redirect('/owner/dashboard')
+  if (await mustSignOut(user)) redirect(REVOKED_SIGNOUT_PATH)
 
   if (!getImpersonatorToken()) await touchAccess(user.id, user.company_id)
 

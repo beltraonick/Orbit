@@ -14,6 +14,7 @@ import { useCompanyId } from '@/lib/company-context'
 import { createClient } from '@/lib/supabase/client'
 import { DEFAULT_CLOCK_WINDOW, COMMON_TIMEZONES } from '@/lib/clock-window'
 import { getPayPeriodRange, loadCompanyPeriodSettings, toDateStr } from '@/lib/employee-period'
+import { useIsNativeApp } from '@/lib/use-native-app'
 
 const VERSION = '1.0.0'
 
@@ -362,6 +363,7 @@ export default function SettingsPage() {
   const [inviteLoading, setInviteLoading] = useState(true)
   const [inviteRegenerating, setInviteRegenerating] = useState(false)
   const [planInfo, setPlanInfo] = useState<CompanyPlanInfo | null>(null)
+  const native = useIsNativeApp()
   const [planLoading, setPlanLoading] = useState(true)
   const [changingPlan, setChangingPlan] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'starter' | 'growth'>('starter')
@@ -670,8 +672,8 @@ export default function SettingsPage() {
         <p className="text-sm text-secondary mt-1">{t('admin.settings.subtitle')}</p>
       </div>
 
-      {/* Plan & Billing */}
-      <Section title={t('admin.settings.sectionPlanBilling')}>
+      {/* Plan & Billing — not in the iOS app: no plan prices or plan purchase there (see lib/use-native-app.ts). */}
+      {native === false && <Section title={t('admin.settings.sectionPlanBilling')}>
         <Card>
           {planLoading ? (
             <div className="h-16 bg-surface-elevated rounded-input animate-pulse" />
@@ -743,7 +745,7 @@ export default function SettingsPage() {
             </div>
           )}
         </Card>
-      </Section>
+      </Section>}
 
       {/* Employee Invite Code */}
       <Section title={t('admin.settings.sectionInviteCode')}>

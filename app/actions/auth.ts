@@ -5,6 +5,8 @@ import { findUserByEmail, createEmployeeWithInvite, findActiveInviteCode, toSess
 import { verifyPassword, hashPassword, isLegacyHash } from '@/lib/auth/crypto'
 import { setSessionCookie, clearSessionCookie, createToken, verifyToken } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
+import { isSessionRevoked } from '@/lib/auth/revocation'
+import { isLoginRateLimited, recordFailedLogin, clearFailedLogins, LOGIN_RATE_LIMITED_MESSAGE } from '@/lib/auth/rate-limit'
 import {
   AuthInfrastructureError,
   LOGIN_UNAVAILABLE_MESSAGE,
@@ -40,6 +42,11 @@ export async function login(
     return { error: 'Email and password are required.' }
   }
 
+  const normalizedEmail = email.trim().toLowerCase()
+  if (await isLoginRateLimited(normalizedEmail)) {
+    return { error: LOGIN_RATE_LIMITED_MESSAGE }
+  }
+
   // A lookup that FAILED (database down, SUPABASE_SERVICE_ROLE_KEY missing
   // or wrong, ...) must never be reported as bad credentials — that's what
   // made a config problem look like "wrong password" for every user.
@@ -52,6 +59,7 @@ export async function login(
   }
 
   if (!user) {
+    await recordFailedLogin(normalizedEmail)
     return { error: 'Invalid email or password.' }
   }
 
@@ -61,8 +69,10 @@ export async function login(
   }
 
   if (!verifyPassword(password, user.password_hash)) {
+    await recordFailedLogin(normalizedEmail)
     return { error: 'Invalid email or password.' }
   }
+  await clearFailedLogins(normalizedEmail)
 
   // Silently migrate legacy SHA-256 hashes to bcrypt on first successful login.
   if (isLegacyHash(user.password_hash)) {
@@ -83,6 +93,11 @@ export async function login(
 
   if (user.status === 'pending') {
     return { status: 'pending' }
+  }
+
+  // Removed from the company (archived) or deleted their own account.
+  if (await isSessionRevoked(toSessionUser(user))) {
+    return { error: 'This account is no longer active. Contact your administrator.' }
   }
 
   // Keep the account's saved language in sync with whatever was picked
@@ -120,6 +135,9 @@ export async function login(
 export async function restoreSession(token: string): Promise<{ error?: string; role?: UserRole; status?: UserStatus }> {
   const user: SessionUser | null = verifyToken(token)
   if (!user) return { error: 'Session expired.' }
+  // The saved copy is as old as the login: refuse it if the account was
+  // removed since (see lib/auth/revocation.ts).
+  if (await isSessionRevoked(user)) return { error: 'Session expired.' }
 
   setSessionCookie(user)
   await recordAccess(user.id, user.company_id)

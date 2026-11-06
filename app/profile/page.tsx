@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getMyProfile } from '@/app/actions/profile'
+import { mustSignOut, REVOKED_SIGNOUT_PATH } from '@/lib/auth/revocation'
 import { LogoutForm } from '@/components/LogoutForm'
 import { LocaleProvider } from '@/lib/i18n/LocaleContext'
 import { t } from '@/lib/i18n/translate'
@@ -16,6 +17,7 @@ const BACK_BY_ROLE: Record<string, string> = {
 export default async function ProfilePage() {
   const user = getCurrentUser()
   if (!user) redirect('/login')
+  if (await mustSignOut(user)) redirect(REVOKED_SIGNOUT_PATH)
 
   const profile = await getMyProfile()
   const backHref = BACK_BY_ROLE[user.role] ?? '/login'

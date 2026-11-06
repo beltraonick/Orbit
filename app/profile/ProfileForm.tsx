@@ -4,7 +4,8 @@ import { writeFailed } from '@/lib/write-feedback'
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { updateProfile, changeMyPassword } from '@/app/actions/profile'
+import { updateProfile, changeMyPassword, deleteMyAccount } from '@/app/actions/profile'
+import { clearRememberToken } from '@/lib/auth/remember'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -224,6 +225,68 @@ export function ProfileForm({ initialProfile }: { initialProfile: Profile }) {
           </Card>
         </Section>
       </div>
+
+      {initialProfile.role !== 'owner' && <DeleteAccountSection isAdmin={initialProfile.role === 'admin'} />}
+    </div>
+  )
+}
+
+function DeleteAccountSection({ isAdmin }: { isAdmin: boolean }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [password, setPassword] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleDelete(e: React.FormEvent) {
+    e.preventDefault()
+    setDeleting(true)
+    setError('')
+    const result = await deleteMyAccount(password)
+    if (result.error) {
+      setError(result.error === 'wrongPassword' ? t('profile.deleteAccountWrongPassword') : t('profile.deleteAccountFailed'))
+      setDeleting(false)
+      return
+    }
+    // Drop the saved session backup too, or the login screen would try it.
+    clearRememberToken()
+    window.location.href = '/login'
+  }
+
+  return (
+    <div className="mt-8">
+      <Section title={t('profile.deleteAccount')}>
+        <Card>
+          <p className="text-xs text-secondary">{t('profile.deleteAccountDesc')}</p>
+          {isAdmin && <p className="text-xs text-danger mt-2">{t('profile.deleteAccountAdminWarning')}</p>}
+          {!open ? (
+            <Button type="button" variant="danger" className="w-full mt-4" onClick={() => setOpen(true)}>
+              {t('profile.deleteAccount')}
+            </Button>
+          ) : (
+            <form onSubmit={handleDelete} className="space-y-3 mt-4">
+              <Input
+                label={t('profile.deleteAccountConfirmPassword')}
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+              />
+              {error && (
+                <div className="bg-danger/10 border border-danger/20 rounded-input px-4 py-3 text-sm text-danger">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" variant="danger" loading={deleting} className="w-full">
+                {t('profile.deleteAccountConfirm')}
+              </Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => { setOpen(false); setPassword(''); setError('') }}>
+                {t('profile.deleteAccountCancel')}
+              </Button>
+            </form>
+          )}
+        </Card>
+      </Section>
     </div>
   )
 }
