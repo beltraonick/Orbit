@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signupCompany } from '@/app/actions/company-signup'
 import { Input } from '@/components/ui/Input'
+import { useIsNativeApp } from '@/lib/use-native-app'
 import type { Language } from '@/lib/auth/types'
 
 const PLANS: { key: 'free' | 'starter' | 'growth'; name: string; price: string; blurb: string; popular: boolean }[] = [
@@ -17,6 +18,7 @@ export function SignupForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [plan, setPlan] = useState<'free' | 'starter' | 'growth'>('starter')
+  const native = useIsNativeApp()
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -71,7 +73,8 @@ export function SignupForm() {
       <Input label="Password" name="password" type="password" placeholder="Min. 8 characters" required autoComplete="new-password" />
       <Input label="Confirm Password" name="confirm_password" type="password" placeholder="••••••••" required autoComplete="new-password" />
 
-      <div className="flex flex-col gap-2">
+      {/* Not in the iOS app: no plan prices or plan purchase there (see lib/use-native-app.ts). */}
+      {native === false && <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-secondary">Plan</label>
         <div className="grid grid-cols-1 gap-2">
           {PLANS.map(p => (
@@ -102,7 +105,7 @@ export function SignupForm() {
           ))}
         </div>
         <p className="text-xs text-tertiary">You can change plans anytime from Settings.</p>
-      </div>
+      </div>}
 
       {error && (
         <div className="bg-danger/10 border border-danger/20 rounded-input px-4 py-3 text-sm text-danger">
