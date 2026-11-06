@@ -1,5 +1,6 @@
 'use server'
 
+import { trialEndDate } from '@/lib/trial'
 import { createServiceRoleClient as createClient } from '@/lib/supabase/service-role'
 import { hashPassword, generateInviteCode } from '@/lib/auth/crypto'
 import { setSessionCookie } from '@/lib/auth/session'
@@ -53,11 +54,11 @@ export async function signupCompany(data: {
   }
 
   // Free needs no payment, so there's nothing to "trial" — it's active
-  // from day one. Paid plans start a real 14-day trial with a real end
+  // from day one. Paid plans start a real 30-day trial (lib/trial.ts) with a real end
   // date, instead of sitting in an indefinite "trialing" limbo that only
   // the owner can ever resolve by hand.
   const isFree = data.plan_key === 'free'
-  const trialEndsAt = isFree ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+  const trialEndsAt = isFree ? null : trialEndDate()
 
   const { data: company, error: companyErr } = await supabase
     .from('companies')

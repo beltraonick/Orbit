@@ -1,5 +1,6 @@
 'use server'
 
+import { trialEndDate } from '@/lib/trial'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth/session'
 
@@ -64,9 +65,9 @@ export async function changeCompanyPlan(planKey: 'free' | 'starter' | 'growth'):
     updates.trial_ends_at = null
   } else if (company?.subscription_status !== 'active' && company?.subscription_status !== 'past_due') {
     // Not already a confirmed payer — switching between paid plans
-    // (re)starts a fresh 14-day trial rather than faking "active".
+    // (re)starts a fresh 30-day trial (lib/trial.ts) rather than faking "active".
     updates.subscription_status = 'trialing'
-    updates.trial_ends_at = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    updates.trial_ends_at = trialEndDate()
   }
 
   const { error } = await supabase.from('companies').update(updates).eq('id', user.company_id)
