@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { checkChatLimit } from '@/lib/plan-limits'
 import { generateBriefing } from '@/lib/orbit-ai'
+import { featureLockedResponse } from '@/lib/billing'
 
 export async function GET() {
   const user = getCurrentUser()
@@ -27,6 +28,8 @@ export async function POST() {
   }
 
   const supabase = createClient()
+  const locked = await featureLockedResponse(supabase, user.company_id, 'ai')
+  if (locked) return locked
   const { allowed, limit } = await checkChatLimit(supabase, user.company_id as string)
   if (!allowed) {
     return Response.json(

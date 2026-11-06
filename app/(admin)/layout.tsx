@@ -13,6 +13,8 @@ import { getPendingRequests } from '@/app/actions/membership'
 import { createClient } from '@/lib/supabase/server'
 import { getAttendanceStatus } from '@/app/actions/scheduleActions'
 import { countUnseenPayApprovals } from '@/app/actions/payApprovalActions'
+import { getCompanyAccess, type CompanyAccess } from '@/lib/billing'
+import { AccountBanner } from '@/components/billing/AccountBanner'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = getCurrentUser()
@@ -53,6 +55,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     // table may not exist yet
   }
 
+  let access: CompanyAccess | null = null
+  try {
+    access = await getCompanyAccess(createClient(), user.company_id as string)
+  } catch {
+    // never block the admin screens over this
+  }
+
   return (
     // Every non-owner profile always has a company_id — owner is the
     // only role that isn't scoped to one, and it's redirected above.
@@ -65,6 +74,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Sidebar user={user} pendingCount={pendingCount} auditCount={auditCount} alerts={alerts} />
             {/* mobile top = 3.5rem + safe-area-top via .pt-safe-header; resets at md */}
             <main className="flex-1 md:ml-[240px] overflow-y-auto pt-safe-header pb-20 md:pb-0">
+              {access && (
+                <AccountBanner role="admin" state={access.state} blocked={access.blocked} trialDaysLeft={access.trialDaysLeft} subscribed={access.subscribed} />
+              )}
               {children}
             </main>
             <ImpersonationBanner />

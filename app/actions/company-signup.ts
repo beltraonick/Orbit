@@ -14,7 +14,8 @@ export async function signupCompany(data: {
   email: string
   password: string
   confirm_password: string
-  plan_key: 'free' | 'starter' | 'growth'
+  /** Ignored: every new company starts on the 30-day Pro trial and picks a plan later. */
+  plan_key?: string
   language: Language
 }): Promise<{ error?: string }> {
   if (!data.company_name.trim() || !data.full_name.trim() || !data.email.trim()) {
@@ -47,18 +48,14 @@ export async function signupCompany(data: {
     return { error: 'An account with this email already exists.' }
   }
 
-  const { data: plan, error: planErr } = await supabase.from('plans').select('id').eq('key', data.plan_key).maybeSingle()
+  // Every new company gets 30 days with everything in Pro (lib/trial.ts),
+  // no card needed, then picks Crew / Pro / Business on the website.
+  const { data: plan, error: planErr } = await supabase.from('plans').select('id').eq('key', 'pro').maybeSingle()
   if (planErr) {
     logAuthInfraFailure('company_signup.lookup_plan', planErr)
     return { error: REQUEST_UNAVAILABLE_MESSAGE }
   }
-
-  // Free needs no payment, so there's nothing to "trial" — it's active
-  // from day one. Paid plans start a real 30-day trial (lib/trial.ts) with a real end
-  // date, instead of sitting in an indefinite "trialing" limbo that only
-  // the owner can ever resolve by hand.
-  const isFree = data.plan_key === 'free'
-  const trialEndsAt = isFree ? null : trialEndDate()
+  const trialEndsAt = trialEndDate()
 
   const { data: company, error: companyErr } = await supabase
     .from('companies')
@@ -66,7 +63,7 @@ export async function signupCompany(data: {
       name: data.company_name.trim(),
       language: data.language,
       plan_id: plan?.id ?? null,
-      subscription_status: isFree ? 'active' : 'trialing',
+      subscription_status: 'trialing',
       trial_ends_at: trialEndsAt,
       billing_email: email,
     })

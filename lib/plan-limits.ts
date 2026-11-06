@@ -1,76 +1,66 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { accessLimits, getCompanyAccess } from '@/lib/billing'
 
 interface LimitResult {
   allowed: boolean
   limit: number | null // null = unlimited
+  used?: number
 }
 
-async function getPlanLimits(supabase: SupabaseClient, companyId: string) {
-  const { data: company } = await supabase
-    .from('companies')
-    .select('plan_id, unlimited_override')
-    .eq('id', companyId)
-    .maybeSingle()
-
-  // Master override from the owner panel — bypasses every limit below
-  // regardless of what plan the company is on.
-  if (company?.unlimited_override) {
-    return { project_limit: null, admin_limit: null, employee_limit: null }
-  }
-
-  // No plan assigned yet — don't block anyone until billing is actually wired up.
-  if (!company?.plan_id) return null
-
-  const { data: plan } = await supabase
-    .from('plans')
-    .select('project_limit, admin_limit, employee_limit')
-    .eq('id', company.plan_id)
-    .maybeSingle()
-
-  return plan
+// Projects are unlimited on every plan (Crew / Pro / Business).
+export async function checkProjectLimit(_supabase: SupabaseClient, _companyId: string): Promise<LimitResult> {
+  return { allowed: true, limit: null }
 }
 
-export async function checkProjectLimit(supabase: SupabaseClient, companyId: string): Promise<LimitResult> {
-  const plan = await getPlanLimits(supabase, companyId)
-  const limit = plan?.project_limit ?? null
-  if (limit == null) return { allowed: true, limit: null }
+// Orbit AI conversations are no longer tied to the project cap: unlimited
+// (fair use) on the plans that include Orbit AI. Whether the plan includes
+// it at all is checked by the AI routes (accessHasFeature(..., 'ai')).
+export async function checkChatLimit(_supabase: SupabaseClient, _companyId: string): Promise<LimitResult> {
+  return { allowed: true, limit: null }
+}
 
+/**
+ * Field team = active employees with a login + active workers without the
+ * app. Admins are counted separately and never take a field-team seat.
+ */
+export async function countFieldTeam(supabase: SupabaseClient, companyId: string): Promise<number> {
+  const [employees, workers] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .eq('role', 'employee')
+      .eq('status', 'active'),
+    supabase
+      .from('workers')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId)
+      .eq('status', 'active'),
+  ])
+  return (employees.count ?? 0) + (workers.count ?? 0)
+}
+
+export async function countAdmins(supabase: SupabaseClient, companyId: string): Promise<number> {
   const { count } = await supabase
-    .from('projects')
-    .select('*', { count: 'exact', head: true })
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
     .eq('company_id', companyId)
-
-  return { allowed: (count ?? 0) < limit, limit }
+    .eq('role', 'admin')
+    .eq('status', 'active')
+  return count ?? 0
 }
 
-// Orbit AI conversations share the project cap — same limit, different table.
-export async function checkChatLimit(supabase: SupabaseClient, companyId: string): Promise<LimitResult> {
-  const plan = await getPlanLimits(supabase, companyId)
-  const limit = plan?.project_limit ?? null
-  if (limit == null) return { allowed: true, limit: null }
-
-  const { count } = await supabase
-    .from('ai_conversations')
-    .select('*', { count: 'exact', head: true })
-    .eq('company_id', companyId)
-
-  return { allowed: (count ?? 0) < limit, limit }
-}
-
+/** Can one more person of this kind be added? ('employee' covers workers too.) */
 export async function checkRoleLimit(
   supabase: SupabaseClient,
   companyId: string,
   role: 'admin' | 'employee'
 ): Promise<LimitResult> {
-  const plan = await getPlanLimits(supabase, companyId)
-  const limit = role === 'admin' ? (plan?.admin_limit ?? null) : (plan?.employee_limit ?? null)
+  const access = await getCompanyAccess(supabase, companyId)
+  const limits = accessLimits(access)
+  const limit = role === 'admin' ? limits.admins : limits.fieldTeam
   if (limit == null) return { allowed: true, limit: null }
 
-  const { count } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .eq('company_id', companyId)
-    .eq('role', role)
-
-  return { allowed: (count ?? 0) < limit, limit }
+  const used = role === 'admin' ? await countAdmins(supabase, companyId) : await countFieldTeam(supabase, companyId)
+  return { allowed: used < limit, limit, used }
 }

@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { createClient } from '@/lib/supabase/server'
+import { featureLockedResponse } from '@/lib/billing'
 
 export const maxDuration = 30
 
@@ -12,6 +13,9 @@ const GROQ_MODELS = [
 export async function POST(req: Request) {
   const user = getCurrentUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
+
+  const locked = await featureLockedResponse(createClient(), user.company_id, 'receiptAi')
+  if (locked) return locked
 
   if (user.role === 'employee') {
     const supabase = createClient()

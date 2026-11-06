@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { useCompanyId } from '@/lib/company-context'
-import { checkProjectLimit } from '@/lib/plan-limits'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
@@ -307,12 +306,6 @@ export default function ProjectsPage() {
       const { error: saveErr } = await supabase.from('projects').update(payload).eq('id', editing.id)
       if (saveErr) { setError(saveErr.message); setSaving(false); return }
     } else {
-      const { allowed, limit } = await checkProjectLimit(supabase, companyId)
-      if (!allowed) {
-        setError(t('admin.projects.planLimitError').replace('{n}', String(limit)))
-        setSaving(false)
-        return
-      }
       const { error: saveErr } = await supabase.from('projects').insert({ ...payload, company_id: companyId })
       if (saveErr) { setError(saveErr.message); setSaving(false); return }
     }

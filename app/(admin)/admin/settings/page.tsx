@@ -7,8 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { getCompanyInviteCode, regenerateInviteCode } from '@/app/actions/invites'
-import { getCompanyPlan, changeCompanyPlan, type CompanyPlanInfo } from '@/app/actions/company-plan'
-import { subscriptionStatusKey, subscriptionStatusVariant } from '@/lib/owner-status'
+import { PlanBillingSection } from '@/components/billing/PlanBillingSection'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { useCompanyId } from '@/lib/company-context'
 import { createClient } from '@/lib/supabase/client'
@@ -18,11 +17,6 @@ import { useIsNativeApp } from '@/lib/use-native-app'
 
 const VERSION = '1.0.0'
 
-const PLAN_CHOICES: { key: 'free' | 'starter' | 'growth'; name: string; price: string; blurb: string }[] = [
-  { key: 'free', name: 'Free', price: '$0/mo', blurb: 'Up to 4 projects, 3 employees' },
-  { key: 'starter', name: 'Starter', price: '$49/mo', blurb: 'Unlimited projects, most popular' },
-  { key: 'growth', name: 'Growth', price: '$99/mo', blurb: 'More admins & employees, priority support' },
-]
 
 // ─── QuickBooks Integration ────────────────────────────────────────────────────
 
@@ -362,13 +356,7 @@ export default function SettingsPage() {
   const [inviteCode, setInviteCode] = useState<string | null>(null)
   const [inviteLoading, setInviteLoading] = useState(true)
   const [inviteRegenerating, setInviteRegenerating] = useState(false)
-  const [planInfo, setPlanInfo] = useState<CompanyPlanInfo | null>(null)
   const native = useIsNativeApp()
-  const [planLoading, setPlanLoading] = useState(true)
-  const [changingPlan, setChangingPlan] = useState(false)
-  const [selectedPlan, setSelectedPlan] = useState<'free' | 'starter' | 'growth'>('starter')
-  const [savingPlan, setSavingPlan] = useState(false)
-  const [planSaved, setPlanSaved] = useState(false)
 
   // Company settings state
   const [companyName, setCompanyName] = useState('')
@@ -416,28 +404,7 @@ export default function SettingsPage() {
       setInviteCode(res.code ?? null)
       setInviteLoading(false)
     })
-    getCompanyPlan().then(res => {
-      if (res.info) {
-        setPlanInfo(res.info)
-        if (res.info.plan_key) setSelectedPlan(res.info.plan_key as 'free' | 'starter' | 'growth')
-      }
-      setPlanLoading(false)
-    })
   }, [])
-
-  async function handleChangePlan() {
-    setSavingPlan(true)
-    setPlanSaved(false)
-    const res = await changeCompanyPlan(selectedPlan)
-    setSavingPlan(false)
-    if (!actionFailed(res)) {
-      const refreshed = await getCompanyPlan()
-      if (refreshed.info) setPlanInfo(refreshed.info)
-      setChangingPlan(false)
-      setPlanSaved(true)
-      setTimeout(() => setPlanSaved(false), 2000)
-    }
-  }
 
   useEffect(() => {
     if (!companyId) return
@@ -673,79 +640,13 @@ export default function SettingsPage() {
       </div>
 
       {/* Plan & Billing — not in the iOS app: no plan prices or plan purchase there (see lib/use-native-app.ts). */}
-      {native === false && <Section title={t('admin.settings.sectionPlanBilling')}>
-        <Card>
-          {planLoading ? (
-            <div className="h-16 bg-surface-elevated rounded-input animate-pulse" />
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <p className="text-xs text-secondary uppercase tracking-wide mb-0.5">{t('admin.settings.currentPlan')}</p>
-                  <p className="text-base font-semibold text-primary">
-                    {planInfo?.plan_name ?? '—'}
-                    {planInfo?.price_cents != null && <span className="text-secondary font-normal"> · ${(planInfo.price_cents / 100).toFixed(0)}/mo</span>}
-                  </p>
-                </div>
-                {planInfo && (
-                  <Badge variant={subscriptionStatusVariant(planInfo.subscription_status)}>
-                    {t(subscriptionStatusKey(planInfo.subscription_status))}
-                  </Badge>
-                )}
-              </div>
-
-              {planInfo?.subscription_status === 'trialing' && planInfo.trial_ends_at && (() => {
-                const daysLeft = Math.ceil((new Date(planInfo.trial_ends_at).getTime() - Date.now()) / 86400000)
-                return (
-                  <p className="text-xs text-secondary">
-                    {daysLeft > 0
-                      ? `${t('admin.settings.trialEndsIn')} ${daysLeft} ${daysLeft === 1 ? t('admin.settings.dayLeftSingular') : t('admin.settings.dayLeftPlural')}`
-                      : t('admin.settings.trialExpired')}
-                  </p>
-                )
-              })()}
-
-              {!changingPlan ? (
-                <Button variant="secondary" onClick={() => setChangingPlan(true)} className="w-full">
-                  {t('admin.settings.changePlan')}
-                </Button>
-              ) : (
-                <div className="space-y-2 pt-1">
-                  {PLAN_CHOICES.map(p => (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => setSelectedPlan(p.key)}
-                      className={[
-                        'w-full flex items-center justify-between gap-3 rounded-input border px-4 py-3 text-left transition-colors duration-150',
-                        selectedPlan === p.key
-                          ? 'bg-brand/10 border-brand/50'
-                          : 'bg-surface-elevated border-[var(--border)] hover:border-[var(--border-strong)]',
-                      ].join(' ')}
-                    >
-                      <div>
-                        <span className="text-sm font-semibold text-primary">{p.name}</span>
-                        <p className="text-xs text-secondary mt-0.5">{p.blurb}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-primary flex-shrink-0">{p.price}</span>
-                    </button>
-                  ))}
-                  <p className="text-xs text-tertiary pt-1">{t('admin.settings.planActivationNote')}</p>
-                  <div className="flex gap-2 pt-1">
-                    <Button onClick={handleChangePlan} loading={savingPlan} disabled={savingPlan} className="flex-1">
-                      {t('admin.settings.confirmPlanChange')}
-                    </Button>
-                    <Button variant="secondary" onClick={() => setChangingPlan(false)} disabled={savingPlan}>
-                      {t('common.cancel')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              {planSaved && <p className="text-xs text-green">✓ {t('admin.settings.planUpdated')}</p>}
-            </div>
-          )}
-        </Card>
-      </Section>}
+      {native === false && (
+        <div id="plan">
+          <Section title={t('admin.billing.title')}>
+            <PlanBillingSection />
+          </Section>
+        </div>
+      )}
 
       {/* Employee Invite Code */}
       <Section title={t('admin.settings.sectionInviteCode')}>

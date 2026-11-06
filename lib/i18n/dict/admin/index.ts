@@ -16,6 +16,7 @@ import { mileage } from './mileage'
 import { vehicles } from './vehicles'
 import { receipts } from './receipts'
 import { approvals } from './approvals'
+import { billing } from './billing'
 
 export const admin = {
   en: {
@@ -37,6 +38,7 @@ export const admin = {
     vehicles: vehicles.en,
     receipts: receipts.en,
     approvals: approvals.en,
+    billing: billing.en,
   },
   pt: {
     dashboard: dashboard.pt,
@@ -57,6 +59,7 @@ export const admin = {
     vehicles: vehicles.pt,
     receipts: receipts.pt,
     approvals: approvals.pt,
+    billing: billing.pt,
   },
   es: {
     dashboard: dashboard.es,
@@ -77,5 +80,6 @@ export const admin = {
     vehicles: vehicles.es,
     receipts: receipts.es,
     approvals: approvals.es,
+    billing: billing.es,
   },
 }

@@ -34,8 +34,11 @@ export async function createProfileWithPassword(data: {
   if (data.role === 'admin' || data.role === 'employee') {
     const { allowed, limit } = await checkRoleLimit(supabase, user.company_id as string, data.role)
     if (!allowed) {
-      const hint = data.role === 'employee' ? ' If they just need to clock in and don’t need to log in, add them as a Worker instead — workers don’t count toward this limit.' : ''
-      return { error: `Your plan allows up to ${limit} ${data.role === 'admin' ? 'admins' : 'employees'}. Upgrade to add more.${hint}` }
+      return {
+        error: data.role === 'admin'
+          ? `Your plan allows up to ${limit} admins. Upgrade in Settings > Plan & Billing to add more.`
+          : `Your plan includes up to ${limit} people on the field team (employees and workers). Upgrade or add extra people in Settings > Plan & Billing.`,
+      }
     }
   }
 

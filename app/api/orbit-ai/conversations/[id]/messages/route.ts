@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { buildCompanyContext, buildSystemPrompt, chatWithTools } from '@/lib/orbit-ai'
 import { ORBIT_AI_TOOLS, READ_TOOL_NAMES, executeReadTool, buildActionSummary } from '@/lib/orbit-ai-tools'
+import { featureLockedResponse } from '@/lib/billing'
 
 async function loadConversation(companyId: string, conversationId: string) {
   const supabase = createClient()
@@ -45,6 +46,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const companyId = user.company_id as string
   const conversation = await loadConversation(companyId, params.id)
   if (!conversation) return new Response('Not found', { status: 404 })
+
+  const locked = await featureLockedResponse(createClient(), companyId, 'ai')
+  if (locked) return locked
 
   if (!process.env.GROQ_API_KEY) {
     return new Response(

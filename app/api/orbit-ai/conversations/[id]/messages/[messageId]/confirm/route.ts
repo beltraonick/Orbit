@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { executeWriteTool } from '@/lib/orbit-ai-tools'
+import { featureLockedResponse } from '@/lib/billing'
 
 export async function POST(req: Request, { params }: { params: { id: string; messageId: string } }) {
   const user = getCurrentUser()
@@ -10,6 +11,8 @@ export async function POST(req: Request, { params }: { params: { id: string; mes
 
   const companyId = user.company_id as string
   const supabase = createClient()
+  const locked = await featureLockedResponse(supabase, companyId, 'ai')
+  if (locked) return locked
 
   const { data: conversation } = await supabase
     .from('ai_conversations')
