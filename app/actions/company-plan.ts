@@ -52,9 +52,16 @@ export async function changeCompanyPlan(planKey: 'free' | 'starter' | 'growth'):
 
   const { data: company } = await supabase
     .from('companies')
-    .select('subscription_status')
+    .select('subscription_status, created_at, plan:plan_id(key)')
     .eq('id', user.company_id)
     .maybeSingle()
+
+  // "active" on the Free plan only means "free", not that anyone has paid —
+  // so leaving Free for a paid plan still goes through the trial.
+  const currentPlanKey = (company?.plan as { key?: string } | null)?.key
+  const isConfirmedPayer =
+    (company?.subscription_status === 'active' || company?.subscription_status === 'past_due') &&
+    currentPlanKey !== 'free'
 
   const updates: { plan_id: string; subscription_status?: string; trial_ends_at?: string | null } = {
     plan_id: plan.id,
@@ -63,11 +70,12 @@ export async function changeCompanyPlan(planKey: 'free' | 'starter' | 'growth'):
   if (planKey === 'free') {
     updates.subscription_status = 'active'
     updates.trial_ends_at = null
-  } else if (company?.subscription_status !== 'active' && company?.subscription_status !== 'past_due') {
-    // Not already a confirmed payer — switching between paid plans
-    // (re)starts a fresh 30-day trial (lib/trial.ts) rather than faking "active".
+  } else if (!isConfirmedPayer) {
+    // Not already a confirmed payer — a paid plan is a trial rather than
+    // faking "active". The 30 days count from sign-up (lib/trial.ts), so
+    // switching plans never restarts it.
     updates.subscription_status = 'trialing'
-    updates.trial_ends_at = trialEndDate()
+    updates.trial_ends_at = trialEndDate(company?.created_at)
   }
 
   const { error } = await supabase.from('companies').update(updates).eq('id', user.company_id)
