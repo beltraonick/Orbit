@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getCurrentUser, getImpersonatorToken } from '@/lib/auth/session'
 import { touchAccess } from '@/lib/auth/access'
+import { mustSignOut, REVOKED_SIGNOUT_PATH } from '@/lib/auth/revocation'
 import { LogoutForm } from '@/components/LogoutForm'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { SupabaseAuthBridge } from '@/components/SupabaseAuthBridge'
@@ -20,6 +21,7 @@ export default async function ClientLayout({ children }: { children: React.React
     if (user.role === 'owner') redirect('/owner/dashboard')
     redirect('/home')
   }
+  if (await mustSignOut(user)) redirect(REVOKED_SIGNOUT_PATH)
 
   if (!getImpersonatorToken()) await touchAccess(user.id, user.company_id)
 

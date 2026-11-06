@@ -168,6 +168,16 @@ const errorTranslations: Record<string, Record<Locale, string>> = {
     pt: 'E-mail ou senha inválidos.',
     es: 'Correo electrónico o contraseña inválidos.',
   },
+  'Too many failed attempts. Please wait 15 minutes and try again, or reset your password.': {
+    en: 'Too many failed attempts. Please wait 15 minutes and try again, or reset your password.',
+    pt: 'Muitas tentativas erradas. Aguarde 15 minutos e tente de novo, ou redefina sua senha.',
+    es: 'Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo, o restablece tu contraseña.',
+  },
+  'This account is no longer active. Contact your administrator.': {
+    en: 'This account is no longer active. Contact your administrator.',
+    pt: 'Esta conta não está mais ativa. Fale com o administrador.',
+    es: 'Esta cuenta ya no está activa. Contacta a tu administrador.',
+  },
   "We couldn't complete the login right now. Please try again.": {
     en: "We couldn't complete the login right now. Please try again.",
     pt: 'Não foi possível concluir o login agora. Tente novamente.',

@@ -2,6 +2,7 @@
 
 import { getCurrentUser } from '@/lib/auth/session'
 import { mintSupabaseAccessToken } from '@/lib/auth/supabase-jwt'
+import { mustSignOut } from '@/lib/auth/revocation'
 
 // Called by the browser (see lib/supabase/client.ts) to get a short-lived
 // token it can hand to Supabase so its own direct queries also run as the
@@ -12,5 +13,7 @@ import { mintSupabaseAccessToken } from '@/lib/auth/supabase-jwt'
 export async function getSupabaseAccessToken(): Promise<string | null> {
   const user = getCurrentUser()
   if (!user) return null
+  // A removed account gets no token, so the open app's own queries stop too.
+  if (await mustSignOut(user)) return null
   return mintSupabaseAccessToken(user)
 }

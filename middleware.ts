@@ -17,6 +17,7 @@ const PUBLIC_API_PATHS = [
   '/api/qbo/callback',   // OAuth redirect — validates CSRF state cookies instead
   '/api/cron/',          // Protected by CRON_SECRET bearer token
   '/api/version',        // Returns build ID for AppUpdater hot-reload detection
+  '/api/auth/signed-out', // Only clears the session cookie and goes to /login
 ]
 
 export function middleware(request: NextRequest) {

@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth/session'
-import { setSessionCookie } from '@/lib/auth/session'
+import { setSessionCookie, clearSessionCookie, getImpersonatorToken } from '@/lib/auth/session'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { hashPassword, verifyPassword } from '@/lib/auth/crypto'
 import { toSessionUser } from '@/lib/auth/store'
 import type { AuthUser, Language } from '@/lib/auth/types'
@@ -63,6 +64,53 @@ export async function updateProfile(data: {
   }
   setSessionCookie(toSessionUser(authUser))
 
+  return {}
+}
+
+// "Delete my account" (required by the App Store for apps that let people
+// sign up). The login is removed for good: email, phone, photo and password
+// are wiped and the account is closed, so it can't sign in again and the
+// open session is signed out (lib/auth/revocation.ts). The name stays on the
+// company's own work records (hours, pay) that it has to keep.
+export async function deleteMyAccount(password: string): Promise<{ error?: string }> {
+  const user = getCurrentUser()
+  if (!user || user.role === 'owner') return { error: 'Not authorized.' }
+  // The owner viewing someone's account must never delete it.
+  if (getImpersonatorToken()) return { error: 'Not authorized.' }
+  if (!password) return { error: 'wrongPassword' }
+
+  let supabase
+  try {
+    supabase = createServiceRoleClient()
+  } catch {
+    return { error: 'failed' }
+  }
+
+  const { data: profile, error: readErr } = await supabase
+    .from('profiles')
+    .select('id, password_hash')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (readErr || !profile) return { error: 'failed' }
+  if (!profile.password_hash || !verifyPassword(password, profile.password_hash)) {
+    return { error: 'wrongPassword' }
+  }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      email: `deleted-${user.id}@deleted.invalid`,
+      phone: null,
+      avatar_url: null,
+      password_hash: null,
+      email_notifications: false,
+      status: 'archived',
+      auth_status: 'suspended',
+    })
+    .eq('id', user.id)
+  if (error) return { error: 'failed' }
+
+  clearSessionCookie()
   return {}
 }
 
