@@ -1,5 +1,7 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { buildCompanyContext, buildSystemPrompt, streamGroqChat, type ChatMessage } from '@/lib/orbit-ai'
+import { featureLockedResponse } from '@/lib/billing'
+import { createClient } from '@/lib/supabase/server'
 
 // Stateless quick-question endpoint used by the Dashboard's embedded
 // OrbitAIHub widget — no history is saved. The full persistent chat with
@@ -9,6 +11,9 @@ export async function POST(req: Request) {
   if (!user || user.role !== 'admin') {
     return new Response('Unauthorized', { status: 401 })
   }
+
+  const locked = await featureLockedResponse(createClient(), user.company_id, 'ai')
+  if (locked) return new Response(((await locked.json()) as { error: string }).error, { status: 403 })
 
   if (!process.env.GROQ_API_KEY) {
     return new Response(

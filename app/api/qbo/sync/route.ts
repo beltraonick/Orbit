@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/auth/session'
 import { syncTimeEntry } from '@/lib/qbo/sync-entry'
+import { featureLockedResponse } from '@/lib/billing'
 
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser()
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createClient()
+  const locked = await featureLockedResponse(supabase, user.company_id, 'quickbooks')
+  if (locked) return NextResponse.json(await locked.json(), { status: 403 })
   const result = await syncTimeEntry(supabase, user.company_id, time_entry_id)
 
   if (result.error && result.error === 'Unauthorized') {

@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/Select'
 import { Avatar } from '@/components/ui/Avatar'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import type { Language } from '@/lib/auth/types'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 interface Profile {
   id: string
@@ -65,7 +66,7 @@ export function ProfileForm({ initialProfile }: { initialProfile: Profile }) {
     if (!files || files.length === 0) return
     setUploadingAvatar(true)
     const supabase = createClient()
-    const file = files[0]
+    const file = await shrinkImageFile(files[0], 512)
     const ext = file.name.split('.').pop()
     const path = `avatars/${initialProfile.id}/${Date.now()}.${ext}`
     const { error: uploadErr } = await supabase.storage.from('project-photos').upload(path, file, { upsert: true })

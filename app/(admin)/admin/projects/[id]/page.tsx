@@ -19,6 +19,7 @@ import { useCompanyId } from '@/lib/company-context'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { PhotoPicker } from '@/components/ui/PhotoPicker'
 import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
@@ -401,7 +402,7 @@ export default function ProjectDetailPage() {
     const supabase = createClient()
     const newRows: Photo[] = []
     for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+      const file = await shrinkImageFile(files[i])
       const ext = file.name.split('.').pop() ?? 'jpg'
       const path = `${projectId}/misc-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const { error } = await supabase.storage.from('project-photos').upload(path, file, { contentType: file.type, upsert: true })

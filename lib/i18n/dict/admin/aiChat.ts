@@ -16,6 +16,10 @@ export const aiChat = {
     suggestion2: "Who's clocked in right now?",
     suggestion3: 'Show pending tasks',
     suggestion4: "Summarize this week's work",
+    consentTitle: 'Orbit AI uses a third-party AI',
+    consentBody: 'To answer, Orbit AI sends your question and your company data (project names, clients and addresses, employee names, tasks, hours and payroll totals) to Groq, an AI provider outside OrbitOps. Nothing is shared until you agree.',
+    consentAgree: 'Agree and continue',
+    consentDecline: 'Not now',
   },
   pt: {
     subtitle: 'Copiloto de negócios · Só para admin',
@@ -34,6 +38,10 @@ export const aiChat = {
     suggestion2: 'Quem está no ponto agora?',
     suggestion3: 'Mostrar tarefas pendentes',
     suggestion4: 'Resumo do trabalho desta semana',
+    consentTitle: 'O Orbit AI usa uma IA de outra empresa',
+    consentBody: 'Para responder, o Orbit AI envia a sua pergunta e dados da sua empresa (nomes de projetos, clientes e endereços, nomes de funcionários, tarefas, horas e totais de pagamento) para a Groq, um serviço de IA fora do OrbitOps. Nada é enviado antes de você concordar.',
+    consentAgree: 'Concordar e continuar',
+    consentDecline: 'Agora não',
   },
   es: {
     subtitle: 'Copiloto de negocio · Solo admin',
@@ -52,5 +60,9 @@ export const aiChat = {
     suggestion2: '¿Quién está marcado ahora?',
     suggestion3: 'Mostrar tareas pendientes',
     suggestion4: 'Resumen del trabajo de esta semana',
+    consentTitle: 'Orbit AI usa una IA de otra empresa',
+    consentBody: 'Para responder, Orbit AI envía tu pregunta y datos de tu empresa (nombres de proyectos, clientes y direcciones, nombres de empleados, tareas, horas y totales de pago) a Groq, un servicio de IA fuera de OrbitOps. No se envía nada hasta que aceptes.',
+    consentAgree: 'Aceptar y continuar',
+    consentDecline: 'Ahora no',
   },
 }

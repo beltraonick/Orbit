@@ -11,6 +11,8 @@ import { OfflineBanner } from '@/components/OfflineBanner'
 import { ImpersonationBanner } from '@/components/ImpersonationBanner'
 import { SupabaseAuthBridge } from '@/components/SupabaseAuthBridge'
 import type { EmployeePermissions } from '@/lib/permissions'
+import { getCompanyAccess } from '@/lib/billing'
+import { AccountBanner } from '@/components/billing/AccountBanner'
 
 const supabaseReady =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -44,6 +46,15 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
     }
   }
 
+  let accountBlocked = false
+  if (supabaseReady && user.company_id) {
+    try {
+      accountBlocked = (await getCompanyAccess(createClient(), user.company_id)).blocked
+    } catch {
+      // never block the screen over this
+    }
+  }
+
   return (
     <LocaleProvider locale={user.language}>
       <CompanyProvider companyId={user.company_id as string}>
@@ -51,6 +62,7 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
           <div className="min-h-screen bg-background pb-20 safe-top">
             <SupabaseAuthBridge />
             <OfflineBanner />
+            {accountBlocked && <AccountBanner role="employee" state="expired" blocked trialDaysLeft={null} subscribed={false} />}
             {children}
             <EmployeeNav />
             <ImpersonationBanner />

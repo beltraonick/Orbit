@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
+import { useAIConsent } from '@/components/AIConsent'
 
 interface ActionInfo {
   tool: string
@@ -102,6 +103,7 @@ function ActionCard({ message, onDecide, t }: {
 
 export default function AdminAIPage() {
   const { t } = useTranslation()
+  const { ensureConsent, dialog: consentDialog } = useAIConsent()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -192,6 +194,7 @@ export default function AdminAIPage() {
   async function send(question?: string) {
     const q = (question ?? input).trim()
     if (!q || loading) return
+    if (!(await ensureConsent())) return
     setInput('')
     setQuotaError('')
 
@@ -234,6 +237,7 @@ export default function AdminAIPage() {
 
   return (
     <div className="h-[calc(100dvh-56px)] md:h-screen flex overflow-hidden">
+      {consentDialog}
       {/* Mobile backdrop */}
       {sidebarOpen && (
         <div

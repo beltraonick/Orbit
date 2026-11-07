@@ -6,6 +6,8 @@ import { verifyPassword, hashPassword, isLegacyHash } from '@/lib/auth/crypto'
 import { setSessionCookie, clearSessionCookie, createToken, verifyToken } from '@/lib/auth/session'
 import { createClient } from '@/lib/supabase/server'
 import { isSessionRevoked } from '@/lib/auth/revocation'
+import { checkRoleLimit } from '@/lib/plan-limits'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { isLoginRateLimited, recordFailedLogin, clearFailedLogins, LOGIN_RATE_LIMITED_MESSAGE } from '@/lib/auth/rate-limit'
 import {
   AuthInfrastructureError,
@@ -181,6 +183,12 @@ export async function register(data: {
     const existing = await findUserByEmail(data.email.trim())
     if (existing) {
       return { error: 'An account with this email already exists.' }
+    }
+
+    // The company's plan caps its field team (employees + workers).
+    const { allowed } = await checkRoleLimit(createServiceRoleClient(), invite.company_id, 'employee')
+    if (!allowed) {
+      return { error: 'This company has reached the team limit of its plan. Please ask your administrator.' }
     }
 
     const newUser = await createEmployeeWithInvite(

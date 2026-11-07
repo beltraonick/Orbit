@@ -6,6 +6,8 @@ import { hasPermission, type EmployeePermissions } from '@/lib/permissions'
 import { revalidatePath } from 'next/cache'
 import { getAttendanceStatus } from './scheduleActions'
 import { closeStaleEntriesForCompany } from '@/lib/auto-clockout'
+import { checkRoleLimit } from '@/lib/plan-limits'
+import { accessHasFeature, getCompanyAccess, FEATURE_LOCKED_MESSAGE } from '@/lib/billing'
 
 
 // ─── Worker CRUD (admin only) ─────────────────────────────────────────────────
@@ -22,6 +24,11 @@ export async function createWorker(data: {
   if (!user || user.role !== 'admin') return { error: 'Unauthorized' }
 
   const supabase = createClient()
+
+  const { allowed, limit } = await checkRoleLimit(supabase, user.company_id as string, 'employee')
+  if (!allowed) {
+    return { error: `Your plan includes up to ${limit} people on the field team (employees and workers). Upgrade or add extra people in Settings > Plan & Billing.` }
+  }
 
   const { data: worker, error } = await supabase
     .from('workers')
@@ -140,6 +147,12 @@ export async function supervisorClockIn(data: {
     .maybeSingle()
 
   if (!profile) return { error: 'Profile not found' }
+
+  // Supervisors clocking in their team is a Pro feature; admins always can.
+  if (user.role !== 'admin' && user.company_id) {
+    const access = await getCompanyAccess(supabase, user.company_id)
+    if (!accessHasFeature(access, 'supervisors')) return { error: FEATURE_LOCKED_MESSAGE }
+  }
 
   const isSupervisor = user.role === 'admin' || hasPermission(profile.permissions as EmployeePermissions | null, 'supervisor')
   const canCheckinTeam = hasPermission(profile.permissions as EmployeePermissions | null, 'checkin_team')

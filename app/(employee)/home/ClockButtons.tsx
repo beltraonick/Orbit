@@ -322,7 +322,8 @@ export function ClockButtons({
         setClockedIn(false)
         setLocalClockInTime(null)
         setLocalEntryId(null)
-        setClockError('Clock-in was not saved. Please try again.')
+        const inactive = String((err as { message?: string })?.message ?? '').includes('ACCOUNT_INACTIVE')
+        setClockError(inactive ? t('admin.billing.bannerEmployee') : 'Clock-in was not saved. Please try again.')
       }
     }
 
