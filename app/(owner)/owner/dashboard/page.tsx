@@ -8,6 +8,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { t } from '@/lib/i18n/translate'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { ShrinkPhotosCard } from '@/components/owner/ShrinkPhotosCard'
 import { subscriptionStatusKey, subscriptionStatusVariant, isCompanyOverdue } from '@/lib/owner-status'
 
 const supabaseReady =
@@ -135,6 +136,8 @@ export default async function OwnerDashboardPage() {
         <Card><p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'owner.dashboard.totalProjects')}</p><p className="text-2xl font-bold text-primary">{totalProjects}</p></Card>
         <Card><p className="text-xs text-secondary uppercase tracking-wide mb-1">{t(locale, 'owner.dashboard.overdueCompanies')}</p><p className={`text-2xl font-bold ${overdueCount > 0 ? 'text-danger' : 'text-primary'}`}>{overdueCount}</p></Card>
       </div>
+
+      <ShrinkPhotosCard />
 
       {recentActivity.length > 0 && (
         <Card padding="none" className="mb-6 md:mb-8">
