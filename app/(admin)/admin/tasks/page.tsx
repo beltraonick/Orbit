@@ -14,6 +14,7 @@ import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox
 import { queuePhoto } from '@/lib/offline-photo-queue'
 import { useOfflinePhotoSync } from '@/lib/useOfflinePhotoSync'
 import { TaskAuditAlerts } from '@/components/admin/TaskAuditAlerts'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 interface ChecklistItem { text: string; done: boolean }
 
@@ -320,7 +321,8 @@ export default function TasksPage() {
     // Upload photos
     if (newPhotoFiles.length > 0 && savedTaskId) {
       setUploadingPhotos(true)
-      for (const file of newPhotoFiles) {
+      for (const original of newPhotoFiles) {
+        const file = await shrinkImageFile(original)
         const ext = file.name.split('.').pop() ?? 'jpg'
         const path = `tasks/${savedTaskId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
         if (!navigator.onLine) {

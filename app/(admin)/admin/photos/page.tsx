@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/Select'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
 import { PhotoPicker } from '@/components/ui/PhotoPicker'
 import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 const BUCKET = 'project-photos'
 
@@ -71,7 +72,7 @@ export default function PhotosPage() {
 
     let failed = 0
     for (let i = 0; i < files.length; i++) {
-      const file = files[i]
+      const file = await shrinkImageFile(files[i])
       const ext = file.name.split('.').pop()
       const path = `${companyId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
       const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(path, file)

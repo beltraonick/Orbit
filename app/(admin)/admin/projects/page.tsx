@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { useTranslation } from '@/lib/i18n/LocaleContext'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
@@ -280,10 +281,11 @@ export default function ProjectsPage() {
 
     // Upload cover photo first if selected
     if (coverFile) {
+      const cover = await shrinkImageFile(coverFile)
       const projectId = editing?.id ?? crypto.randomUUID()
-      const ext = coverFile.name.split('.').pop() ?? 'jpg'
+      const ext = cover.name.split('.').pop() ?? 'jpg'
       const path = `covers/${projectId}.${ext}`
-      const { error: upErr } = await supabase.storage.from('project-photos').upload(path, coverFile, { upsert: true })
+      const { error: upErr } = await supabase.storage.from('project-photos').upload(path, cover, { upsert: true })
       if (!upErr) {
         coverImagePath = path
       } else writeFailed(upErr, 'upload the cover photo (the project will be saved without it)')

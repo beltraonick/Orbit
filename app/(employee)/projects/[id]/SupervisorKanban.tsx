@@ -9,6 +9,7 @@ import { PhotoPicker } from '@/components/ui/PhotoPicker'
 import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox'
 import { updateSupervisorTask, createSupervisorTask } from '@/app/actions/employeeTasks'
 import { TeamClockIn } from './TeamClockIn'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
@@ -211,7 +212,8 @@ function SupervisorDrawer({ task, projectId, companyId, profileName, onClose, on
     if (newFiles.length > 0) {
       setUploading(true)
       const supabase = createClient()
-      for (const file of newFiles) {
+      for (const original of newFiles) {
+        const file = await shrinkImageFile(original)
         const ext = file.name.split('.').pop() ?? 'jpg'
         const path = `${companyId}/${task.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const { error } = await supabase.storage.from('task-photos').upload(path, file, { contentType: file.type })

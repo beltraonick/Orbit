@@ -12,6 +12,7 @@ import { PhotoPicker } from '@/components/ui/PhotoPicker'
 import { PhotoLightbox, type LightboxPhoto } from '@/components/ui/PhotoLightbox'
 import { queuePhoto } from '@/lib/offline-photo-queue'
 import { useOfflinePhotoSync } from '@/lib/useOfflinePhotoSync'
+import { shrinkImageFile } from '@/lib/shrink-image'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
@@ -227,7 +228,8 @@ function TaskDrawer({
     // Upload new photos
     if (newFiles.length > 0 && savedTask?.id) {
       setUploading(true)
-      for (const file of newFiles) {
+      for (const original of newFiles) {
+        const file = await shrinkImageFile(original)
         const ext = file.name.split('.').pop() ?? 'jpg'
         const path = `${companyId}/${savedTask.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         if (!navigator.onLine) {
