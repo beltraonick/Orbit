@@ -35,8 +35,8 @@ export function isPlanKey(v: unknown): v is PlanKey {
 /** Plans from before Crew/Pro/Business map to the closest new one. */
 export function normalizePlanKey(key: string | null | undefined): PlanKey | null {
   if (isPlanKey(key)) return key
-  if (key === 'growth') return 'pro'
-  if (key === 'starter' || key === 'free') return 'crew'
+  if (key === 'growth' || key === 'starter') return 'pro'
+  if (key === 'free') return 'crew'
   return null
 }
 

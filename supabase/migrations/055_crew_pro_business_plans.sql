@@ -10,8 +10,8 @@
 --    in sync from Stripe by /api/billing/webhook.
 --
 -- 3. Existing companies move to the new plans:
---      - paid companies the owner marked active on Starter/Growth stay
---        active (Starter -> Crew, Growth -> Pro), untouched otherwise;
+--      - companies the owner marked active on Starter/Growth (paid by
+--        hand, or partners) stay active, on Pro (every feature);
 --      - everyone else on an old plan gets Pro on a fresh 30-day trial,
 --        counted from when this runs, and then picks a plan like a new one.
 --    Companies with the owner's "unlimited" override are not changed.
@@ -62,9 +62,9 @@ ALTER TABLE companies
   ADD COLUMN IF NOT EXISTS current_period_end timestamptz;
 
 -- ── 3. move existing companies ──────────────────────────────────────────────
--- Paid on an old plan (marked active by the owner): keep paying as they do.
+-- Marked active by the owner on an old paid plan (paid by hand / partner): stays active, on Pro.
 UPDATE companies c
-SET plan_id = (SELECT id FROM plans WHERE key = CASE p.key WHEN 'growth' THEN 'pro' ELSE 'crew' END)
+SET plan_id = (SELECT id FROM plans WHERE key = 'pro')
 FROM plans p
 WHERE c.plan_id = p.id
   AND p.key IN ('starter', 'growth')
@@ -103,7 +103,7 @@ AS $$
     WHEN c.unlimited_override THEN 'business'
     WHEN p.key = 'business' THEN 'business'
     WHEN c.subscription_status = 'trialing' THEN 'pro'
-    WHEN p.key IN ('pro', 'growth') THEN 'pro'
+    WHEN p.key IN ('pro', 'growth', 'starter') THEN 'pro'
     ELSE 'crew'
   END
   FROM companies c LEFT JOIN plans p ON p.id = c.plan_id

@@ -79,13 +79,27 @@ export function accessFromRow(row: CompanyBillingRow | null, now = Date.now()): 
 export const COMPANY_BILLING_COLUMNS =
   'subscription_status, trial_ends_at, stripe_subscription_id, billing_interval, extra_seats, unlimited_override, plan:plan_id(key)'
 
+// Columns that exist before migration 055 — used if the new ones aren't there
+// yet, so a deploy ahead of the migration still reads the real status and the
+// owner's "unlimited" override.
+const LEGACY_BILLING_COLUMNS =
+  'subscription_status, trial_ends_at, stripe_subscription_id, unlimited_override, plan:plan_id(key)'
+
 export async function getCompanyAccess(supabase: SupabaseClient, companyId: string): Promise<CompanyAccess> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('companies')
     .select(COMPANY_BILLING_COLUMNS)
     .eq('id', companyId)
     .maybeSingle()
-  return accessFromRow(data as CompanyBillingRow | null)
+  if (!error) return accessFromRow(data as CompanyBillingRow | null)
+
+  const legacy = await supabase
+    .from('companies')
+    .select(LEGACY_BILLING_COLUMNS)
+    .eq('id', companyId)
+    .maybeSingle()
+  const row = legacy.data as Omit<CompanyBillingRow, 'billing_interval' | 'extra_seats'> | null
+  return accessFromRow(row ? { ...row, billing_interval: null, extra_seats: 0 } : null)
 }
 
 export function accessHasFeature(access: CompanyAccess, feature: Feature): boolean {
