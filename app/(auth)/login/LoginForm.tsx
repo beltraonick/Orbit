@@ -7,6 +7,7 @@ import { login } from '@/app/actions/auth'
 import { Input } from '@/components/ui/Input'
 import { t, translateError, type Locale } from '@/lib/i18n/login'
 import { saveRememberToken, roleRedirectPath } from '@/lib/auth/remember'
+import { useIsNativeApp } from '@/lib/use-native-app'
 
 type RoleOption = 'admin' | 'employee' | 'client' | 'owner'
 
@@ -22,6 +23,10 @@ export function LoginForm({ locale, showOwnerRole = false }: { locale: Locale; s
   const [selectedRole, setSelectedRole] = useState<RoleOption>('admin')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // iOS app: companies are created on the website only (App Store 3.1.1),
+  // so the admin "Create account" link is hidden there. Employees can still
+  // join their company with an invite code.
+  const native = useIsNativeApp()
 
   const ROLES: { id: RoleOption; label: string; sub: string; icon: React.ReactNode }[] = [
     {
@@ -176,7 +181,7 @@ export function LoginForm({ locale, showOwnerRole = false }: { locale: Locale; s
       </form>
 
       {/* Dynamic create-account link based on selected role */}
-      {selectedRole !== 'owner' && (
+      {selectedRole !== 'owner' && !(selectedRole === 'admin' && native !== false) && (
         <p className="text-center text-sm text-secondary pt-1">
           {t(locale, 'noAccount')}{' '}
           <Link

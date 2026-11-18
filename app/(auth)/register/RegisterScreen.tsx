@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { RegisterForm } from './RegisterForm'
 import { LanguageSwitcher } from '../login/LanguageSwitcher'
+import { useIsNativeApp } from '@/lib/use-native-app'
 import { getStoredLocale, storeLocale, t, type Locale } from '@/lib/i18n/login'
 
 export function RegisterScreen() {
   const [locale, setLocale] = useState<Locale>('en')
   const [initialCode, setInitialCode] = useState('')
+  // iOS app: no company sign-up (App Store 3.1.1), so no link to it.
+  const native = useIsNativeApp()
 
   useEffect(() => {
     setLocale(getStoredLocale())
@@ -36,8 +39,8 @@ export function RegisterScreen() {
           <p className="text-sm text-secondary mt-1 text-center">{t(locale, 'registerSubtitle')}</p>
         </div>
 
-        {/* Company redirect callout */}
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-input border border-[var(--border)] bg-surface px-4 py-3">
+        {/* Company redirect callout (website only) */}
+        {native === false && <div className="mb-4 flex items-center justify-between gap-3 rounded-input border border-[var(--border)] bg-surface px-4 py-3">
           <p className="text-xs text-secondary">{t(locale, 'registerCompanyHint')}</p>
           <Link
             href="/signup"
@@ -45,7 +48,7 @@ export function RegisterScreen() {
           >
             {t(locale, 'registerCompanyLink')}
           </Link>
-        </div>
+        </div>}
 
         {/* Card */}
         <div className="bg-surface rounded-card border border-[var(--border)] p-6">
