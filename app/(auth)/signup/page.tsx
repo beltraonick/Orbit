@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { SignupForm } from './SignupForm'
+import { SignupGate } from './SignupGate'
 
 export default function SignupPage() {
   return (
@@ -13,7 +13,7 @@ export default function SignupPage() {
         </div>
 
         <div className="bg-surface rounded-card border border-[var(--border)] p-6">
-          <SignupForm />
+          <SignupGate />
         </div>
 
         <p className="text-center text-sm text-secondary mt-6">
